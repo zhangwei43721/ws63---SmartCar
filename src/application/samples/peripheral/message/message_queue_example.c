@@ -25,100 +25,93 @@
 #include "soc_osal.h"
 #include "app_init.h"
 
-#define THREAD_TASK_STACK_SIZE    0x1000
-#define THREAD_TASK_PRIO          24
+#define THREAD_TASK_STACK_SIZE 0x1000 //  任务占用内存
+#define THREAD_TASK_PRIO 24           //  优先级
 
+//  两个句柄
 osal_task *task1_handle = NULL;
 osal_task *task2_handle = NULL;
 
-unsigned long MsgQueue_ID;
+unsigned long MsgQueue_ID; //  消息ID
 
-typedef struct message_people 
-{
-    uint8_t id;     // ID
-    uint8_t age;    // 年龄
-    char *name;     // 名字
-}msg_people_t;
+typedef struct message_people {
+    uint8_t id;  // ID
+    uint8_t age; // 年龄
+    char *name;  // 名字
+} msg_people_t;
 msg_people_t msg_people;
 
-
 /// @brief 任务1--发送消息
-/// @param arg 
-/// @return 
+/// @param arg
+/// @return
 static int thread_task1(const char *arg)
 {
     unused(arg);
     int msgStatus;
 
-    while(1)
-    {
-       // osal_printk("enter task 1......\n");
+    while (1) {
+        osal_printk("enter task 1......\n");
         msg_people.id = 0;
         msg_people.age = 16; // 年龄 16岁
         msg_people.name = "jack";
+        // 参数含义：(队列ID, 包裹数据的地址, 包裹大小, 超时时间0)
         msgStatus = osal_msg_queue_write_copy(MsgQueue_ID, &msg_people, sizeof(msg_people), 0);
-        if (msgStatus == OSAL_SUCCESS)
-        {
-            //osal_printk("osal_msg_queue_write_copy is ok.\n");
+        if (msgStatus == OSAL_SUCCESS) {
+            // osal_printk("osal_msg_queue_write_copy is ok.\n");
         }
 
         osal_msleep(1000);
-
     }
-    
+
     return 0;
 }
 
-
 /// @brief 任务2
-/// @param arg 
-/// @return 
+/// @param arg
+/// @return
 static int thread_task2(const char *arg)
 {
     unused(arg);
-    
+
     int msgStatus;
-    while(1)
-    {
-       // osal_printk("enter Task 2.......\r\n");
+    while (1) {
+        osal_printk("enter Task 2.......\r\n");
         unsigned int msg_buf_size = sizeof(msg_people);
+        // 参数含义：(队列ID, 用来存放数据的容器地址, 大小, 超时时间0)
         msgStatus = osal_msg_queue_read_copy(MsgQueue_ID, &msg_people, &msg_buf_size, 0);
-        if (msgStatus == OSAL_SUCCESS)
-        {
+        if (msgStatus == OSAL_SUCCESS) {
             osal_printk("osal_msg_queue_read_copy is ok.\n");
             osal_printk("recv id = %d, age = %d, name = %s\n", msg_people.id, msg_people.age, msg_people.name);
-            break;
+            // break;
         }
-        //osal_msleep(1000);
+        osal_msleep(1000);
     }
-    
+
     return 0;
 }
-
 
 void queue_entry(void)
 {
     // 创建消息队列
-    int ret = osal_msg_queue_create("MsgQueue", 16, &MsgQueue_ID, 0,sizeof(msg_people));
-    if (ret == OSAL_SUCCESS)
-    {
-        osal_printk("ID = %d , create msgqueueID is ok!\n",MsgQueue_ID);
+    int ret = osal_msg_queue_create("MsgQueue", 16, &MsgQueue_ID, 0, sizeof(msg_people));
+    if (ret == OSAL_SUCCESS) {
+        osal_printk("ID = %d , create msgqueueID is ok!\n", MsgQueue_ID);
     }
 
-     // 锁住任务，防止高优先级任务调度
+    // 锁住任务，防止高优先级任务调度
     osal_kthread_lock();
-    // 创建任务1
+    // 创建任务1，生产内容
     task1_handle = osal_kthread_create((osal_kthread_handler)thread_task1, NULL, "threadTask1", THREAD_TASK_STACK_SIZE);
-    if(task1_handle != NULL) // 失败
+    if (task1_handle != NULL) // 失败
     {
         // 设置优先级
         osal_kthread_set_priority(task1_handle, THREAD_TASK_PRIO);
         osal_kfree(task1_handle);
     }
 
-    // 创建任务2
+    // 创建任务2，消费内容
     task2_handle = osal_kthread_create((osal_kthread_handler)thread_task2, NULL, "threadTask2", THREAD_TASK_STACK_SIZE);
-    if(task2_handle != NULL) // 失败
+    if (task2_handle != NULL) // 失败
     {
         // 设置优先级
         osal_kthread_set_priority(task2_handle, THREAD_TASK_PRIO);
@@ -126,9 +119,6 @@ void queue_entry(void)
     }
 
     osal_kthread_unlock();
-
-
-
 }
 
 app_run(queue_entry);
