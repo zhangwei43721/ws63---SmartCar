@@ -1,0 +1,7 @@
+if(DEFINED CONFIG_SAMPLE_SUPPORT_SLE_UART)
+    add_subdirectory_if_exist(sle_uart)
+endif()
+
+set(SOURCES "${SOURCES}" PARENT_SCOPE)
+set(PUBLIC_HEADER "${PUBLIC_HEADER}" PARENT_SCOPE)
+set(LIBS "${LIBS}" PARENT_SCOPE)

@@ -1,0 +1,9 @@
+choice
+    prompt "Select semaphore type"
+    default SAMPLE_SUPPORT_BINARY_SEMAPHORE
+    config SAMPLE_SUPPORT_BINARY_SEMAPHORE
+        bool "Enable Binary Semaphore."
+    config SAMPLE_SUPPORT_COUNT_SEMAPHORE
+        bool "Enable Count Semaphore."
+
+endchoice

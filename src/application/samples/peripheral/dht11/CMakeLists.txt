@@ -1,0 +1,6 @@
+set(SOURCES_LIST 
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp_dht11/bsp_dht11.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/dht11_example.c
+)
+
+set(SOURCES "${SOURCES}" "${SOURCES_LIST}" PARENT_SCOPE)
