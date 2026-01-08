@@ -1,10 +1,10 @@
 /**
  ****************************************************************************************************
- * @file        message_queue_template.c
+ * @file        count_semaphore.c
  * @author      jack
  * @version     V1.0
  * @date        2025-03-24
- * @brief       LiteOS消息队列
+ * @brief       LiteOS计数信号量
  * @license     Copyright (c) 2024-2034
  ****************************************************************************************************
  * @attention
@@ -19,122 +19,96 @@
  *
  ****************************************************************************************************
  */
-
 #include "pinctrl.h"
 #include "gpio.h"
 #include "soc_osal.h"
 #include "app_init.h"
+#include "common.h"
+#include "soc_errno.h"
 
-#define THREAD_TASK_STACK_SIZE    0x1000
-#define THREAD_TASK_PRIO          24
+#define THREAD_TASK_STACK_SIZE 0x1000
+#define THREAD_TASK_PRIO 24
 
-#define SEM_MAX_COUNT 10
-#define TASK1_DELAY_TIME 1000
-#define TASK2_DELAY_TIME 2000
+#define SEM_MAX_COUNT 10      // 停车场最大容量
+#define TASK1_DELAY_TIME 1000 // 进车频率
+#define TASK2_DELAY_TIME 2000 // 出车频率
 
 osal_task *task1_handle = NULL;
 osal_task *task2_handle = NULL;
 
-osal_semaphore semID;
-uint8_t buff[20] = {0};       // 定义一个共享资源
+osal_semaphore sem_empty_slots; // 信号量：代表“空闲车位”
 
-
-/// @brief 任务1--发送消息
-/// @param arg 
-/// @return 
-// static int thread_task1(const char *arg)
-// {
-//     unused(arg);
-
-//     while(1)
-//     {
-//         osal_printk("[进入%d辆车, 停车场容量: %d] 信号量+1.\n", osal_Semaphore_getCount(semID), SEM_MAX_COUNT);
-//         // 获取当前信号量值并判断是否小于最大信号量
-//        if(osal_Semaphore_getCount(semID) < SEM_MAX_COUNT)
-//        {
-//             // 释放信号量 +1
-//             osal_sem_up(&semID);
-//             osal_printk("[进入%d辆车, 停车场容量: %d] 信号量+1.\n", osal_Semaphore_getCount(semID), SEM_MAX_COUNT);
-//        }
-//        else
-//        {
-//             osal_printk("[进入停车场失败, 请等待...]\n");
-//        }
-//         osal_msleep(TASK1_DELAY_TIME);
-//     }
-    
-    
-//     return 0;
-// }
-
-
-/// @brief 任务2
-/// @param arg 
-/// @return 
-// static int thread_task2(const char *arg)
-// {
-//     unused(arg);
-    
-//     while (1) 
-//     {
-//         if(osal_sem_down_timeout(&semID, OSAL_WAIT_FOREVER) == OSAL_SUCCESS)
-//         {
-//             // 释放信号量 -1
-//             printf("[出去1辆车, 剩余停车场容量: %d] 信号量-1.\n",  osal_Semaphore_getCount(semID));
-//         }
-//         else 
-//         {
-//             printf("[出停车场失败]\n");
-//         }
-
-//         osal_msleep(TASK2_DELAY_TIME);
-//     }
-   
-    
-//     return 0;
-// }
-
-
-void binary_semaphore_entry(void)
+/// @brief 任务1 -- 进车 (消费者：消耗空车位)
+static int thread_task1(const char *arg)
 {
-    osal_printk("Litos二值信号量\r\n");
+    unused(arg);
+    int ret;
 
-    // 创建信号量
-    int ret = osal_sem_init(&semID, SEM_MAX_COUNT-1);
-    if(ret == OSAL_FAILURE)
-    {
-        osal_printk("create sem failed\r\n");
-        return ;
+    while (1) {
+        // 尝试进车：申请一个空车位 (等待 100ms)
+        // 这里的逻辑是：如果 sem > 0，则减1并返回成功；如果 sem == 0，则等待。
+        ret = osal_sem_down_timeout(&sem_empty_slots, 100);
+
+        if (ret == OSAL_SUCCESS) {
+            // 申请成功，意味着进车成功
+            osal_printk("[Task 1] 进车成功! (消耗一个空位)\n");
+        } else {
+            // 申请失败，意味着没有空位了
+            osal_printk("[Task 1] 进车失败! 停车场已满，请等待...\n");
+        }
+
+        osal_msleep(TASK1_DELAY_TIME);
     }
-    osal_printk("ID = %d, create sem OK\r\n", semID);
 
-    printf("[出去1辆车, 剩余停车场容量: %hd] 信号量-1.\n",  osal_Semaphore_getCount(&semID));
-
-    
-    // 锁住任务，防止高优先级任务调度
-    osal_kthread_lock();
-    // 创建任务1
-    // task1_handle = osal_kthread_create((osal_kthread_handler)thread_task1, NULL, "threadTask1", THREAD_TASK_STACK_SIZE);
-    // if(task1_handle != NULL) // 失败
-    // {
-    //     // 设置优先级
-    //     osal_kthread_set_priority(task1_handle, THREAD_TASK_PRIO);
-    //     osal_kfree(task1_handle);
-    // }
-
-    // // 创建任务2
-    // task2_handle = osal_kthread_create((osal_kthread_handler)thread_task2, NULL, "threadTask2", THREAD_TASK_STACK_SIZE);
-    // if(task2_handle != NULL) // 失败
-    // {
-    //     // 设置优先级
-    //     osal_kthread_set_priority(task2_handle, THREAD_TASK_PRIO);
-    //     osal_kfree(task2_handle);
-    // }
-
-    osal_kthread_unlock();
-
-
-
+    return 0;
 }
 
-app_run(binary_semaphore_entry);
+/// @brief 任务2 -- 出车 (生产者：产生空车位)
+static int thread_task2(const char *arg)
+{
+    unused(arg);
+
+    while (1) {
+        // 出车：释放一个空车位
+        // 这里的逻辑是：sem + 1
+        osal_sem_up(&sem_empty_slots);
+        osal_printk("[Task 2] 出去1辆车. (增加一个空位)\n");
+
+        osal_msleep(TASK2_DELAY_TIME);
+    }
+
+    return 0;
+}
+
+void count_semaphore_entry(void)
+{
+    osal_printk("Litos计数信号量演示\r\n");
+
+    // 创建信号量
+    // 初始化值为 SEM_MAX_COUNT (10)，表示一开始有10个空位
+    int ret = osal_sem_init(&sem_empty_slots, SEM_MAX_COUNT);
+    if (ret == OSAL_FAILURE) {
+        osal_printk("create sem failed\r\n");
+        return;
+    }
+    osal_printk("ID = %d, create sem OK. 初始空位: %d\r\n", sem_empty_slots, SEM_MAX_COUNT);
+
+    // 锁住任务，防止高优先级任务调度
+    osal_kthread_lock();
+
+    // 创建任务1 (进车)
+    task1_handle = osal_kthread_create((osal_kthread_handler)thread_task1, NULL, "threadTask1", THREAD_TASK_STACK_SIZE);
+    if (task1_handle != NULL) {
+        osal_kthread_set_priority(task1_handle, THREAD_TASK_PRIO);
+    }
+
+    // 创建任务2 (出车)
+    task2_handle = osal_kthread_create((osal_kthread_handler)thread_task2, NULL, "threadTask2", THREAD_TASK_STACK_SIZE);
+    if (task2_handle != NULL) {
+        osal_kthread_set_priority(task2_handle, THREAD_TASK_PRIO);
+    }
+
+    osal_kthread_unlock();
+}
+
+app_run(count_semaphore_entry);

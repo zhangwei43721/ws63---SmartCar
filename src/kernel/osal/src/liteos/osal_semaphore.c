@@ -144,6 +144,11 @@ void osal_sem_up(osal_semaphore *sem)
  * 返回值：当前的信号量令牌计数。
  **/
 
+// 注意这段代码不正确,不要用这段代码
+// 原因是：
+// LiteOS 的 sem 句柄（Handle）是一个 整数索引（ID）（比如 0, 1, 2, 3），而不是一个内存地址指针。
+// 你在代码里直接把这个整数 3 强制转换成了结构体指针 LosSemCB *，然后去访问它的成员。
+// CPU 试图访问内存地址 0x00000003，这是非法区域，直接触发硬件错误（Hard Fault），导致系统死机重启。
 unsigned short int osal_Semaphore_getCount(osal_semaphore *semaphore_id)
 {
     UINT32 uwIntSave;
