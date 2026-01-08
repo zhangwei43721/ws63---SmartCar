@@ -9,7 +9,7 @@
 #include "tcxo.h"
 
 // 管脚定义
-#define BEEP_PIN 5
+#define BEEP_PIN 10
 
 #define BEEP(a) uapi_gpio_set_val(BEEP_PIN,a)
 
