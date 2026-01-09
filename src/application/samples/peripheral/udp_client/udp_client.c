@@ -31,16 +31,16 @@
 #include "soc_osal.h"
 #include "./wifi/wifi_connect.h"
 
-#define UDP_CLIENT_TASK_PRIO                  (osPriority_t)(13)
-#define UDP_CLIENT_TASK_DURATION_MS           2000
-#define UDP_CLIENT_TASK_STACK_SIZE            0x1000
+#define UDP_CLIENT_TASK_PRIO (osPriority_t)(13)
+#define UDP_CLIENT_TASK_DURATION_MS 2000
+#define UDP_CLIENT_TASK_STACK_SIZE 0x1000
 
-#define CONFIG_WIFI_SSID            "jack"                              // 要连接的WiFi 热点账号
-#define CONFIG_WIFI_PWD             "12345678"                        // 要连接的WiFi 热点密码
-#define CONFIG_SERVER_IP            "192.168.246.65"                     // 要连接的服务器IP
-#define CONFIG_SERVER_PORT          8888                                // 要连接的服务器端口
+#define CONFIG_WIFI_SSID "BS-8"          // 要连接的WiFi 热点账号
+#define CONFIG_WIFI_PWD "BS88888888"     // 要连接的WiFi 热点密码
+#define CONFIG_SERVER_IP "192.168.3.150" // 要连接的服务器IP
+#define CONFIG_SERVER_PORT 8888          // 要连接的服务器端口
 
-static const char *send_data = "Hello! I'm UDP Client!\r\n";
+static const char *send_data = "receive server message success!\r\n";
 
 int udp_client_sample_task(void *param)
 {
@@ -54,15 +54,33 @@ int udp_client_sample_task(void *param)
     // 连接wifi
     wifi_connect(CONFIG_WIFI_SSID, CONFIG_WIFI_PWD);
 
-    // 创建socket套接字
+    struct netif *netif_wlan = netif_find("wlan0");
+    if (netif_wlan != NULL) {
+        printf(">>> 开发板 IP: %s <<<\r\n", ipaddr_ntoa(&netif_wlan->ip_addr));
+        printf(">>> 网关: %s <<<\r\n", ipaddr_ntoa(&netif_wlan->gw));
+        printf(">>> 掩码: %s <<<\r\n", ipaddr_ntoa(&netif_wlan->netmask));
+    } else
+        printf(">>> 找不到网络接口 wlan0  <<<\r\n");
+
     int sock_fd;
-    printf("create socket start!\r\n");
-    if((sock_fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
-    {
-        printf("create socket failed!\r\n");
+    printf("开始创建接收用套接字!\r\n");
+    if ((sock_fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+        printf("创建接收用套接字失败!\r\n");
+        return 0;
+    } else
+        printf("创建接收用套接字成功!\r\n");
+
+    struct sockaddr_in local_addr = {0};
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_port = htons(8888); // 锁定接收端口
+    local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(sock_fd, (struct sockaddr *)&local_addr, sizeof(local_addr)) < 0) {
+        printf("绑定端口失败！可能端口被占用了\r\n");
+        lwip_close(sock_fd);
         return 0;
     }
-    printf("create socket end!\r\n");
+    printf("绑定端口成功！我现在监听 8888 端口\r\n");
 
     // 初始化连接服务器地址
     send_addr.sin_family = AF_INET;
@@ -70,8 +88,7 @@ int udp_client_sample_task(void *param)
     send_addr.sin_addr.s_addr = inet_addr(CONFIG_SERVER_IP);
     addr_length = sizeof(send_addr);
 
-    while(1)
-    {
+    while (1) {
         bzero(recvBuf, sizeof(recvBuf));
 
         // 发送数据到服务端
@@ -83,7 +100,7 @@ int udp_client_sample_task(void *param)
 
         // 接收服务器返回的字符串
         recvfrom(sock_fd, recvBuf, sizeof(recvBuf), 0, (struct sockaddr *)&send_addr, &addr_length);
-        printf("%s:%d=>%s\n", inet_ntoa(send_addr.sin_addr), ntohs(send_addr.sin_port), recvBuf);
+        printf("接收到 %s:%d=>%s\n", inet_ntoa(send_addr.sin_addr), ntohs(send_addr.sin_port), recvBuf);
     }
 
     // 关闭socket
@@ -94,13 +111,13 @@ int udp_client_sample_task(void *param)
 static void udp_client_sample_entry(void)
 {
     osThreadAttr_t attr;
-    attr.name       = "udp_client_sample_task";
-    attr.attr_bits  = 0U;
-    attr.cb_mem     = NULL;
-    attr.cb_size    = 0U;
-    attr.stack_mem  = NULL;
+    attr.name = "udp_client_sample_task";
+    attr.attr_bits = 0U;
+    attr.cb_mem = NULL;
+    attr.cb_size = 0U;
+    attr.stack_mem = NULL;
     attr.stack_size = UDP_CLIENT_TASK_STACK_SIZE;
-    attr.priority   = UDP_CLIENT_TASK_PRIO;
+    attr.priority = UDP_CLIENT_TASK_PRIO;
     if (osThreadNew((osThreadFunc_t)udp_client_sample_task, NULL, &attr) == NULL) {
         printf("Create udp_client_sample_task fail.\r\n");
     }
