@@ -75,3 +75,4 @@ src/output/
 src/build.log
 src/.vscode/problems.json
 src/analyzerJson/
+src/.vscode/launch.json
