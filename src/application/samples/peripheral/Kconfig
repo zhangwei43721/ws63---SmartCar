@@ -18,6 +18,7 @@ config ENABLE_ALL_PERIPHERAL_SAMPLE
     select SAMPLE_SUPPORT_EFLASH
     select SAMPLE_SUPPORT_I2C
     select SAMPLE_SUPPORT_I2S
+    select SAMPLE_SUPPORT_SG90
     select SAMPLE_SUPPORT_I2S_DMA
     select SAMPLE_SUPPORT_I2S_DMA_LLI
     select SAMPLE_SUPPORT_KEYSCAN
@@ -489,6 +490,20 @@ config SAMPLE_SUPPORT_STEP_MOTOR
     depends on ENABLE_PERIPHERAL_SAMPLE
     help
         This option means support STEP_MOTOR Sample.
+
+config SAMPLE_SUPPORT_SG90
+    bool
+    prompt "Support SG90 Servo Sample."
+    default n
+    depends on ENABLE_PERIPHERAL_SAMPLE
+    help
+        This option means support SG90 Servo Sample.
+
+if SAMPLE_SUPPORT_SG90
+menu "SG90 Servo Sample Configuration"
+    osource "application/samples/peripheral/sg90/Kconfig"
+endmenu
+endif
 
 config SAMPLE_SUPPORT_EXTI
     bool

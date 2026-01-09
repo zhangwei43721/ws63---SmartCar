@@ -176,6 +176,11 @@ if(DEFINED CONFIG_SAMPLE_SUPPORT_PWM_LED)
     add_subdirectory_if_exist(pwm_led)
 endif()
 
+# 添加SG90舵机子系统
+if(DEFINED CONFIG_SAMPLE_SUPPORT_SG90)
+    add_subdirectory_if_exist(sg90)
+endif()
+
 # 添加uart子系统
 if(DEFINED CONFIG_SAMPLE_SUPPORT_UARTDEMO)
     add_subdirectory_if_exist(uartDemo)

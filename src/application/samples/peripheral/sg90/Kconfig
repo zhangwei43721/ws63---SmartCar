@@ -1,0 +1,23 @@
+#===============================================================================
+# @brief    Kconfig file for SG90 Servo
+# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2025-2025. All rights reserved.
+#===============================================================================
+# SG90 Servo Sample Configuration
+config SG90_GPIO_PIN
+    int "SG90 Servo GPIO Pin"
+    default 12
+    help
+        GPIO pin number for SG90 servo control signal.
+
+config SG90_PWM_CHANNEL
+    int "SG90 Servo PWM Channel"
+    default 4
+    help
+        PWM channel number for SG90 servo.
+
+config SG90_INIT_ANGLE
+    int "SG90 Servo Initial Angle"
+    default 90
+    range 0 180
+    help
+        Initial angle when servo initializes (0-180 degrees).
