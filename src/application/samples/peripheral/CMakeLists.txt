@@ -151,11 +151,6 @@ if(DEFINED CONFIG_SAMPLE_SUPPORT_BEEP)
     add_subdirectory_if_exist(beep)
 endif()
 
-# 添加BUTTON子系统
-if(DEFINED CONFIG_SAMPLE_SUPPORT_BUTTON)
-    add_subdirectory_if_exist(beep)
-endif()
-
 # 添加直流电机子系统
 if(DEFINED CONFIG_SAMPLE_SUPPORT_DC_MOTOR)
     add_subdirectory_if_exist(dc_motor)

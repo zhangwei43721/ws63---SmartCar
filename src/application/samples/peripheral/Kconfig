@@ -482,14 +482,6 @@ config SAMPLE_SUPPORT_DC_MOTOR
     help
         This option means support DC_MOTOR Sample.
 
-config SAMPLE_SUPPORT_BUTTON
-    bool
-    prompt "Support button Sample."
-    default n
-    depends on ENABLE_PERIPHERAL_SAMPLE
-    help
-        This option means support BUTTON Sample.
-
 config SAMPLE_SUPPORT_STEP_MOTOR
     bool
     prompt "Support step_motor Sample."
