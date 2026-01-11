@@ -75,3 +75,5 @@ src/build.log
 src/.vscode/problems.json
 src/analyzerJson/
 src/.vscode/launch.json
+src/build/config/target_config/ws63/__pycache__/config.cpython-311.pyc
+src/build/config/target_config/ws63/__pycache__/target_config.cpython-311.pyc
