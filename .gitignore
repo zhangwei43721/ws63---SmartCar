@@ -4,7 +4,7 @@ doc-pak
 *.rpm
 *.tgz
 
-build/
+
 .cache/
 compile_commands.json
 
@@ -54,7 +54,6 @@ test-suite.log
 
 /_darcs/
 /*.egg-info/
-/build/
 /distcheck/
 *.dSYN
 
