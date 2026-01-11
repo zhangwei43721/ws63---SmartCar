@@ -18,10 +18,10 @@
 
 errcode_t wifi_connect(void);
 
-#define CONFIG_WIFI_SSID "jack"      // 要连接的WiFi 热点账号
-#define CONFIG_WIFI_PWD "12345678"        // 要连接的WiFi 热点密码
+#define CONFIG_WIFI_SSID "BS-8"      // 要连接的WiFi 热点账号
+#define CONFIG_WIFI_PWD "BS88888888" // 要连接的WiFi 热点密码
 
-#define CONFIG_SERVER_PORT 6789
-#define CONFIG_SERVER_IP "192.168.246.65"
+#define CONFIG_SERVER_PORT 8888
+#define CONFIG_SERVER_IP "192.168.3.150"
 
 #endif

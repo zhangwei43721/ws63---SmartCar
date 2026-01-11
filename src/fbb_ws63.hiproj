@@ -25,7 +25,7 @@ map_path=./output/ws63/acore/ws63-liteos-app/ws63-liteos-app.elf
 compile_type=debug
 constant_type=float
 optimization=O0
-warning=yes
+warning=no
 werror=no
 wno_unused_function=no
 wno_unused_label=no
@@ -42,14 +42,15 @@ extern_staticlib_include=
 global_macro_definition=
 generate_crc=no
 generate_checksum=no
-generate_target_hex=yes
+generate_target_hex=no
 parse_elf_for_livewatch=no
-parse_analysis_json=yes
+parse_analysis_json=no
 padding=no
 werr_implicit_func=no
 generate_symboltable=no
 enable_perf=no
 wno_burned_file=no
+enable_build_problem=no
 
 [debug]
 elf_path=./output/ws63/acore/ws63-liteos-app/ws63-liteos-app.elf
