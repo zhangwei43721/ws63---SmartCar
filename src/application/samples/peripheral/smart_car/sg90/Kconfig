@@ -1,0 +1,14 @@
+#===============================================================================
+# @brief    Kconfig file
+# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2025-2025. All rights reserved.
+#===============================================================================
+
+config SMART_CAR_SUPPORT_SG90
+    bool "Support SG90 Servo Sample."
+    default n
+    help
+        SG90舵机示例 - 舵机从0度转到180度，再从180度转回0度，循环往复
+
+        硬件连接:
+        - GPIO 13 (JP4 舵机接口 SG1)
+        注意: GPIO_13 也连接了 LED2 (蓝色)，控制舵机时蓝色LED2会闪烁

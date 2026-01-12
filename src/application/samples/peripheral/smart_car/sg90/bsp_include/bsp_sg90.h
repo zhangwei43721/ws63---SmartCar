@@ -1,7 +1,7 @@
 /**
  ****************************************************************************************************
  * @file        bsp_sg90.h
- * @author      SkyForever
+ * @author      Smart Car Team
  * @version     V1.0
  * @date        2025-01-12
  * @brief       SG90舵机BSP层头文件 (智能小车专用)
@@ -27,9 +27,10 @@
 #include "tcxo.h"
 #include "soc_osal.h"
 
-// 舵机引脚定义 (板载舵机接口 SG1, JP4)
+// 舵机引脚定义 (JP4 舵机接口 SG1)
 // 注意: GPIO_13 也连接了 LED2 (蓝色)，控制舵机时蓝色LED2会闪烁
 #define SG90_GPIO 13
+#define SG90_GPIO_FUNC HAL_PIO_FUNC_GPIO
 
 // PWM参数定义
 #define SG90_PWM_PERIOD_US 20000 // PWM周期 20ms

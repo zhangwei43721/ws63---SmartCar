@@ -4,7 +4,8 @@
       "Bash(dir:*)",
       "Bash(findstr:*)",
       "Bash(mkdir:*)",
-      "Bash(ipconfig:*)"
+      "Bash(ipconfig:*)",
+      "Bash(copy:*)"
     ]
   }
 }

@@ -20,4 +20,12 @@ if(DEFINED CONFIG_SMART_CAR_ROBOT_DEMO_ENABLE)
     add_subdirectory_if_exist(robot_demo)
 endif()
 
+if(DEFINED CONFIG_SMART_CAR_SG90_ENABLE)
+    add_subdirectory_if_exist(sg90)
+endif()
+
+if(DEFINED CONFIG_SMART_CAR_SSD1306_ENABLE)
+    add_subdirectory_if_exist(ssd1306)
+endif()
+
 set(SOURCES "${SOURCES}" PARENT_SCOPE)

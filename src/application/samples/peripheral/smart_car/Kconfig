@@ -22,12 +22,41 @@ menu "Smart Car Peripheral Selection"
         help
             Enable TCRT5000 infrared sensor for line tracking.
 
+    config SMART_CAR_SG90_ENABLE
+        bool "SG90 Servo Motor"
+        default y
+        help
+            Enable SG90 servo motor for smart car.
+
+    config SMART_CAR_SSD1306_ENABLE
+        bool "SSD1306 OLED Display"
+        default y
+        help
+            Enable SSD1306 OLED display for smart car.
+
     config SMART_CAR_ROBOT_DEMO_ENABLE
         bool "Robot Demo (Tracking & Obstacle Avoidance)"
         default y
         select SMART_CAR_L9110S_ENABLE
         select SMART_CAR_HCSR04_ENABLE
         select SMART_CAR_TCRT5000_ENABLE
+        select SMART_CAR_SG90_ENABLE
         help
             Enable robot demo with tracking and obstacle avoidance features.
+endmenu
+
+menu "Smart Car Sample Programs"
+    config SMART_CAR_SUPPORT_SG90
+        bool "SG90 Servo Example"
+        default n
+        depends on SMART_CAR_SG90_ENABLE
+        help
+            SG90舵机示例程序 - 舵机从0度转到180度，再从180度转回0度
+
+    config SMART_CAR_SUPPORT_SSD1306
+        bool "SSD1306 OLED Display Example"
+        default n
+        depends on SMART_CAR_SSD1306_ENABLE
+        help
+            SSD1306 OLED显示屏示例程序 - 显示字符和图形
 endmenu

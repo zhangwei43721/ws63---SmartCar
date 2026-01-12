@@ -8,6 +8,7 @@
 - **HC-SR04 超声波传感器** - 距离测量，用于避障
 - **TCRT5000 红外循迹传感器** - 黑线检测，用于循迹
 - **SG90 舵机控制** - 控制舵机转动，用于扫描障碍物
+- **SSD1306 OLED 显示屏** - 显示小车状态信息
 - **智能循迹避障** - 综合应用，支持模式切换
 
 ## 目录结构
@@ -35,8 +36,22 @@ application/samples/peripheral/smart_car/
 │   ├── tcrt5000_example.c
 │   ├── CMakeLists.txt
 │   └── Kconfig
+├── sg90/                   # SG90 舵机模块
+│   ├── bsp_include/        # BSP层头文件
+│   ├── bsp_src/            # BSP层源文件
+│   ├── sg90_example.c      # 示例代码
+│   ├── CMakeLists.txt
+│   └── Kconfig
+├── ssd1306/                # SSD1306 OLED 显示屏模块
+│   ├── ssd1306.h           # OLED驱动头文件
+│   ├── ssd1306.c           # OLED驱动源文件
+│   ├── ssd1306_fonts.h     # 字体数据
+│   ├── ssd1306_fonts.c     # 字体数据
+│   ├── ssd1306_example.c   # 示例代码
+│   ├── CMakeLists.txt
+│   └── Kconfig
 └── robot_demo/             # 智能循迹避障综合模块
-    ├── bsp_include/        # 包含独立的sg90驱动
+    ├── bsp_include/        # 包含机器人控制BSP
     ├── bsp_src/
     ├── robot_demo.c
     ├── CMakeLists.txt
@@ -56,12 +71,12 @@ application/samples/peripheral/smart_car/
 | 右轮电机 A | GPIO 8 | MOTOR_IN3 | 右轮电机控制A |
 | 右轮电机 B | GPIO 9 | MOTOR_IN4 | 右轮电机控制B |
 
-### HC-SR04 超声波传感器引脚 (复用UART1接口)
+### HC-SR04 超声波传感器引脚 (使用独立GPIO)
 
 | 功能 | GPIO引脚 | 原理图标识 | 接线位置 |
 |------|---------|-----------|----------|
-| TRIG | GPIO 15 | UART1_TX | JP5排母下方 |
-| ECHO | GPIO 16 | UART1_RX | JP5排母下方 |
+| TRIG | GPIO 4 | - | JP5排母上方 |
+| ECHO | GPIO 5 | - | JP5排母上方 |
 | VCC | 5V | - | JP5排母 VCC5 |
 | GND | GND | - | JP5排母 GND |
 
@@ -89,6 +104,15 @@ application/samples/peripheral/smart_car/
 |------|---------|-----------|----------|
 | 模式切换 | GPIO 3 | KEY1 | JP5排母上方 |
 
+### SSD1306 OLED 显示屏引脚 (I2C接口)
+
+| 功能 | GPIO引脚 | 原理图标识 | 接线位置 |
+|------|---------|-----------|----------|
+| SCL | GPIO 15 | I2C1_SCL / UART1_TX | JP5排母下方 |
+| SDA | GPIO 16 | I2C1_SDA / UART1_RX | JP5排母下方 |
+| VCC | 3.3V/5V | - | 根据模块要求 |
+| GND | GND | - | JP5排母 GND |
+
 ## 使用方法
 
 ### 1. 启用模块
@@ -102,10 +126,20 @@ python build.py menuconfig
 导航到：`Application` → `Config the application` → `Enable the Sample of peripheral` → 启用 `Support Smart Car Sample.`
 
 然后选择需要启用的子模块：
+
+**外设模块（自动被robot_demo依赖）:**
 - L9110S Motor Driver
 - HC-SR04 Ultrasonic Sensor
 - TCRT5000 Infrared Line Tracking Sensor
-- Robot Demo (Tracking & Obstacle Avoidance)
+- SG90 Servo Motor
+- SSD1306 OLED Display
+
+**示例程序（可选）:**
+- SG90 Servo Example
+- SSD1306 OLED Display Example
+
+**综合应用:**
+- Robot Demo (Tracking & Obstacle Avoidance) - 自动依赖上述外设模块
 
 ### 2. 编译项目
 
@@ -128,6 +162,14 @@ python build.py
 #### TCRT5000 红外传感器测试
 
 持续读取左、中、右三路传感器状态并输出检测结果。
+
+#### SG90 舵机测试
+
+舵机从0度转到180度，再从180度转回0度，循环往复。
+
+#### SSD1306 OLED 显示测试
+
+OLED屏幕显示欢迎信息和系统状态。
 
 ### 4. 智能循迹避障模式
 
@@ -156,10 +198,8 @@ python build.py
 3. 超声波传感器测量范围约为 2cm - 400cm
 4. 红外传感器需要正确调整高度和角度，以准确检测黑线
 5. 舵机使用软件模拟PWM，会占用CPU时间
+6. OLED显示屏使用I2C1接口，波特率默认400kHz
 
-## 许可证
-
-Apache License 2.0
 
 ## 作者
 

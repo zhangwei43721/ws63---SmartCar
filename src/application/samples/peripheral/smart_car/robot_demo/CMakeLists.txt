@@ -8,11 +8,11 @@ set(HEADER_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/../l9110s/bsp_include
     ${CMAKE_CURRENT_SOURCE_DIR}/../hcsr04/bsp_include
     ${CMAKE_CURRENT_SOURCE_DIR}/../tcrt5000/bsp_include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sg90/bsp_include
 )
 
 # 添加源文件
 set(SOURCES_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/bsp_src/bsp_sg90.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp_src/bsp_robot_control.c
     ${CMAKE_CURRENT_SOURCE_DIR}/robot_demo.c
 )
