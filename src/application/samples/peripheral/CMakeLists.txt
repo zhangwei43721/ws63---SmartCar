@@ -285,6 +285,11 @@ endif()
 #添加GH719微波感应模块子系统
 if(DEFINED CONFIG_SAMPLE_SUPPORT_GH719)
     add_subdirectory_if_exist(GH719)
-endif()  
+endif()
+
+#添加智能小车子系统
+if(DEFINED CONFIG_SAMPLE_SUPPORT_SMART_CAR)
+    add_subdirectory_if_exist(smart_car)
+endif()
 
 set(SOURCES "${SOURCES}" PARENT_SCOPE)

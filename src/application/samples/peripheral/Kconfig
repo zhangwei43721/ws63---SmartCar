@@ -697,3 +697,17 @@ config SAMPLE_SUPPORT_GH719
     depends on ENABLE_PERIPHERAL_SAMPLE
     help
         This option means Support GH719 Microwave sensing module Sample.
+
+config SAMPLE_SUPPORT_SMART_CAR
+    bool
+    prompt "Support Smart Car Sample."
+    default n
+    depends on ENABLE_PERIPHERAL_SAMPLE
+    help
+        This option means support Smart Car Sample.
+
+if SAMPLE_SUPPORT_SMART_CAR
+menu "Smart Car Sample Configuration"
+    osource "application/samples/peripheral/smart_car/Kconfig"
+endmenu
+endif

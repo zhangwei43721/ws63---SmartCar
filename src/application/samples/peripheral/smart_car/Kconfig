@@ -1,0 +1,33 @@
+#===============================================================================
+# @brief    Kconfig file for Smart Car
+# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2025-2025. All rights reserved.
+#===============================================================================
+
+menu "Smart Car Peripheral Selection"
+    config SMART_CAR_L9110S_ENABLE
+        bool "L9110S Motor Driver"
+        default y
+        help
+            Enable L9110S motor driver for smart car.
+
+    config SMART_CAR_HCSR04_ENABLE
+        bool "HC-SR04 Ultrasonic Sensor"
+        default y
+        help
+            Enable HC-SR04 ultrasonic sensor for distance measurement.
+
+    config SMART_CAR_TCRT5000_ENABLE
+        bool "TCRT5000 Infrared Line Tracking Sensor"
+        default y
+        help
+            Enable TCRT5000 infrared sensor for line tracking.
+
+    config SMART_CAR_ROBOT_DEMO_ENABLE
+        bool "Robot Demo (Tracking & Obstacle Avoidance)"
+        default y
+        select SMART_CAR_L9110S_ENABLE
+        select SMART_CAR_HCSR04_ENABLE
+        select SMART_CAR_TCRT5000_ENABLE
+        help
+            Enable robot demo with tracking and obstacle avoidance features.
+endmenu

@@ -1,0 +1,11 @@
+#===============================================================================
+# @brief    Kconfig file.
+# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2025-2025. All rights reserved.
+#===============================================================================
+
+config SMART_CAR_TCRT5000_ENABLE
+    bool "Enable TCRT5000 Infrared Line Tracking Sensor"
+    default y
+    depends on SAMPLE_SUPPORT_SMART_CAR
+    help
+        Enable TCRT5000 infrared line tracking sensor for smart car.
