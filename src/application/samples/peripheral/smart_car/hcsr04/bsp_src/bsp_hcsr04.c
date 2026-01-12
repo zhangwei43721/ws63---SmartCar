@@ -31,7 +31,7 @@
  */
 void hcsr04_init(void)
 {
-    // 1. 先配置引脚复用为 GPIO 模式 (这一步缺失导致了问题)
+    // 1. 先配置引脚复用为 GPIO 模式
     uapi_pin_set_mode(HCSR04_TRIG_GPIO, HCSR04_GPIO_FUNC);
     uapi_pin_set_mode(HCSR04_ECHO_GPIO, HCSR04_GPIO_FUNC);
 
@@ -72,7 +72,7 @@ float hcsr04_get_distance(void)
     }
 
     if (timeout == 0) {
-        printf("HC-SR04: Timeout waiting for echo high\n");
+        printf("HC-SR04：等待高电平回声超时\n");
         return 0.0;
     }
 
@@ -91,7 +91,7 @@ float hcsr04_get_distance(void)
     }
 
     if (timeout == 0) {
-        printf("HC-SR04: Timeout waiting for echo low\n");
+        printf("HC-SR04：等待低回声超时\n");
         return 0.0;
     }
 

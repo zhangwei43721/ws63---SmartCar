@@ -40,7 +40,6 @@ static void *hcsr04_task(const char *arg)
 
     printf("HC-SR04 超声波传感器任务启动\n");
 
-    // 初始化超声波传感器
     hcsr04_init();
 
     while (1) {

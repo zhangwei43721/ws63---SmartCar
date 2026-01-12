@@ -75,8 +75,8 @@ application/samples/peripheral/smart_car/
 
 | 功能 | GPIO引脚 | 原理图标识 | 接线位置 |
 |------|---------|-----------|----------|
-| TRIG | GPIO 4 | - | JP5排母上方 |
-| ECHO | GPIO 5 | - | JP5排母上方 |
+| TRIG | GPIO 11 | - | JP5排母上方 |
+| ECHO | GPIO 12 | - | JP5排母上方 |
 | VCC | 5V | - | JP5排母 VCC5 |
 | GND | GND | - | JP5排母 GND |
 

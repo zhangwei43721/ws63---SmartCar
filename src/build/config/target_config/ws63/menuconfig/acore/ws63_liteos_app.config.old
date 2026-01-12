@@ -98,8 +98,15 @@ CONFIG_SAMPLE_SUPPORT_SMART_CAR=y
 # CONFIG_SMART_CAR_L9110S_ENABLE is not set
 CONFIG_SMART_CAR_HCSR04_ENABLE=y
 # CONFIG_SMART_CAR_TCRT5000_ENABLE is not set
+# CONFIG_SMART_CAR_SG90_ENABLE is not set
+# CONFIG_SMART_CAR_SSD1306_ENABLE is not set
 # CONFIG_SMART_CAR_ROBOT_DEMO_ENABLE is not set
 # end of Smart Car Peripheral Selection
+
+#
+# Smart Car Sample Programs
+#
+# end of Smart Car Sample Programs
 # end of Smart Car Sample Configuration
 
 # CONFIG_ENABLE_WIFI_SAMPLE is not set

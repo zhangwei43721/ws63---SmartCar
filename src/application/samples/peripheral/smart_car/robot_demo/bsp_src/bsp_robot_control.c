@@ -38,17 +38,10 @@ static unsigned int g_car_speed_right = 0;
  */
 void robot_control_init(void)
 {
-    // 初始化电机驱动
-    l9110s_init();
-
-    // 初始化超声波传感器
-    hcsr04_init();
-
-    // 初始化红外传感器
-    tcrt5000_init();
-
-    // 初始化舵机
-    sg90_init();
+    l9110s_init();   // 初始化电机驱动
+    hcsr04_init();   // 初始化超声波传感器
+    tcrt5000_init(); // 初始化红外传感器
+    sg90_init();     // 初始化舵机
 
     printf("Robot control system initialized\n");
 }

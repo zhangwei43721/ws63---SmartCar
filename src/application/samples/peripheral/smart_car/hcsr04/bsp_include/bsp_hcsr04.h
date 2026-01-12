@@ -25,17 +25,17 @@
 #include "gpio.h"
 #include "soc_osal.h"
 
-// HC-SR04引脚定义 (复用UART1接口)
-#define HCSR04_TRIG_GPIO    15  // 触发信号引脚 (UART1_TX)
-#define HCSR04_ECHO_GPIO    16  // 回响信号引脚 (UART1_RX)
+// HC-SR04引脚定义
+#define HCSR04_TRIG_GPIO 11 // 触发信号引脚
+#define HCSR04_ECHO_GPIO 12 // 回响信号引脚
 
 // GPIO功能号
-#define HCSR04_GPIO_FUNC    0
+#define HCSR04_GPIO_FUNC 0
 
 // 测距参数
-#define HCSR04_MAX_DISTANCE 400    // 最大测量距离 (cm)
-#define HCSR04_MIN_DISTANCE 2      // 最小测量距离 (cm)
-#define HCSR04_TIMEOUT_US  30000   // 超时时间 (us)
+#define HCSR04_MAX_DISTANCE 400 // 最大测量距离 (cm)
+#define HCSR04_MIN_DISTANCE 2   // 最小测量距离 (cm)
+#define HCSR04_TIMEOUT_US 30000 // 超时时间 (us)
 
 /**
  * @brief 初始化HC-SR04超声波传感器
