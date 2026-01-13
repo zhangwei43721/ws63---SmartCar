@@ -46,7 +46,7 @@ static void *hcsr04_task(const char *arg)
         // 获取距离测量值
         distance = hcsr04_get_distance();
 
-        if (distance > 0) {
+        if (distance > 0 && distance < 500) {
             // 手动将浮点数转换为整数和小数部分进行打印
             int integer_part = (int)distance;
             // 取两位小数，先乘100，再取余或减去整数部分

@@ -33,9 +33,7 @@
 #define HCSR04_GPIO_FUNC 0
 
 // 测距参数
-#define HCSR04_MAX_DISTANCE 400 // 最大测量距离 (cm)
-#define HCSR04_MIN_DISTANCE 2   // 最小测量距离 (cm)
-#define HCSR04_TIMEOUT_US 30000 // 超时时间 (us)
+#define HCSR04_TIMEOUT_US 40000 // 超时时间 (us)
 
 /**
  * @brief 初始化HC-SR04超声波传感器

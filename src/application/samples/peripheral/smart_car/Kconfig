@@ -7,7 +7,7 @@ choice SMART_CAR_RUN_MODE
     prompt "Select Running Application"
     default SMART_CAR_RUN_ROBOT_DEMO
     help
-        Select the main application to compile and run.
+        选择要编译和运行的主应用程序
 
     config SMART_CAR_RUN_ROBOT_DEMO
         bool "Robot Demo (Tracking & Obstacle Avoidance)"
@@ -17,7 +17,7 @@ choice SMART_CAR_RUN_MODE
         select SMART_CAR_DRIVER_SG90
         select SMART_CAR_DRIVER_SSD1306
         help
-            Main integrated application.
+            主要集成应用
 
     config SMART_CAR_RUN_L9110S_TEST
         bool "Test: L9110S Motor"
