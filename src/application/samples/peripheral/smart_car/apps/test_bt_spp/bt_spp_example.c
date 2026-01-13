@@ -38,7 +38,7 @@ static void spp_data_handler(const uint8_t *data, uint32_t len)
     for (uint32_t i = 0; i < len && i < 32; i++) {
         printf("%c", data[i]);
     }
-    printf("\n");
+    printf("\r\n");
 
     // 回显数据
     bsp_bt_spp_send(data, len);
@@ -51,12 +51,13 @@ static void spp_data_handler(const uint8_t *data, uint32_t len)
  */
 static void spp_event_handler(bsp_bt_spp_event_t event, void *data)
 {
+    UNUSED(data);
     switch (event) {
         case BSP_BT_SPP_EVENT_CONNECTED:
-            printf("BT SPP Example: Client connected\n");
+            printf("BT SPP Example: Client connected\r\n");
             break;
         case BSP_BT_SPP_EVENT_DISCONNECTED:
-            printf("BT SPP Example: Client disconnected\n");
+            printf("BT SPP Example: Client disconnected\r\n");
             break;
         case BSP_BT_SPP_EVENT_DATA_RECEIVED:
             // 数据已在data_handler中处理
@@ -76,7 +77,7 @@ static void *bt_spp_task(const char *arg)
     UNUSED(arg);
     int ret;
 
-    printf("BT SPP Example: Start\n");
+    printf("BT SPP Example: Start\r\n");
 
     // 注册回调
     bsp_bt_spp_register_data_handler(spp_data_handler);
@@ -85,18 +86,18 @@ static void *bt_spp_task(const char *arg)
     // 初始化蓝牙SPP
     ret = bsp_bt_spp_init(BT_DEVICE_NAME);
     if (ret != 0) {
-        printf("BT SPP Example: Failed to initialize BT SPP\n");
+        printf("BT SPP Example: Failed to initialize BT SPP\r\n");
         return NULL;
     }
 
     // 等待连接
-    ret = bsp_bt_spp_wait_connection(0);  // 0表示一直等待
+    ret = bsp_bt_spp_wait_connection(0); // 0表示一直等待
     if (ret != 0) {
-        printf("BT SPP Example: Failed to wait for connection\n");
+        printf("BT SPP Example: Failed to wait for connection\r\n");
         return NULL;
     }
 
-    printf("BT SPP Example: Ready to receive data\n");
+    printf("BT SPP Example: Ready to receive data\r\n");
 
     // 持续运行
     while (1) {
@@ -115,19 +116,18 @@ static void bt_spp_example_entry(void)
     uint32_t ret;
     osal_task *task_handle = NULL;
 
-    printf("BT SPP Example Entry\n");
+    printf("BT SPP Example Entry\r\n");
 
     // 创建任务
     osal_kthread_lock();
-    task_handle = osal_kthread_create((osal_kthread_handler)bt_spp_task, NULL,
-                                      "bt_spp_task", BT_SPP_TASK_STACK_SIZE);
+    task_handle = osal_kthread_create((osal_kthread_handler)bt_spp_task, NULL, "bt_spp_task", BT_SPP_TASK_STACK_SIZE);
     if (task_handle != NULL) {
         ret = osal_kthread_set_priority(task_handle, BT_SPP_TASK_PRIO);
         if (ret != OSAL_SUCCESS) {
-            printf("BT SPP Example: Failed to set task priority\n");
+            printf("BT SPP Example: Failed to set task priority\r\n");
         }
     } else {
-        printf("BT SPP Example: Failed to create task\n");
+        printf("BT SPP Example: Failed to create task\r\n");
     }
     osal_kthread_unlock();
 }
