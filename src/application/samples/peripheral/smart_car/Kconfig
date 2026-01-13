@@ -59,4 +59,18 @@ menu "Smart Car Sample Programs"
         depends on SMART_CAR_SSD1306_ENABLE
         help
             SSD1306 OLED显示屏示例程序 - 显示字符和图形
+
+    config SMART_CAR_SUPPORT_WIFI_CONTROL
+        bool "WiFi/TCP Control Example"
+        default n
+        depends on SMART_CAR_L9110S_ENABLE
+        help
+            WiFi TCP控制示例 - 通过WiFi接收控制命令控制小车运动
+
+    config SMART_CAR_SUPPORT_BT_CONTROL
+        bool "Bluetooth SPP Control Example"
+        default n
+        depends on SMART_CAR_L9110S_ENABLE
+        help
+            蓝牙SPP控制示例 - 通过蓝牙SPP接收控制命令控制小车运动
 endmenu

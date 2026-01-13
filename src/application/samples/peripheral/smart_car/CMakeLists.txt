@@ -28,4 +28,12 @@ if(DEFINED CONFIG_SMART_CAR_SSD1306_ENABLE)
     add_subdirectory_if_exist(ssd1306)
 endif()
 
+if(DEFINED CONFIG_SMART_CAR_SUPPORT_WIFI_CONTROL)
+    add_subdirectory_if_exist(wifi_control)
+endif()
+
+if(DEFINED CONFIG_SMART_CAR_SUPPORT_BT_CONTROL)
+    add_subdirectory_if_exist(bt_control)
+endif()
+
 set(SOURCES "${SOURCES}" PARENT_SCOPE)

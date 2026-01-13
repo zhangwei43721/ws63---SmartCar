@@ -1,0 +1,35 @@
+#===============================================================================
+# @brief    Kconfig file
+# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2025-2025. All rights reserved.
+#===============================================================================
+
+config SMART_CAR_SUPPORT_BT_CONTROL
+    bool "Support Bluetooth SPP Control Example"
+    default n
+    depends on SMART_CAR_L9110S_ENABLE
+    help
+        蓝牙SPP控制示例 - 通过蓝牙SPP接收控制命令控制小车运动
+
+        控制协议:
+        数字命令:
+        - 发送 "0": 前进
+        - 发送 "1": 后退
+        - 发送 "2": 左转
+        - 发送 "3": 右转
+        - 发送 "4": 停止
+
+        字符命令:
+        - 发送 "F" 或 "f": 前进 (Forward)
+        - 发送 "B" 或 "b": 后退 (Backward)
+        - 发送 "L" 或 "l": 左转 (Left)
+        - 发送 "R" 或 "r": 右转 (Right)
+        - 发送 "S" 或 "s": 停止 (Stop)
+
+        使用说明:
+        1. 编译并烧录程序
+        2. 使用手机蓝牙APP连接 "WS63_SmartCar"
+        3. 使用SPP功能发送控制命令
+        4. 支持串口助手或蓝牙调试APP
+
+        注意: 此模块需要WS63蓝牙SPP API支持，当前为框架代码，
+              需要根据实际API调整bt_spp_xxx函数调用

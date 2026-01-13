@@ -9,6 +9,8 @@
 - **TCRT5000 红外循迹传感器** - 黑线检测，用于循迹
 - **SG90 舵机控制** - 控制舵机转动，用于扫描障碍物
 - **SSD1306 OLED 显示屏** - 显示小车状态信息
+- **WiFi TCP 控制** - 通过WiFi网络远程控制小车
+- **蓝牙 SPP 控制** - 通过蓝牙SPP远程控制小车
 - **智能循迹避障** - 综合应用，支持模式切换
 
 ## 目录结构
@@ -48,6 +50,14 @@ application/samples/peripheral/smart_car/
 │   ├── ssd1306_fonts.h     # 字体数据
 │   ├── ssd1306_fonts.c     # 字体数据
 │   ├── ssd1306_example.c   # 示例代码
+│   ├── CMakeLists.txt
+│   └── Kconfig
+├── wifi_control/           # WiFi TCP 控制模块
+│   ├── wifi_control_example.c
+│   ├── CMakeLists.txt
+│   └── Kconfig
+├── bt_control/             # 蓝牙 SPP 控制模块
+│   ├── bt_control_example.c
 │   ├── CMakeLists.txt
 │   └── Kconfig
 └── robot_demo/             # 智能循迹避障综合模块
@@ -137,6 +147,8 @@ python build.py menuconfig
 **示例程序（可选）:**
 - SG90 Servo Example
 - SSD1306 OLED Display Example
+- WiFi/TCP Control Example
+- Bluetooth SPP Control Example
 
 **综合应用:**
 - Robot Demo (Tracking & Obstacle Avoidance) - 自动依赖上述外设模块
@@ -170,6 +182,55 @@ python build.py
 #### SSD1306 OLED 显示测试
 
 OLED屏幕显示欢迎信息和系统状态。
+
+#### WiFi TCP 控制测试
+
+通过WiFi网络接收TCP控制命令来控制小车运动。
+
+**配置步骤:**
+1. 修改 `wifi_control_example.c` 中的WiFi配置:
+   ```c
+   #define WIFI_SSID "YourWiFiSSID"
+   #define WIFI_PASSWORD "YourWiFiPassword"
+   ```
+2. 编译并烧录程序
+3. 小车连接WiFi后，通过串口获取IP地址
+4. 使用TCP客户端（如网络调试助手）连接 小车IP:8888
+5. 发送控制命令
+
+**控制协议:**
+- 发送 `0`: 前进
+- 发送 `1`: 后退
+- 发送 `2`: 左转
+- 发送 `3`: 右转
+- 发送 `4`: 停止
+
+#### 蓝牙 SPP 控制测试
+
+通过蓝牙SPP接收控制命令来控制小车运动。
+
+**配置步骤:**
+1. 编译并烧录程序
+2. 使用手机蓝牙APP连接 "WS63_SmartCar"
+3. 使用SPP功能发送控制命令
+
+**控制协议:**
+
+数字命令:
+- 发送 `0`: 前进
+- 发送 `1`: 后退
+- 发送 `2`: 左转
+- 发送 `3`: 右转
+- 发送 `4`: 停止
+
+字符命令:
+- 发送 `F` 或 `f`: 前进 (Forward)
+- 发送 `B` 或 `b`: 后退 (Backward)
+- 发送 `L` 或 `l`: 左转 (Left)
+- 发送 `R` 或 `r`: 右转 (Right)
+- 发送 `S` 或 `s`: 停止 (Stop)
+
+> **注意**: 蓝牙控制模块当前为框架代码，需要根据WS63的实际蓝牙SPP API进行调整。
 
 ### 4. 智能循迹避障模式
 
@@ -207,4 +268,4 @@ SkyForever
 
 ## 更新日期
 
-2025-01-12
+2025-01-13
