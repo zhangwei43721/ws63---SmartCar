@@ -29,16 +29,19 @@
  */
 void tcrt5000_init(void)
 {
-    // 初始化左侧传感器为输入，上拉
-    uapi_pin_set_pull(TCRT5000_LEFT_GPIO, PIN_PULL_TYPE_UP);
+    // 初始化左侧传感器（GPIO_04，需要设置复用功能2）
+    uapi_pin_set_mode(TCRT5000_LEFT_GPIO, PIN_MODE_2);
+    uapi_pin_set_pull(TCRT5000_LEFT_GPIO, PIN_PULL_TYPE_DISABLE);
     uapi_gpio_set_dir(TCRT5000_LEFT_GPIO, GPIO_DIRECTION_INPUT);
 
-    // 初始化中间传感器为输入，上拉
-    uapi_pin_set_pull(TCRT5000_MIDDLE_GPIO, PIN_PULL_TYPE_UP);
+    // 初始化中间传感器为输入，禁用内部上下拉（使用外部上拉）
+    uapi_pin_set_mode(TCRT5000_MIDDLE_GPIO, PIN_MODE_0);
+    uapi_pin_set_pull(TCRT5000_MIDDLE_GPIO, PIN_PULL_TYPE_DISABLE);
     uapi_gpio_set_dir(TCRT5000_MIDDLE_GPIO, GPIO_DIRECTION_INPUT);
 
-    // 初始化右侧传感器为输入，上拉
-    uapi_pin_set_pull(TCRT5000_RIGHT_GPIO, PIN_PULL_TYPE_UP);
+    // 初始化右侧传感器为输入，禁用内部上下拉（使用外部上拉）
+    uapi_pin_set_mode(TCRT5000_RIGHT_GPIO, PIN_MODE_0);
+    uapi_pin_set_pull(TCRT5000_RIGHT_GPIO, PIN_PULL_TYPE_DISABLE);
     uapi_gpio_set_dir(TCRT5000_RIGHT_GPIO, GPIO_DIRECTION_INPUT);
 }
 

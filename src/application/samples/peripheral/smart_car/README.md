@@ -77,9 +77,9 @@ application/samples/peripheral/smart_car/
 |------|------|---------|------|
 | **HC-SR04** | TRIG (触发) | GPIO 11 | - |
 | | ECHO (接收) | GPIO 12 | - |
-| **TCRT5000** | 左传感器 | GPIO 0 | KEY4 复用 |
-| (循迹) | 中传感器 | GPIO 1 | KEY3 复用 |
-| | 右传感器 | GPIO 2 | KEY2 复用 |
+| **TCRT5000** | 左传感器 | GPIO 4 | 需要 PIN_MODE_2 |
+| (循迹) | 中传感器 | GPIO 2 | 需要 PIN_MODE_0 |
+| | 右传感器 | GPIO 0 | 需要 PIN_MODE_0 |
 | **SG90** | PWM信号 | GPIO 13 | LED2 复用 |
 | **SSD1306** | SCL (时钟) | GPIO 15 | I2C1 |
 | (OLED) | SDA (数据) | GPIO 16 | I2C1 |
