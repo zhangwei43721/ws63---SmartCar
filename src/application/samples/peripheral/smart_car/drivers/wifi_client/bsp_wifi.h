@@ -2,9 +2,9 @@
  ****************************************************************************************************
  * @file        bsp_wifi.h
  * @author      SkyForever
- * @version     V1.0
- * @date        2025-01-12
- * @brief       WiFi连接BSP层头文件
+ * @version     V1.1
+ * @date        2025-01-13
+ * @brief       WiFi连接BSP层头文件（参考tcp_client示例）
  * @license     Copyright (c) 2024-2034
  ****************************************************************************************************
  * @attention
@@ -18,41 +18,19 @@
 #define __BSP_WIFI_H__
 
 #include <stdint.h>
-#include "errcode.h"
 
 // WiFi配置（可在代码中修改）
-#define BSP_WIFI_SSID     "YourWiFiSSID"
-#define BSP_WIFI_PASSWORD "YourWiFiPassword"
-
-// WiFi安全类型
-typedef enum {
-    BSP_WIFI_SEC_OPEN = 0,     // 开放网络
-    BSP_WIFI_SEC_WPA_PSK,      // WPA-PSK
-    BSP_WIFI_SEC_WPA2_PSK,     // WPA2-PSK
-} bsp_wifi_security_t;
-
-// WiFi事件类型
-typedef enum {
-    BSP_WIFI_EVENT_STA_CONNECT = 0,     // 站已连接
-    BSP_WIFI_EVENT_STA_DISCONNECT,      // 站已断开
-    BSP_WIFI_EVENT_STA_GOT_IP,          // 已获取IP
-} bsp_wifi_event_t;
+#define BSP_WIFI_SSID "BS-8"
+#define BSP_WIFI_PASSWORD "BS88888888"
 
 // WiFi连接状态
 typedef enum {
-    BSP_WIFI_STATUS_IDLE = 0,      // 空闲
-    BSP_WIFI_STATUS_CONNECTING,    // 连接中
-    BSP_WIFI_STATUS_CONNECTED,     // 已连接
-    BSP_WIFI_STATUS_GOT_IP,        // 已获取IP
-    BSP_WIFI_STATUS_DISCONNECTED,  // 已断开
+    BSP_WIFI_STATUS_IDLE = 0,     // 空闲
+    BSP_WIFI_STATUS_CONNECTING,   // 连接中
+    BSP_WIFI_STATUS_CONNECTED,    // 已连接
+    BSP_WIFI_STATUS_GOT_IP,       // 已获取IP
+    BSP_WIFI_STATUS_DISCONNECTED, // 已断开
 } bsp_wifi_status_t;
-
-/**
- * @brief WiFi事件回调函数类型
- * @param event WiFi事件
- * @param data 事件数据
- */
-typedef void (*bsp_wifi_event_handler_t)(bsp_wifi_event_t event, void *data);
 
 /**
  * @brief 初始化WiFi
@@ -89,11 +67,11 @@ bsp_wifi_status_t bsp_wifi_get_status(void);
 int bsp_wifi_get_ip(char *ip_str, uint32_t len);
 
 /**
- * @brief 注册WiFi事件回调
- * @param handler 事件处理函数
- * @return 0成功，-1失败
+ * @brief 注册WiFi事件回调（已废弃，事件在初始化时自动注册）
+ * @param handler 事件处理函数（未使用）
+ * @return 0成功
  */
-int bsp_wifi_register_event_handler(bsp_wifi_event_handler_t handler);
+int bsp_wifi_register_event_handler(void *handler);
 
 /**
  * @brief 使用默认配置连接WiFi

@@ -2,9 +2,9 @@
  ****************************************************************************************************
  * @file        wifi_example.c
  * @author      SkyForever
- * @version     V1.0
- * @date        2025-01-12
- * @brief       WiFi连接示例
+ * @version     V1.1
+ * @date        2025-01-13
+ * @brief       WiFi连接示例（参考tcp_client示例）
  * @license     Copyright (c) 2024-2034
  ****************************************************************************************************
  * @attention
@@ -21,110 +21,76 @@
 #include "common_def.h"
 #include "soc_osal.h"
 #include "app_init.h"
+#include "cmsis_os2.h"
 #include "../../drivers/wifi_client/bsp_wifi.h"
 
 #define WIFI_TASK_STACK_SIZE 0x2000
-#define WIFI_TASK_PRIO 24
 
-// 修改为你的WiFi配置
-#define EXAMPLE_WIFI_SSID     "YourWiFiSSID"
-#define EXAMPLE_WIFI_PASSWORD "YourWiFiPassword"
-
-/**
- * @brief WiFi事件处理回调
- * @param event WiFi事件
- * @param data 事件数据
- */
-static void wifi_event_handler(bsp_wifi_event_t event, void *data)
-{
-    switch (event) {
-        case BSP_WIFI_EVENT_STA_CONNECT:
-            printf("WiFi Example: Connected to AP\n");
-            break;
-        case BSP_WIFI_EVENT_STA_DISCONNECT:
-            printf("WiFi Example: Disconnected from AP\n");
-            break;
-        case BSP_WIFI_EVENT_STA_GOT_IP:
-            printf("WiFi Example: Got IP address\n");
-            break;
-        default:
-            break;
-    }
-}
+// WiFi配置
+#define EXAMPLE_WIFI_SSID "BS-8"
+#define EXAMPLE_WIFI_PASSWORD "BS88888888"
 
 /**
  * @brief WiFi测试任务
- * @param arg 任务参数
- * @return NULL
  */
-static void *wifi_task(const char *arg)
+static void wifi_task_entry(const char *arg)
 {
     UNUSED(arg);
     int ret;
     char ip_str[32] = {0};
 
-    printf("WiFi Example: Start\n");
-
-    // 注册WiFi事件回调
-    bsp_wifi_register_event_handler(wifi_event_handler);
+    printf("[WiFi Example] Start\r\n");
 
     // 初始化WiFi
     ret = bsp_wifi_init();
     if (ret != 0) {
-        printf("WiFi Example: Failed to initialize WiFi\n");
-        return NULL;
+        printf("[WiFi Example] Failed to initialize WiFi\r\n");
+        return;
     }
 
     // 连接到AP
     ret = bsp_wifi_connect_ap(EXAMPLE_WIFI_SSID, EXAMPLE_WIFI_PASSWORD);
     if (ret != 0) {
-        printf("WiFi Example: Failed to connect to AP\n");
-        return NULL;
+        printf("[WiFi Example] Failed to connect to AP\r\n");
+        return;
     }
-
-    // 等待连接
-    osal_msleep(5000);
 
     // 获取IP地址
     ret = bsp_wifi_get_ip(ip_str, sizeof(ip_str));
     if (ret == 0) {
-        printf("WiFi Example: IP address = %s\n", ip_str);
+        printf("[WiFi Example] IP address = %s\r\n", ip_str);
     }
 
-    printf("WiFi Example: WiFi connection test completed\n");
+    printf("[WiFi Example] WiFi connection test completed\r\n");
 
     // 持续运行
     while (1) {
-        osal_msleep(1000);
+        osDelay(1000);
     }
-
-    return NULL;
 }
 
 /**
  * @brief WiFi示例入口
- * @return 无
  */
 static void wifi_example_entry(void)
 {
-    uint32_t ret;
-    osal_task *task_handle = NULL;
+    osThreadAttr_t attr;
 
-    printf("WiFi Example Entry\n");
+    printf("[WiFi Example] Entry\r\n");
 
-    // 创建任务
-    osal_kthread_lock();
-    task_handle = osal_kthread_create((osal_kthread_handler)wifi_task, NULL,
-                                      "wifi_task", WIFI_TASK_STACK_SIZE);
-    if (task_handle != NULL) {
-        ret = osal_kthread_set_priority(task_handle, WIFI_TASK_PRIO);
-        if (ret != OSAL_SUCCESS) {
-            printf("WiFi Example: Failed to set task priority\n");
-        }
+    attr.name = "wifi_task";
+    attr.attr_bits = 0U;
+    attr.cb_mem = NULL;
+    attr.cb_size = 0U;
+    attr.stack_mem = NULL;
+    attr.stack_size = WIFI_TASK_STACK_SIZE;
+    attr.priority = osPriorityNormal;
+
+    if (osThreadNew((osThreadFunc_t)wifi_task_entry, NULL, &attr) == NULL) {
+        printf("[WiFi Example] Failed to create task\r\n");
     } else {
-        printf("WiFi Example: Failed to create task\n");
+        printf("[WiFi Example] Task created successfully\r\n");
     }
-    osal_kthread_unlock();
 }
 
 /* Run the wifi_example_entry. */

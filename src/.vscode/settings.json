@@ -68,6 +68,8 @@
         "paj_i2c.h": "c",
         "paj7620.h": "c",
         "bsp_soil.h": "c",
-        "bsp_sg90.h": "c"
+        "bsp_sg90.h": "c",
+        "pinctrl_porting.h": "c",
+        "platform_core_rom.h": "c"
     }
 }
