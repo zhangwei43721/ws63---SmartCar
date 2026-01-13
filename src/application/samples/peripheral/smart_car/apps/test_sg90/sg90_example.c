@@ -1,7 +1,7 @@
 /**
  ****************************************************************************************************
  * @file        sg90_example.c
- * @author      Smart Car Team
+ * @author      SkyForever
  * @version     V1.0
  * @date        2025-01-12
  * @brief       LiteOS SG90舵机示例 (智能小车专用)

@@ -707,7 +707,5 @@ config SAMPLE_SUPPORT_SMART_CAR
         This option means support Smart Car Sample.
 
 if SAMPLE_SUPPORT_SMART_CAR
-menu "Smart Car Sample Configuration"
     osource "application/samples/peripheral/smart_car/Kconfig"
-endmenu
 endif

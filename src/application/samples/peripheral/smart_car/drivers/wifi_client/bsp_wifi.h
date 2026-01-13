@@ -1,7 +1,7 @@
 /**
  ****************************************************************************************************
  * @file        bsp_wifi.h
- * @author      Smart Car Team
+ * @author      SkyForever
  * @version     V1.0
  * @date        2025-01-12
  * @brief       WiFi连接BSP层头文件

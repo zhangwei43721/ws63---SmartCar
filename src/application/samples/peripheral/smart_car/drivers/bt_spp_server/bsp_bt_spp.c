@@ -1,7 +1,7 @@
 /**
  ****************************************************************************************************
  * @file        bsp_bt_spp.c
- * @author      Smart Car Team
+ * @author      SkyForever
  * @version     V1.0
  * @date        2025-01-12
  * @brief       蓝牙SPP BSP层实现

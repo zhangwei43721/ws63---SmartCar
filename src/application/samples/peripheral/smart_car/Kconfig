@@ -1,78 +1,74 @@
 #===============================================================================
-# Smart Car Configuration
+# 智能小车配置
 #===============================================================================
 
-menu "Smart Car Configuration"
+# --- 1. 运行模式选择 (互斥：一次只能跑一个程序) ---
+choice SMART_CAR_RUN_MODE
+    prompt "Select Running Application"
+    default SMART_CAR_RUN_ROBOT_DEMO
+    help
+        Select the main application to compile and run.
 
-    # --- 1. 运行模式选择 (互斥：一次只能跑一个程序) ---
-    choice SMART_CAR_RUN_MODE
-        prompt "Select Running Application"
-        default SMART_CAR_RUN_ROBOT_DEMO
+    config SMART_CAR_RUN_ROBOT_DEMO
+        bool "Robot Demo (Tracking & Obstacle Avoidance)"
+        select SMART_CAR_DRIVER_L9110S
+        select SMART_CAR_DRIVER_HCSR04
+        select SMART_CAR_DRIVER_TCRT5000
+        select SMART_CAR_DRIVER_SG90
+        select SMART_CAR_DRIVER_SSD1306
         help
-            Select the main application to compile and run.
+            Main integrated application.
 
-        config SMART_CAR_RUN_ROBOT_DEMO
-            bool "Robot Demo (Tracking & Obstacle Avoidance)"
-            select SMART_CAR_DRIVER_L9110S
-            select SMART_CAR_DRIVER_HCSR04
-            select SMART_CAR_DRIVER_TCRT5000
-            select SMART_CAR_DRIVER_SG90
-            select SMART_CAR_DRIVER_SSD1306
-            help
-                Main integrated application.
+    config SMART_CAR_RUN_L9110S_TEST
+        bool "Test: L9110S Motor"
+        select SMART_CAR_DRIVER_L9110S
 
-        config SMART_CAR_RUN_L9110S_TEST
-            bool "Test: L9110S Motor"
-            select SMART_CAR_DRIVER_L9110S
+    config SMART_CAR_RUN_HCSR04_TEST
+        bool "Test: HC-SR04 Ultrasonic"
+        select SMART_CAR_DRIVER_HCSR04
 
-        config SMART_CAR_RUN_HCSR04_TEST
-            bool "Test: HC-SR04 Ultrasonic"
-            select SMART_CAR_DRIVER_HCSR04
+    config SMART_CAR_RUN_TCRT5000_TEST
+        bool "Test: TCRT5000 Line Sensor"
+        select SMART_CAR_DRIVER_TCRT5000
 
-        config SMART_CAR_RUN_TCRT5000_TEST
-            bool "Test: TCRT5000 Line Sensor"
-            select SMART_CAR_DRIVER_TCRT5000
+    config SMART_CAR_RUN_SG90_TEST
+        bool "Test: SG90 Servo"
+        select SMART_CAR_DRIVER_SG90
 
-        config SMART_CAR_RUN_SG90_TEST
-            bool "Test: SG90 Servo"
-            select SMART_CAR_DRIVER_SG90
+    config SMART_CAR_RUN_SSD1306_TEST
+        bool "Test: SSD1306 OLED"
+        select SMART_CAR_DRIVER_SSD1306
 
-        config SMART_CAR_RUN_SSD1306_TEST
-            bool "Test: SSD1306 OLED"
-            select SMART_CAR_DRIVER_SSD1306
+    config SMART_CAR_RUN_WIFI_TEST
+        bool "Test: WiFi Client"
+        select SMART_CAR_DRIVER_WIFI
 
-        config SMART_CAR_RUN_WIFI_TEST
-            bool "Test: WiFi Client"
-            select SMART_CAR_DRIVER_WIFI
+    config SMART_CAR_RUN_BT_SPP_TEST
+        bool "Test: Bluetooth SPP"
+        select SMART_CAR_DRIVER_BT_SPP
 
-        config SMART_CAR_RUN_BT_SPP_TEST
-            bool "Test: Bluetooth SPP"
-            select SMART_CAR_DRIVER_BT_SPP
+endchoice
 
-    endchoice
+# --- 2. 驱动开关定义 (被上面自动选中) ---
+menu "Drivers Status"
+    config SMART_CAR_DRIVER_L9110S
+        bool "L9110S Driver"
+    
+    config SMART_CAR_DRIVER_HCSR04
+        bool "HC-SR04 Driver"
 
-    # --- 2. 驱动开关定义 (被上面自动选中) ---
-    menu "Drivers Status"
-        config SMART_CAR_DRIVER_L9110S
-            bool "L9110S Driver"
-        
-        config SMART_CAR_DRIVER_HCSR04
-            bool "HC-SR04 Driver"
+    config SMART_CAR_DRIVER_TCRT5000
+        bool "TCRT5000 Driver"
 
-        config SMART_CAR_DRIVER_TCRT5000
-            bool "TCRT5000 Driver"
+    config SMART_CAR_DRIVER_SG90
+        bool "SG90 Driver"
 
-        config SMART_CAR_DRIVER_SG90
-            bool "SG90 Driver"
+    config SMART_CAR_DRIVER_SSD1306
+        bool "SSD1306 Driver"
 
-        config SMART_CAR_DRIVER_SSD1306
-            bool "SSD1306 Driver"
+    config SMART_CAR_DRIVER_WIFI
+        bool "WiFi Driver"
 
-        config SMART_CAR_DRIVER_WIFI
-            bool "WiFi Driver"
-
-        config SMART_CAR_DRIVER_BT_SPP
-            bool "Bluetooth SPP Driver"
-    endmenu
-
+    config SMART_CAR_DRIVER_BT_SPP
+        bool "Bluetooth SPP Driver"
 endmenu

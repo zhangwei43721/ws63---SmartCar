@@ -1,7 +1,7 @@
 /**
  ****************************************************************************************************
  * @file        bt_spp_example.c
- * @author      Smart Car Team
+ * @author      SkyForever
  * @version     V1.0
  * @date        2025-01-12
  * @brief       蓝牙SPP示例

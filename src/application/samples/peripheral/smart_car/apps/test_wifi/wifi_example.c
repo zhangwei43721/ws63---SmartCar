@@ -1,7 +1,7 @@
 /**
  ****************************************************************************************************
  * @file        wifi_example.c
- * @author      Smart Car Team
+ * @author      SkyForever
  * @version     V1.0
  * @date        2025-01-12
  * @brief       WiFi连接示例
