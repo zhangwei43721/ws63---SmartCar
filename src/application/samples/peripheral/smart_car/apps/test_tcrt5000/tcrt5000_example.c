@@ -52,10 +52,8 @@ static void *tcrt5000_task(const char *arg)
         right = tcrt5000_get_right();
 
         // 显示传感器状态
-        printf("Sensors: L=%s M=%s R=%s\n",
-               left == TCRT5000_ON_BLACK ? "BLACK" : "WHITE",
-               middle == TCRT5000_ON_BLACK ? "BLACK" : "WHITE",
-               right == TCRT5000_ON_BLACK ? "BLACK" : "WHITE");
+        printf("Sensors: L=%s M=%s R=%s\n", left == TCRT5000_ON_BLACK ? "BLACK" : "WHITE",
+               middle == TCRT5000_ON_BLACK ? "BLACK" : "WHITE", right == TCRT5000_ON_BLACK ? "BLACK" : "WHITE");
 
         osal_msleep(TCRT5000_DELAY_MS);
     }
@@ -76,7 +74,8 @@ static void tcrt5000_entry(void)
 
     // 创建任务
     osal_kthread_lock();
-    task_handle = osal_kthread_create((osal_kthread_handler)tcrt5000_task, NULL, "tcrt5000_task", TCRT5000_TASK_STACK_SIZE);
+    task_handle =
+        osal_kthread_create((osal_kthread_handler)tcrt5000_task, NULL, "tcrt5000_task", TCRT5000_TASK_STACK_SIZE);
     if (task_handle != NULL) {
         ret = osal_kthread_set_priority(task_handle, TCRT5000_TASK_PRIO);
         if (ret != OSAL_SUCCESS) {
