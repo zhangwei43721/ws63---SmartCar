@@ -67,6 +67,7 @@
         "ip4_addr.h": "c",
         "paj_i2c.h": "c",
         "paj7620.h": "c",
-        "bsp_soil.h": "c"
+        "bsp_soil.h": "c",
+        "bsp_sg90.h": "c"
     }
 }

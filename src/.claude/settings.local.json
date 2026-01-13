@@ -5,7 +5,9 @@
       "Bash(findstr:*)",
       "Bash(mkdir:*)",
       "Bash(ipconfig:*)",
-      "Bash(copy:*)"
+      "Bash(copy:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)"
     ]
   }
 }

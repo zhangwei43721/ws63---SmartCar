@@ -70,7 +70,7 @@ bin_path=./output/ws63/fwpkg/ws63-liteos-app/ws63-liteos-app_all.fwpkg
 protocol=serial
 reset=1
 burn_verification=0
-port=COM15
+port=COM17
 baud=2000000
 stop_bit=0
 parity=N
@@ -83,7 +83,7 @@ serial_port=
 baud=115200
 stop_bit=0
 parity=N
-port=COM15
+port=COM17
 
 [analysis]
 elf_path=./output/ws63/acore/ws63-liteos-app/ws63-liteos-app.elf

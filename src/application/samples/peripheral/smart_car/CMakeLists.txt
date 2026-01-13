@@ -1,39 +1,28 @@
-#===============================================================================
-# @brief    cmake file for Smart Car
-# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2025-2025. All rights reserved.
-#===============================================================================
+# Smart Car Top Level CMake
 
-# 根据配置选择编译哪些子模块
-if(DEFINED CONFIG_SMART_CAR_L9110S_ENABLE)
-    add_subdirectory_if_exist(l9110s)
+# 1. 编译驱动库 (drivers/CMakeLists.txt 会决定具体编译哪些)
+add_subdirectory(drivers)
+
+# 2. 根据 Kconfig 选择编译哪个应用
+if(CONFIG_SMART_CAR_RUN_ROBOT_DEMO)
+    add_subdirectory(apps/robot_demo)
+elseif(CONFIG_SMART_CAR_RUN_L9110S_TEST)
+    add_subdirectory(apps/test_l9110s)
+elseif(CONFIG_SMART_CAR_RUN_HCSR04_TEST)
+    add_subdirectory(apps/test_hcsr04)
+elseif(CONFIG_SMART_CAR_RUN_TCRT5000_TEST)
+    add_subdirectory(apps/test_tcrt5000)
+elseif(CONFIG_SMART_CAR_RUN_SG90_TEST)
+    add_subdirectory(apps/test_sg90)
+elseif(CONFIG_SMART_CAR_RUN_SSD1306_TEST)
+    add_subdirectory(apps/test_ssd1306)
+elseif(CONFIG_SMART_CAR_RUN_WIFI_TEST)
+    add_subdirectory(apps/test_wifi)
+elseif(CONFIG_SMART_CAR_RUN_BT_SPP_TEST)
+    add_subdirectory(apps/test_bt_spp)
 endif()
 
-if(DEFINED CONFIG_SMART_CAR_HCSR04_ENABLE)
-    add_subdirectory_if_exist(hcsr04)
-endif()
-
-if(DEFINED CONFIG_SMART_CAR_TCRT5000_ENABLE)
-    add_subdirectory_if_exist(tcrt5000)
-endif()
-
-if(DEFINED CONFIG_SMART_CAR_ROBOT_DEMO_ENABLE)
-    add_subdirectory_if_exist(robot_demo)
-endif()
-
-if(DEFINED CONFIG_SMART_CAR_SG90_ENABLE)
-    add_subdirectory_if_exist(sg90)
-endif()
-
-if(DEFINED CONFIG_SMART_CAR_SSD1306_ENABLE)
-    add_subdirectory_if_exist(ssd1306)
-endif()
-
-if(DEFINED CONFIG_SMART_CAR_SUPPORT_WIFI_CONTROL)
-    add_subdirectory_if_exist(wifi_control)
-endif()
-
-if(DEFINED CONFIG_SMART_CAR_SUPPORT_BT_CONTROL)
-    add_subdirectory_if_exist(bt_control)
-endif()
-
-set(SOURCES "${SOURCES}" PARENT_SCOPE)
+# 3. 关键步骤：将下层收集上来的变量暴露给 SDK 顶层
+# 注意：WS63 SDK 通常通过 SOURCES 变量收集源文件
+set(SOURCES ${SOURCES} PARENT_SCOPE)
+set(INCLUDE_DIRECTORIES ${INCLUDE_DIRECTORIES} PARENT_SCOPE)

@@ -2,269 +2,165 @@
 
 ## 概述
 
-本模块提供了完整的智能小车控制功能，包括：
+本模块基于海思 WS63 芯片，提供了完整的智能小车控制框架。采用分层架构设计，将底层硬件驱动（Drivers）与上层业务逻辑（Apps）完全解耦，支持模块化开发与独立测试。
 
-- **L9110S 电机驱动** - 控制小车前进、后退、左转、右转、停止
-- **HC-SR04 超声波传感器** - 距离测量，用于避障
-- **TCRT5000 红外循迹传感器** - 黑线检测，用于循迹
-- **SG90 舵机控制** - 控制舵机转动，用于扫描障碍物
-- **SSD1306 OLED 显示屏** - 显示小车状态信息
-- **WiFi TCP 控制** - 通过WiFi网络远程控制小车
-- **蓝牙 SPP 控制** - 通过蓝牙SPP远程控制小车
-- **智能循迹避障** - 综合应用，支持模式切换
+主要功能模块包括：
 
-## 目录结构
+- **L9110S 电机驱动** - 基础运动控制（进/退/转）
+- **HC-SR04 超声波传感器** - 测距与避障
+- **TCRT5000 红外循迹传感器** - 黑线识别与循迹
+- **SG90 舵机控制** - 角度控制与扫描
+- **SSD1306 OLED 显示屏** - 状态显示 (I2C)
+- **WiFi Client** - WiFi 网络连接管理
+- **Bluetooth SPP Server** - 蓝牙透传控制服务
+- **Robot Demo** - 集成循迹、避障、遥控的综合应用
 
-```
+## 架构设计
+
+### 设计理念
+
+1.  **驱动与应用分离**：
+    *   `drivers/`：只包含硬件控制逻辑，提供纯粹的 C API，不含任何 `main` 函数。
+    *   `apps/`：包含具体的业务逻辑（如测试用例或综合 Demo），每个 App 都是独立的入口。
+2.  **扁平化结构**：
+    *   为了简化开发，驱动模块不再嵌套 `src/include` 文件夹，头文件与源文件直接存放在模块根目录。
+3.  **互斥运行模式**：
+    *   通过 Kconfig 的 `Choice` 机制，确保同一时间只有一个 `main` 入口被编译，避免符号冲突。
+
+### 目录结构
+
+```text
 application/samples/peripheral/smart_car/
-├── CMakeLists.txt          # 主构建配置
-├── Kconfig                 # 配置选项
+├── CMakeLists.txt          # 顶层构建脚本（负责调度 Drivers 和 Apps）
+├── Kconfig                 # 顶层菜单配置（定义 Run Mode）
 ├── README.md               # 本文件
-├── l9110s/                 # L9110S 电机驱动模块
-│   ├── bsp_include/        # BSP层头文件
-│   ├── bsp_src/            # BSP层源文件
-│   ├── l9110s_example.c    # 示例代码
-│   ├── CMakeLists.txt
-│   └── Kconfig
-├── hcsr04/                 # HC-SR04 超声波传感器模块
-│   ├── bsp_include/
-│   ├── bsp_src/
-│   ├── hcsr04_example.c
-│   ├── CMakeLists.txt
-│   └── Kconfig
-├── tcrt5000/               # TCRT5000 红外循迹传感器模块
-│   ├── bsp_include/
-│   ├── bsp_src/
-│   ├── tcrt5000_example.c
-│   ├── CMakeLists.txt
-│   └── Kconfig
-├── sg90/                   # SG90 舵机模块
-│   ├── bsp_include/        # BSP层头文件
-│   ├── bsp_src/            # BSP层源文件
-│   ├── sg90_example.c      # 示例代码
-│   ├── CMakeLists.txt
-│   └── Kconfig
-├── ssd1306/                # SSD1306 OLED 显示屏模块
-│   ├── ssd1306.h           # OLED驱动头文件
-│   ├── ssd1306.c           # OLED驱动源文件
-│   ├── ssd1306_fonts.h     # 字体数据
-│   ├── ssd1306_fonts.c     # 字体数据
-│   ├── ssd1306_example.c   # 示例代码
-│   ├── CMakeLists.txt
-│   └── Kconfig
-├── wifi_control/           # WiFi TCP 控制模块
-│   ├── wifi_control_example.c
-│   ├── CMakeLists.txt
-│   └── Kconfig
-├── bt_control/             # 蓝牙 SPP 控制模块
-│   ├── bt_control_example.c
-│   ├── CMakeLists.txt
-│   └── Kconfig
-└── robot_demo/             # 智能循迹避障综合模块
-    ├── bsp_include/        # 包含机器人控制BSP
-    ├── bsp_src/
-    ├── robot_demo.c
-    ├── CMakeLists.txt
-    └── Kconfig
+│
+├── drivers/                # 【硬件驱动层】(Hardware Abstraction Layer)
+│   ├── CMakeLists.txt      # 驱动自动收集脚本
+│   ├── l9110s/             # L9110S 驱动 (bsp_l9110s.c/h)
+│   ├── hcsr04/             # HC-SR04 驱动
+│   ├── tcrt5000/           # TCRT5000 驱动
+│   ├── sg90/               # SG90 驱动
+│   ├── ssd1306/            # SSD1306 OLED 驱动
+│   ├── wifi_client/        # WiFi 连接封装
+│   └── bt_spp_server/      # 蓝牙 SPP 封装
+│
+└── apps/                   # 【应用业务层】(Applications & Tests)
+    ├── robot_demo/         # 智能小车综合应用 (循迹+避障+遥控)
+    │   ├── CMakeLists.txt
+    │   ├── robot_demo.c    # 主程序入口
+    │   └── bsp_robot_...   # 仅供 Demo 使用的控制逻辑
+    │
+    ├── test_l9110s/        # 单元测试：电机
+    ├── test_hcsr04/        # 单元测试：超声波
+    ├── test_sg90/          # 单元测试：舵机
+    ├── test_.../           # 其他单元测试
+    └── CMakeLists.txt      # (各 App 内部均有独立的构建脚本)
 ```
 
 ## 硬件连接
 
-> **重要提示**: 以下引脚定义根据硬件原理图确定，请严格按照此接线！
+> **重要提示**: 以下引脚定义基于当前代码配置，请严格按照此接线，否则可能导致设备无法工作或损坏！
 
-### L9110S 电机驱动引脚 (板载已硬连线)
+### 1. L9110S 电机驱动
 
-| 功能 | GPIO引脚 | 原理图标识 | 说明 |
+| 功能 | GPIO引脚 | 标识 | 说明 |
 |------|---------|-----------|------|
-| 左轮电机 A | GPIO 6 | MOTOR_IN1 | 左轮电机控制A |
-| 左轮电机 B | GPIO 7 | MOTOR_IN2 | 左轮电机控制B |
-| 右轮电机 A | GPIO 8 | MOTOR_IN3 | 右轮电机控制A |
-| 右轮电机 B | GPIO 9 | MOTOR_IN4 | 右轮电机控制B |
+| 左轮 A | GPIO 6 | MOTOR_IN1 | PWM控制 |
+| 左轮 B | GPIO 7 | MOTOR_IN2 | PWM控制 |
+| 右轮 A | GPIO 8 | MOTOR_IN3 | PWM控制 |
+| 右轮 B | GPIO 9 | MOTOR_IN4 | PWM控制 |
 
-### HC-SR04 超声波传感器引脚 (使用独立GPIO)
+### 2. 传感器与外设
 
-| 功能 | GPIO引脚 | 原理图标识 | 接线位置 |
-|------|---------|-----------|----------|
-| TRIG | GPIO 11 | - | JP5排母上方 |
-| ECHO | GPIO 12 | - | JP5排母上方 |
-| VCC | 5V | - | JP5排母 VCC5 |
-| GND | GND | - | JP5排母 GND |
-
-### TCRT5000 红外循迹传感器引脚 (复用按键接口 KEY4-KEY2)
-
-| 功能 | GPIO引脚 | 原理图标识 | 接线位置 |
-|------|---------|-----------|----------|
-| 左侧传感器 | GPIO 0 | KEY4 | JP5排母上方 |
-| 中间传感器 | GPIO 1 | KEY3 | JP5排母上方 |
-| 右侧传感器 | GPIO 2 | KEY2 | JP5排母上方 |
-| VCC | 3.3V/5V | - | 根据模块电压要求 |
-| GND | GND | - | JP5排母 GND |
-
-### SG90 舵机引脚 (板载舵机接口)
-
-| 功能 | GPIO引脚 | 原理图标识 | 说明 |
-|------|---------|-----------|------|
-| 舵机控制 | GPIO 13 | SG1 (JP4) | 注意: 与LED2共用，控制时蓝灯会闪烁 |
-| VCC | 5V | - | 外部供电 |
-| GND | GND | - | 公共地 |
-
-### 模式切换按键 (复用KEY1)
-
-| 功能 | GPIO引脚 | 原理图标识 | 接线位置 |
-|------|---------|-----------|----------|
-| 模式切换 | GPIO 3 | KEY1 | JP5排母上方 |
-
-### SSD1306 OLED 显示屏引脚 (I2C接口)
-
-| 功能 | GPIO引脚 | 原理图标识 | 接线位置 |
-|------|---------|-----------|----------|
-| SCL | GPIO 15 | I2C1_SCL / UART1_TX | JP5排母下方 |
-| SDA | GPIO 16 | I2C1_SDA / UART1_RX | JP5排母下方 |
-| VCC | 3.3V/5V | - | 根据模块要求 |
-| GND | GND | - | JP5排母 GND |
+| 模块 | 功能 | GPIO引脚 | 备注 |
+|------|------|---------|------|
+| **HC-SR04** | TRIG (触发) | GPIO 11 | - |
+| | ECHO (接收) | GPIO 12 | - |
+| **TCRT5000** | 左传感器 | GPIO 0 | KEY4 复用 |
+| (循迹) | 中传感器 | GPIO 1 | KEY3 复用 |
+| | 右传感器 | GPIO 2 | KEY2 复用 |
+| **SG90** | PWM信号 | GPIO 13 | LED2 复用 |
+| **SSD1306** | SCL (时钟) | GPIO 15 | I2C1 |
+| (OLED) | SDA (数据) | GPIO 16 | I2C1 |
+| **按键** | 模式切换 | GPIO 3 | KEY1 |
 
 ## 使用方法
 
-### 1. 启用模块
+### 1. 进入配置菜单
 
-运行 menuconfig 配置：
+运行 menuconfig：
 
 ```bash
 python build.py menuconfig
 ```
 
-导航到：`Application` → `Config the application` → `Enable the Sample of peripheral` → 启用 `Support Smart Car Sample.`
+导航路径：
+`Application` → `Config the application` → `Enable the Sample of peripheral` → 启用 `Support Smart Car Sample`。
 
-然后选择需要启用的子模块：
+进入 `Smart Car Configuration` 菜单。
 
-**外设模块（自动被robot_demo依赖）:**
-- L9110S Motor Driver
-- HC-SR04 Ultrasonic Sensor
-- TCRT5000 Infrared Line Tracking Sensor
-- SG90 Servo Motor
-- SSD1306 OLED Display
+### 2. 选择运行模式 (Run Mode)
 
-**示例程序（可选）:**
-- SG90 Servo Example
-- SSD1306 OLED Display Example
-- WiFi/TCP Control Example
-- Bluetooth SPP Control Example
+本模块采用 **“单应用模式”**，你必须在 `Select Running Application` 菜单中选择**一项**具体的任务。系统会自动勾选该任务所需的底层驱动。
 
-**综合应用:**
-- Robot Demo (Tracking & Obstacle Avoidance) - 自动依赖上述外设模块
+可选模式如下：
 
-### 2. 编译项目
+#### A. 综合应用
+*   **Robot Demo (Tracking & Obstacle Avoidance)**
+    *   这是默认的主程序。
+    *   功能：集成循迹、避障、WiFi/蓝牙遥控。
+    *   操作：通过 KEY1 按键切换工作模式（停止 -> 循迹 -> 避障 -> ...）。
 
-```bash
-python build.py
-```
-
-### 3. 独立模块测试
-
-如果只想测试单个模块，可以在对应的 `Kconfig` 中禁用 `robot_demo`，单独启用需要测试的模块。
-
-#### L9110S 电机测试
-
-小车会依次执行：前进 → 后退 → 左转 → 右转 → 停止，循环往复。
-
-#### HC-SR04 超声波测试
-
-持续测量前方障碍物距离并通过串口输出（单位：cm）。
-
-#### TCRT5000 红外传感器测试
-
-持续读取左、中、右三路传感器状态并输出检测结果。
-
-#### SG90 舵机测试
-
-舵机从0度转到180度，再从180度转回0度，循环往复。
-
-#### SSD1306 OLED 显示测试
-
-OLED屏幕显示欢迎信息和系统状态。
-
-#### WiFi TCP 控制测试
-
-通过WiFi网络接收TCP控制命令来控制小车运动。
-
-**配置步骤:**
-1. 修改 `wifi_control_example.c` 中的WiFi配置:
-   ```c
-   #define WIFI_SSID "YourWiFiSSID"
-   #define WIFI_PASSWORD "YourWiFiPassword"
-   ```
-2. 编译并烧录程序
-3. 小车连接WiFi后，通过串口获取IP地址
-4. 使用TCP客户端（如网络调试助手）连接 小车IP:8888
-5. 发送控制命令
-
-**控制协议:**
-- 发送 `0`: 前进
-- 发送 `1`: 后退
-- 发送 `2`: 左转
-- 发送 `3`: 右转
-- 发送 `4`: 停止
-
-#### 蓝牙 SPP 控制测试
-
-通过蓝牙SPP接收控制命令来控制小车运动。
-
-**配置步骤:**
-1. 编译并烧录程序
-2. 使用手机蓝牙APP连接 "WS63_SmartCar"
-3. 使用SPP功能发送控制命令
-
-**控制协议:**
-
-数字命令:
-- 发送 `0`: 前进
-- 发送 `1`: 后退
-- 发送 `2`: 左转
-- 发送 `3`: 右转
-- 发送 `4`: 停止
-
-字符命令:
-- 发送 `F` 或 `f`: 前进 (Forward)
-- 发送 `B` 或 `b`: 后退 (Backward)
-- 发送 `L` 或 `l`: 左转 (Left)
-- 发送 `R` 或 `r`: 右转 (Right)
-- 发送 `S` 或 `s`: 停止 (Stop)
-
-> **注意**: 蓝牙控制模块当前为框架代码，需要根据WS63的实际蓝牙SPP API进行调整。
-
-### 4. 智能循迹避障模式
-
-启用 `robot_demo` 后，小车支持三种工作模式，通过按键切换：
-
-1. **停止模式** (默认) - 小车停止不动
-2. **循迹模式** - 小车根据红外传感器自动循迹
-3. **避障模式** - 小车根据超声波传感器自动避障
-
-**模式切换方法：**
-- 按一下按键：从停止 → 循迹
-- 再按一下：从循迹 → 避障
-- 再按一下：从避障 → 停止
-
-## 代码特性
-
-1. **独立性** - 智能小车模块完全独立，不依赖项目中的其他模块（如 sg90、oled）
-2. **BSP层设计** - 每个外设都有独立的BSP层，便于移植和维护
-3. **统一接口** - 所有外设使用统一的WS63 HAL API
-4. **模块化** - 可以单独启用/禁用各个子模块
-
-## 注意事项
-
-1. 确保硬件连接正确，特别是GPIO引脚定义
-2. 电机驱动需要外部供电，WS63的GPIO无法直接驱动电机
-3. 超声波传感器测量范围约为 2cm - 400cm
-4. 红外传感器需要正确调整高度和角度，以准确检测黑线
-5. 舵机使用软件模拟PWM，会占用CPU时间
-6. OLED显示屏使用I2C1接口，波特率默认400kHz
+#### B. 单元测试 (Unit Tests)
+用于独立验证某个硬件模块是否正常工作：
+*   **Test: L9110S Motor** - 电机转动测试（前/后/左/右）。
+*   **Test: HC-SR04 Ultrasonic** - 串口打印测距数据 (cm)。
+*   **Test: TCRT5000 Line Sensor** - 串口打印黑线识别状态。
+*   **Test: SG90 Servo** - 舵机 0°~180° 往复扫描。
+*   **Test: SSD1306 OLED** - 屏幕显示测试图案和文字。
+*   **Test: WiFi Client** - 测试连接路由器并获取 IP。
+*   **Test: Bluetooth SPP** - 开启蓝牙广播，测试数据透传。
 
 
-## 作者
 
-SkyForever
+## 功能详细说明
+
+### 综合应用 (Robot Demo)
+
+**工作模式循环：**
+1.  **Idle (停止)**: 待机状态，屏幕显示 "Stop"。
+2.  **Tracking (循迹)**: 依靠底部 3 路红外传感器沿黑线行驶。
+3.  **Obstacle (避障)**: 依靠超声波测距，遇障碍物自动转向；舵机辅助扫描前方。
+4.  **Remote (遥控)**:
+    *   **WiFi**: 连接 TCP 服务端（端口 8888）。
+    *   **Bluetooth**: 广播名称 "WS63_SmartCar"，支持 SPP 透传指令。
+
+**控制协议 (TCP / SPP):**
+*   `'0'` / `'F'`: 前进 (Forward)
+*   `'1'` / `'B'`: 后退 (Backward)
+*   `'2'` / `'L'`: 左转 (Left)
+*   `'3'` / `'R'`: 右转 (Right)
+*   `'4'` / `'S'`: 停止 (Stop)
+
+### 驱动层 (Drivers)
+
+所有驱动位于 `drivers/` 目录下，仅包含 `.c` 和 `.h` 文件。
+*   **依赖管理**: 通过 CMake 的 `CONFIG_SMART_CAR_DRIVER_XXX` 开关自动控制编译。
+*   **接口统一**: 提供标准的 Init / Deinit / Control 接口。
+
+## 开发者指南
+
+### 如何添加新模块？
+
+1.  **创建驱动**: 在 `drivers/` 下新建文件夹（如 `beep`），放入 `bsp_beep.c/h`。
+2.  **注册驱动**:
+    *   在 `Kconfig` 的 "Drivers Status" 中添加 `CONFIG_SMART_CAR_DRIVER_BEEP`。
+    *   在 `drivers/CMakeLists.txt` 中添加对应的编译规则。
+3.  **创建测试**:
+    *   在 `apps/` 下新建 `test_beep`，放入 `beep_example.c` 和 `CMakeLists.txt`。
+    *   在 `Kconfig` 的 "Run Mode" Choice 中添加 `RUN_BEEP_TEST` 选项。
+
 
 ## 更新日期
 

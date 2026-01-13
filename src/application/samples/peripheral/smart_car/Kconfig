@@ -1,76 +1,78 @@
 #===============================================================================
-# @brief    Kconfig file for Smart Car
-# Copyright (c) HiSilicon (Shanghai) Technologies Co., Ltd. 2025-2025. All rights reserved.
+# Smart Car Configuration
 #===============================================================================
 
-menu "Smart Car Peripheral Selection"
-    config SMART_CAR_L9110S_ENABLE
-        bool "L9110S Motor Driver"
-        default y
-        help
-            Enable L9110S motor driver for smart car.
+menu "Smart Car Configuration"
 
-    config SMART_CAR_HCSR04_ENABLE
-        bool "HC-SR04 Ultrasonic Sensor"
-        default y
+    # --- 1. 运行模式选择 (互斥：一次只能跑一个程序) ---
+    choice SMART_CAR_RUN_MODE
+        prompt "Select Running Application"
+        default SMART_CAR_RUN_ROBOT_DEMO
         help
-            Enable HC-SR04 ultrasonic sensor for distance measurement.
+            Select the main application to compile and run.
 
-    config SMART_CAR_TCRT5000_ENABLE
-        bool "TCRT5000 Infrared Line Tracking Sensor"
-        default y
-        help
-            Enable TCRT5000 infrared sensor for line tracking.
+        config SMART_CAR_RUN_ROBOT_DEMO
+            bool "Robot Demo (Tracking & Obstacle Avoidance)"
+            select SMART_CAR_DRIVER_L9110S
+            select SMART_CAR_DRIVER_HCSR04
+            select SMART_CAR_DRIVER_TCRT5000
+            select SMART_CAR_DRIVER_SG90
+            select SMART_CAR_DRIVER_SSD1306
+            help
+                Main integrated application.
 
-    config SMART_CAR_SG90_ENABLE
-        bool "SG90 Servo Motor"
-        default y
-        help
-            Enable SG90 servo motor for smart car.
+        config SMART_CAR_RUN_L9110S_TEST
+            bool "Test: L9110S Motor"
+            select SMART_CAR_DRIVER_L9110S
 
-    config SMART_CAR_SSD1306_ENABLE
-        bool "SSD1306 OLED Display"
-        default y
-        help
-            Enable SSD1306 OLED display for smart car.
+        config SMART_CAR_RUN_HCSR04_TEST
+            bool "Test: HC-SR04 Ultrasonic"
+            select SMART_CAR_DRIVER_HCSR04
 
-    config SMART_CAR_ROBOT_DEMO_ENABLE
-        bool "Robot Demo (Tracking & Obstacle Avoidance)"
-        default y
-        select SMART_CAR_L9110S_ENABLE
-        select SMART_CAR_HCSR04_ENABLE
-        select SMART_CAR_TCRT5000_ENABLE
-        select SMART_CAR_SG90_ENABLE
-        help
-            Enable robot demo with tracking and obstacle avoidance features.
-endmenu
+        config SMART_CAR_RUN_TCRT5000_TEST
+            bool "Test: TCRT5000 Line Sensor"
+            select SMART_CAR_DRIVER_TCRT5000
 
-menu "Smart Car Sample Programs"
-    config SMART_CAR_SUPPORT_SG90
-        bool "SG90 Servo Example"
-        default n
-        depends on SMART_CAR_SG90_ENABLE
-        help
-            SG90舵机示例程序 - 舵机从0度转到180度，再从180度转回0度
+        config SMART_CAR_RUN_SG90_TEST
+            bool "Test: SG90 Servo"
+            select SMART_CAR_DRIVER_SG90
 
-    config SMART_CAR_SUPPORT_SSD1306
-        bool "SSD1306 OLED Display Example"
-        default n
-        depends on SMART_CAR_SSD1306_ENABLE
-        help
-            SSD1306 OLED显示屏示例程序 - 显示字符和图形
+        config SMART_CAR_RUN_SSD1306_TEST
+            bool "Test: SSD1306 OLED"
+            select SMART_CAR_DRIVER_SSD1306
 
-    config SMART_CAR_SUPPORT_WIFI_CONTROL
-        bool "WiFi/TCP Control Example"
-        default n
-        depends on SMART_CAR_L9110S_ENABLE
-        help
-            WiFi TCP控制示例 - 通过WiFi接收控制命令控制小车运动
+        config SMART_CAR_RUN_WIFI_TEST
+            bool "Test: WiFi Client"
+            select SMART_CAR_DRIVER_WIFI
 
-    config SMART_CAR_SUPPORT_BT_CONTROL
-        bool "Bluetooth SPP Control Example"
-        default n
-        depends on SMART_CAR_L9110S_ENABLE
-        help
-            蓝牙SPP控制示例 - 通过蓝牙SPP接收控制命令控制小车运动
+        config SMART_CAR_RUN_BT_SPP_TEST
+            bool "Test: Bluetooth SPP"
+            select SMART_CAR_DRIVER_BT_SPP
+
+    endchoice
+
+    # --- 2. 驱动开关定义 (被上面自动选中) ---
+    menu "Drivers Status"
+        config SMART_CAR_DRIVER_L9110S
+            bool "L9110S Driver"
+        
+        config SMART_CAR_DRIVER_HCSR04
+            bool "HC-SR04 Driver"
+
+        config SMART_CAR_DRIVER_TCRT5000
+            bool "TCRT5000 Driver"
+
+        config SMART_CAR_DRIVER_SG90
+            bool "SG90 Driver"
+
+        config SMART_CAR_DRIVER_SSD1306
+            bool "SSD1306 Driver"
+
+        config SMART_CAR_DRIVER_WIFI
+            bool "WiFi Driver"
+
+        config SMART_CAR_DRIVER_BT_SPP
+            bool "Bluetooth SPP Driver"
+    endmenu
+
 endmenu
