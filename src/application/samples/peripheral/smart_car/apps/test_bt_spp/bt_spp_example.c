@@ -21,116 +21,100 @@
 #include "common_def.h"
 #include "soc_osal.h"
 #include "app_init.h"
-#include "../../drivers/bt_spp_server/bsp_bt_spp.h"
+#include "../../drivers/bt_spp_server/bsp_bt_spp.h" // 引用封装好的头文件
 
-#define BT_SPP_TASK_STACK_SIZE 0x2000
+#define BT_SPP_TASK_STACK_SIZE 0x1000
 #define BT_SPP_TASK_PRIO 24
-#define BT_DEVICE_NAME "WS63_SmartCar"
+#define BT_DEVICE_NAME "WS63_UART" // 你的蓝牙名字
 
-/**
- * @brief SPP数据接收回调
- * @param data 接收到的数据
- * @param len 数据长度
- */
-static void spp_data_handler(const uint8_t *data, uint32_t len)
+// 接收回调函数：手机发来的数据会到这里
+static void spp_data_recived_handler(const uint8_t *data, uint32_t len)
 {
-    printf("BT SPP Example: Received %u bytes: ", len);
-    for (uint32_t i = 0; i < len && i < 32; i++) {
-        printf("%c", data[i]);
+    // 1. 打印收到的数据
+    printf("[RX] Recv %d bytes: ", len);
+    for (uint32_t i = 0; i < len; i++) {
+        printf("%02X ", data[i]); // 打印16进制
     }
     printf("\r\n");
 
-    // 回显数据
+    // 打印字符形式方便调试
+    printf("[RX] String: %.*s\r\n", (int)len, data);
+
+    // 2. 数据回显 (Echo)：收到什么发回什么，测试双向通路
     bsp_bt_spp_send(data, len);
 }
 
-/**
- * @brief SPP事件回调
- * @param event SPP事件
- * @param data 事件数据
- */
+// 事件回调函数：连接状态变化会到这里
 static void spp_event_handler(bsp_bt_spp_event_t event, void *data)
 {
     UNUSED(data);
     switch (event) {
         case BSP_BT_SPP_EVENT_CONNECTED:
-            printf("BT SPP Example: Client connected\r\n");
+            printf(">>> [Event] 手机已连接! 请在APP中开启 Notify 接收数据 <<<\r\n");
             break;
         case BSP_BT_SPP_EVENT_DISCONNECTED:
-            printf("BT SPP Example: Client disconnected\r\n");
-            break;
-        case BSP_BT_SPP_EVENT_DATA_RECEIVED:
-            // 数据已在data_handler中处理
+            printf("<<< [Event] 手机已断开 <<<\r\n");
             break;
         default:
             break;
     }
 }
 
-/**
- * @brief 蓝牙SPP测试任务
- * @param arg 任务参数
- * @return NULL
- */
 static void *bt_spp_task(const char *arg)
 {
     UNUSED(arg);
     int ret;
+    int count = 0;
+    char heartbeat_msg[32];
 
     printf("BT SPP Example: Start\r\n");
 
-    // 注册回调
-    bsp_bt_spp_register_data_handler(spp_data_handler);
+    // 1. 注册回调
+    bsp_bt_spp_register_data_handler(spp_data_recived_handler);
     bsp_bt_spp_register_event_handler(spp_event_handler);
 
-    // 初始化蓝牙SPP
+    // 2. 初始化蓝牙 (广播名：WS63_UART)
     ret = bsp_bt_spp_init(BT_DEVICE_NAME);
     if (ret != 0) {
-        printf("BT SPP Example: Failed to initialize BT SPP\r\n");
+        printf("BT Init Failed!\r\n");
         return NULL;
     }
 
-    // 等待连接
-    ret = bsp_bt_spp_wait_connection(0); // 0表示一直等待
-    if (ret != 0) {
-        printf("BT SPP Example: Failed to wait for connection\r\n");
-        return NULL;
-    }
+    printf("BT Init Success. Waiting for connection...\r\n");
 
-    printf("BT SPP Example: Ready to receive data\r\n");
-
-    // 持续运行
+    // 3. 主循环
     while (1) {
-        osal_msleep(1000);
-    }
+        // 如果连接上了，每隔2秒发一个心跳包，方便你在手机上确认通了没
+        if (bsp_bt_spp_get_status() == BSP_BT_SPP_STATUS_CONNECTED) {
 
+            // 构造一个数据包
+            snprintf(heartbeat_msg, sizeof(heartbeat_msg), "Heartbeat: %d", count++);
+
+            // 发送数据
+            ret = bsp_bt_spp_send((uint8_t *)heartbeat_msg, strlen(heartbeat_msg));
+
+            if (ret > 0) {
+                printf("[TX] Sent: %s\r\n", heartbeat_msg);
+            } else {
+                // 如果发送失败，通常是因为手机还没点“订阅(Notify)”
+                // printf("[TX] Failed (Check if Notify enabled on Phone)\r\n");
+            }
+        }
+
+        osal_msleep(2000); // 延时2秒
+    }
     return NULL;
 }
 
-/**
- * @brief 蓝牙SPP示例入口
- * @return 无
- */
 static void bt_spp_example_entry(void)
 {
-    uint32_t ret;
     osal_task *task_handle = NULL;
-
-    printf("BT SPP Example Entry\r\n");
-
-    // 创建任务
     osal_kthread_lock();
     task_handle = osal_kthread_create((osal_kthread_handler)bt_spp_task, NULL, "bt_spp_task", BT_SPP_TASK_STACK_SIZE);
     if (task_handle != NULL) {
-        ret = osal_kthread_set_priority(task_handle, BT_SPP_TASK_PRIO);
-        if (ret != OSAL_SUCCESS) {
-            printf("BT SPP Example: Failed to set task priority\r\n");
-        }
-    } else {
-        printf("BT SPP Example: Failed to create task\r\n");
+        osal_kthread_set_priority(task_handle, BT_SPP_TASK_PRIO);
     }
     osal_kthread_unlock();
 }
 
-/* Run the bt_spp_example_entry. */
 app_run(bt_spp_example_entry);

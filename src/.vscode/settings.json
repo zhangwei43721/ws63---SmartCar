@@ -70,6 +70,7 @@
         "bsp_soil.h": "c",
         "bsp_sg90.h": "c",
         "pinctrl_porting.h": "c",
-        "platform_core_rom.h": "c"
+        "platform_core_rom.h": "c",
+        "bsp_bt_spp.h": "c"
     }
 }
