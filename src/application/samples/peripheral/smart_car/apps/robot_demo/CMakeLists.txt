@@ -1,11 +1,20 @@
 # 通用 App CMakeLists
 
 # 1. 扫描当前目录下(即扁平化后的目录)的所有 .c 文件
-file(GLOB APP_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/*.c")
+file(GLOB_RECURSE APP_SRCS
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/core/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/services/*.c"
+)
+
+# Exclude legacy God-object implementation after refactor
+list(REMOVE_ITEM APP_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/bsp_robot_control.c")
 
 # 2. 添加头文件路径 (对于 robot_demo 这种有本地 .h 的情况很重要)
 # 这样 #include "bsp_robot_control.h" 就能直接找到
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/core")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/services")
 
 # 3. 加入到全局构建源文件列表
 list(APPEND SOURCES ${APP_SRCS})

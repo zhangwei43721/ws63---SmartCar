@@ -28,7 +28,7 @@
 #include "gpio.h"
 #include "hal_gpio.h"
 #include "app_init.h"
-#include "bsp_robot_control.h"
+#include "core/robot_mgr.h"
 
 /* 任务配置 */
 #define ROBOT_DEMO_TASK_STACK_SIZE CAR_CONTROL_DEMO_TASK_STACK_SIZE
@@ -65,7 +65,7 @@ static void mode_switch_isr(pin_t pin, uintptr_t param)
     g_mode_switch_tick = current_tick;
 
     // 3. 获取当前状态并决定下一状态 (无宏定义，固定逻辑)
-    current_status = robot_get_status();
+    current_status = robot_mgr_get_status();
 
     switch (current_status) {
         case CAR_WIFI_CONTROL_STATUS:
@@ -95,8 +95,7 @@ static void mode_switch_isr(pin_t pin, uintptr_t param)
     }
 
     // 4. 执行状态切换
-    robot_set_status(next_status);
-    robot_display_mode(next_status);
+    robot_mgr_set_status(next_status);
 }
 
 /**
@@ -128,12 +127,11 @@ static void interrupt_monitor(void)
 static void *robot_demo_task(const char *arg)
 {
     UNUSED(arg);
-    CarStatus status;
 
     printf("智能小车演示任务启动 (WiFi 已启用，无蓝牙)\r\n");
 
     // 1. 初始化底层驱动和控制逻辑
-    robot_control_init();
+    robot_mgr_init();
 
     // 2. 初始化按键中断
     mode_switch_init();
@@ -150,36 +148,7 @@ static void *robot_demo_task(const char *arg)
 
     // 3. 主循环
     while (1) {
-        status = robot_get_status();
-
-        switch (status) {
-            case CAR_STOP_STATUS:
-                // 待机模式
-                robot_standby_mode();
-                break;
-
-            case CAR_TRACE_STATUS:
-                // 循迹模式
-                robot_trace_mode();
-                break;
-
-            case CAR_OBSTACLE_AVOIDANCE_STATUS:
-                // 避障模式
-                robot_obstacle_avoidance_mode();
-                break;
-
-            case CAR_WIFI_CONTROL_STATUS:
-                // WiFi 遥控模式
-                robot_wifi_control_mode();
-                break;
-
-                // 移除了 CAR_BT_CONTROL_STATUS 的 case
-
-            default:
-                // 异常状态处理，防止死循环占用 CPU
-                osal_msleep(100);
-                break;
-        }
+        robot_mgr_process_loop();
 
         // 短暂延时，让出 CPU 时间片，避免任务饿死其他线程
         osal_msleep(20);
