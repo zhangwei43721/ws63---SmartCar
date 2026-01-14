@@ -1,157 +1,158 @@
-# 智能小车模块 (Smart Car Module)
+# 鸿蒙 WS63 智能小车 (Smart Car K12 Edition)
 
 ## 概述
 
-本模块基于海思 WS63 芯片，提供了完整的智能小车控制框架。采用分层架构设计，将底层硬件驱动（Drivers）与上层业务逻辑（Apps）完全解耦，支持模块化开发与独立测试。
+本模块基于海思 WS63 芯片，为 K12 教育及嵌入式教学提供了完整的智能小车控制框架。采用分层架构设计，将底层硬件驱动（Drivers）、功能逻辑层（Middleware）与上层业务逻辑（Apps）解耦，支持模块化开发与独立测试。
 
 主要功能模块包括：
 
-- **L9110S 电机驱动** - 基础运动控制（进/退/转）
+- **L9110S 电机驱动** - 基础运动控制（PWM 线性调速）
 - **HC-SR04 超声波传感器** - 测距与避障
 - **TCRT5000 红外循迹传感器** - 黑线识别与循迹
 - **SG90 舵机控制** - 角度控制与扫描
 - **SSD1306 OLED 显示屏** - 状态显示 (I2C)
-- **WiFi Client** - WiFi 网络连接管理
+- **WiFi Client** - WiFi 网络连接与 TCP/UDP 通信
 - **Bluetooth SPP Server** - 蓝牙透传控制服务
-- **Robot Demo** - 集成循迹、避障、遥控的综合应用
+- **Robot Demo** - 集成状态机管理的综合应用
 
 ## 架构设计
 
-### 设计理念
+### 1. 软件分层架构
 
-1.  **驱动与应用分离**：
-    *   `drivers/`：只包含硬件控制逻辑，提供纯粹的 C API，不含任何 `main` 函数。
-    *   `apps/`：包含具体的业务逻辑（如测试用例或综合 Demo），每个 App 都是独立的入口。
-2.  **扁平化结构**：
-    *   为了简化开发，驱动模块不再嵌套 `src/include` 文件夹，头文件与源文件直接存放在模块根目录。
-3.  **互斥运行模式**：
-    *   通过 Kconfig 的 `Choice` 机制，确保同一时间只有一个 `main` 入口被编译，避免符号冲突。
+为了实现代码的高复用性与清晰度，本项目采用三层逻辑架构：
 
-### 目录结构
+1.  **应用业务层 (Applications)**
+    *   位于 `apps/` 目录。
+    *   负责任务调度、状态机管理 (State Machine)、人机交互 (OLED/按键)。
+    *   核心入口：`robot_demo.c`。
+2.  **功能服务层 (Services/Middleware)**
+    *   负责将底层硬件原子能力封装为车辆的具体动作（如“直行”、“摇头扫描”、“解析协议”）。
+    *   核心逻辑：`robot_service.c`。
+3.  **硬件驱动层 (Drivers)**
+    *   位于 `drivers/` 目录。
+    *   纯粹的硬件抽象层 (HAL)，只提供标准的 Init/Write/Read 接口，不包含业务逻辑。
+
+### 2. 目录结构
 
 ```text
 application/samples/peripheral/smart_car/
-├── CMakeLists.txt          # 顶层构建脚本（负责调度 Drivers 和 Apps）
-├── Kconfig                 # 顶层菜单配置（定义 Run Mode）
+├── CMakeLists.txt          # 顶层构建脚本
+├── Kconfig                 # 顶层配置菜单
 ├── README.md               # 本文件
 │
-├── drivers/                # 【硬件驱动层】(Hardware Abstraction Layer)
-│   ├── CMakeLists.txt      # 驱动自动收集脚本
-│   ├── l9110s/             # L9110S 驱动 (bsp_l9110s.c/h)
-│   ├── hcsr04/             # HC-SR04 驱动
-│   ├── tcrt5000/           # TCRT5000 驱动
-│   ├── sg90/               # SG90 驱动
-│   ├── ssd1306/            # SSD1306 OLED 驱动
-│   ├── wifi_client/        # WiFi 连接封装
+├── drivers/                # 【硬件驱动层】
+│   ├── l9110s/             # 电机驱动
+│   ├── hcsr04/             # 超声波驱动
+│   ├── tcrt5000/           # 红外循迹驱动
+│   ├── sg90/               # 舵机驱动
+│   ├── ssd1306/            # OLED 驱动
+│   ├── wifi_client/        # WiFi 通信封装
 │   └── bt_spp_server/      # 蓝牙 SPP 封装
 │
-└── apps/                   # 【应用业务层】(Applications & Tests)
-    ├── robot_demo/         # 智能小车综合应用 (循迹+避障+遥控)
+└── apps/                   # 【应用业务层】
+    ├── robot_demo/         # [核心] 智能小车综合应用 (循迹+避障+遥控)
     │   ├── CMakeLists.txt
-    │   ├── robot_demo.c    # 主程序入口
-    │   └── bsp_robot_...   # 仅供 Demo 使用的控制逻辑
+    │   ├── robot_demo.c    # 主程序：状态机与任务入口
+    │   └── robot_service.c # 业务逻辑：车辆控制算法与协议解析
     │
     ├── test_l9110s/        # 单元测试：电机
     ├── test_hcsr04/        # 单元测试：超声波
     ├── test_sg90/          # 单元测试：舵机
-    ├── test_.../           # 其他单元测试
-    └── CMakeLists.txt      # (各 App 内部均有独立的构建脚本)
+    ├── test_tcrt5000/      # 单元测试：红外循迹
+    ├── test_ssd1306/       # 单元测试：OLED显示
+    ├── test_wifi/          # 单元测试：WiFi连接
+    ├── test_bt_spp/        # 单元测试：蓝牙透传
+    └── CMakeLists.txt
 ```
 
 ## 硬件连接
 
-> **重要提示**: 以下引脚定义基于当前代码配置，请严格按照此接线，否则可能导致设备无法工作或损坏！
-
-### 1. L9110S 电机驱动
-
-| 功能 | GPIO引脚 | 标识 | 说明 |
-|------|---------|-----------|------|
-| 左轮 A | GPIO 6 | MOTOR_IN1 | PWM控制 |
-| 左轮 B | GPIO 7 | MOTOR_IN2 | PWM控制 |
-| 右轮 A | GPIO 8 | MOTOR_IN3 | PWM控制 |
-| 右轮 B | GPIO 9 | MOTOR_IN4 | PWM控制 |
-
-### 2. 传感器与外设
+> **重要提示**: 以下引脚定义基于当前代码配置，请严格按照此接线。
 
 | 模块 | 功能 | GPIO引脚 | 备注 |
-|------|------|---------|------|
-| **HC-SR04** | TRIG (触发) | GPIO 11 | - |
-| | ECHO (接收) | GPIO 12 | - |
-| **TCRT5000** | 左传感器 | GPIO 4 | 需要 PIN_MODE_2 |
-| (循迹) | 中传感器 | GPIO 2 | 需要 PIN_MODE_0 |
-| | 右传感器 | GPIO 0 | 需要 PIN_MODE_0 |
-| **SG90** | PWM信号 | GPIO 13 | LED2 复用 |
-| **SSD1306** | SCL (时钟) | GPIO 15 | I2C1 |
-| (OLED) | SDA (数据) | GPIO 16 | I2C1 |
-| **按键** | 模式切换 | GPIO 3 | KEY1 |
+| :--- | :--- | :--- | :--- |
+| **L9110S 电机** | 左轮 A/B | GPIO 6 / 7 | PWM 控制 |
+| | 右轮 A/B | GPIO 8 / 9 | PWM 控制 |
+| **HC-SR04** | TRIG / ECHO | GPIO 11 / 12 | 超声波测距 |
+| **TCRT5000** | 左 / 中 / 右 | GPIO 4 / 2 / 0 | 循迹传感器 |
+| **SG90 舵机** | PWM 信号 | GPIO 13 | 头部舵机 |
+| **SSD1306** | SCL / SDA | GPIO 15 / 16 | I2C OLED 显示屏 |
+| **按键** | 模式切换 | GPIO 3 | KEY1 (低电平触发) |
 
-## 使用方法
+## 运行模式与功能说明
 
-### 1. 进入配置菜单
+本模块采用 **“单应用模式”**，请在 `menuconfig` 的 `Select Running Application` 中选择对应的任务。
 
-运行 menuconfig：
+### 1. 综合应用 (Robot Demo)
 
-```bash
-python build.py menuconfig
-```
+**功能**：集成循迹、避障、WiFi遥控的完整业务逻辑。
+**操作**：单击 KEY1 按键循环切换以下 4 种模式。
 
-导航路径：
-`Application` → `Config the application` → `Enable the Sample of peripheral` → 启用 `Support Smart Car Sample`。
+*   **待机模式 (Standby)**
+    *   **行为**：电机锁定，LED 呼吸闪烁。
+    *   **显示**：OLED 显示本机 IP 地址及 "Mode: Standby"。
+*   **遥控模式 (Remote)**
+    *   **行为**：响应 TCP/UDP 上位机指令，支持线性调速与舵机转向。
+    *   **保护**：具备 500ms 超时急停保护。
+*   **循迹模式 (Tracking)**
+    *   **行为**：根据底部 3 路红外传感器状态，自动沿黑线行驶。
+*   **避障模式 (Avoid)**
+    *   **行为**：自动前进。当距离 < 20cm 时，停车并操作舵机“摇头”寻找无障碍路径。
 
-进入 `Smart Car Configuration` 菜单。
+#### 远程控制协议 (Remote Protocol)
 
-### 2. 选择运行模式 (Run Mode)
+上位机通过 WiFi 发送 4 字节 Hex 数据流（25ms/帧）：
 
-本模块采用 **“单应用模式”**，你必须在 `Select Running Application` 菜单中选择**一项**具体的任务。系统会自动勾选该任务所需的底层驱动。
+| 字节 | 类型 | 含义 | 说明 |
+| :--- | :--- | :--- | :--- |
+| **Byte 0** | `int8_t` | **动力** | `0`:停, `[1,100]`:前, `[-100,-1]`:后 (补码) |
+| **Byte 1** | `int8_t` | **方向** | `0`:中, `[1,100]`:左, `[-100,-1]`:右 (补码) |
+| **Byte 2** | `int8_t` | **备用** | 保留位 |
+| **Byte 3** | `int8_t` | **校验** | `Byte[0] ^ Byte[1] ^ Byte[2]` |
 
-可选模式如下：
+---
 
-#### A. 综合应用
-*   **Robot Demo (Tracking & Obstacle Avoidance)**
-    *   这是默认的主程序。
-    *   功能：集成循迹、避障、WiFi/蓝牙遥控。
-    *   操作：通过 KEY1 按键切换工作模式（停止 -> 循迹 -> 避障 -> ...）。
+### 2. 单元测试 (Unit Tests)
 
-#### B. 单元测试 (Unit Tests)
-用于独立验证某个硬件模块是否正常工作：
-*   **Test: L9110S Motor** - 电机转动测试（前/后/左/右）。
-*   **Test: HC-SR04 Ultrasonic** - 串口打印测距数据 (cm)。
-*   **Test: TCRT5000 Line Sensor** - 串口打印黑线识别状态。
-*   **Test: SG90 Servo** - 舵机 0°~180° 往复扫描。
-*   **Test: SSD1306 OLED** - 屏幕显示测试图案和文字。
-*   **Test: WiFi Client** - 测试连接路由器并获取 IP。
-*   **Test: Bluetooth SPP** - 开启蓝牙广播，测试数据透传。
+为确保硬件正常，提供了独立的测试工程供开发者逐一验证：
 
-
-
-## 功能详细说明
-
-### 综合应用 (Robot Demo)
-
-**工作模式循环：**
-1.  **Idle (停止)**: 待机状态，屏幕显示 "Stop"。
-2.  **Tracking (循迹)**: 依靠底部 3 路红外传感器沿黑线行驶。
-3.  **Obstacle (避障)**: 依靠超声波测距，遇障碍物自动转向；舵机辅助扫描前方。
-4.  **Remote (遥控)**:
-    *   **WiFi**: 连接 TCP 服务端（端口 8888）。
-    *   **Bluetooth**: 广播名称 "WS63_SmartCar"，支持 SPP 透传指令。
-
-**控制协议 (TCP / SPP):**
-*   `'0'` / `'F'`: 前进 (Forward)
-*   `'1'` / `'B'`: 后退 (Backward)
-*   `'2'` / `'L'`: 左转 (Left)
-*   `'3'` / `'R'`: 右转 (Right)
-*   `'4'` / `'S'`: 停止 (Stop)
-
-### 驱动层 (Drivers)
-
-所有驱动位于 `drivers/` 目录下，仅包含 `.c` 和 `.h` 文件。
-*   **依赖管理**: 通过 CMake 的 `CONFIG_SMART_CAR_DRIVER_XXX` 开关自动控制编译。
-*   **接口统一**: 提供标准的 Init / Deinit / Control 接口。
+*   **Test: L9110S Motor**
+    *   功能：循环执行“前进 -> 后退 -> 左转 -> 右转 -> 停止”。
+    *   验证：观察轮子转动方向是否正确。
+*   **Test: HC-SR04 Ultrasonic**
+    *   功能：每 500ms 采集一次距离并通过串口打印。
+    *   验证：使用串口助手查看日志 `Distance: xx cm`。
+*   **Test: TCRT5000 Line Sensor**
+    *   功能：实时读取 3 路 GPIO 电平。
+    *   验证：遮挡传感器，观察串口日志电平变化。
+*   **Test: SG90 Servo**
+    *   功能：舵机在 0° ~ 180° 之间往复扫描。
+    *   验证：观察舵机摆动角度。
+*   **Test: SSD1306 OLED**
+    *   功能：刷屏显示测试图案、字符和数字。
+    *   验证：屏幕显示正常，无坏点或乱码。
+*   **Test: WiFi Client**
+    *   功能：连接指定路由器并获取 IP 地址。
+    *   验证：串口打印 `WiFi Connected, IP: ...`。
+*   **Test: Bluetooth SPP**
+    *   功能：开启蓝牙广播 "WS63_SPP_Test"，等待手机连接并透传数据。
+    *   验证：手机搜到蓝牙设备，发送数据能在串口看到回显。
 
 ## 开发者指南
 
-### 如何添加新模块？
+### 如何编译与烧录
+
+1.  **进入配置菜单**
+    ```bash
+    python build.py menuconfig
+    ```
+2.  **选择应用**
+    导航至 `Application` -> `Support Smart Car Sample` -> `Select Running Application`。
+    选择 `Robot Demo` 或具体的 `Test: ...` 模块。
+3.  **编译**
+    保存配置并退出，脚本自动开始编译。
+
+### 如何添加新模块
 
 1.  **创建驱动**: 在 `drivers/` 下新建文件夹（如 `beep`），放入 `bsp_beep.c/h`。
 2.  **注册驱动**:
@@ -161,7 +162,9 @@ python build.py menuconfig
     *   在 `apps/` 下新建 `test_beep`，放入 `beep_example.c` 和 `CMakeLists.txt`。
     *   在 `Kconfig` 的 "Run Mode" Choice 中添加 `RUN_BEEP_TEST` 选项。
 
+## 更新记录
 
-## 更新日期
-
-2025-01-13
+*   **2025-01-14**:
+    *   升级通信协议为 4字节 HEX 格式，支持线性调速。
+    *   重构项目目录，分离业务逻辑 (`robot_demo`) 与 控制逻辑 (`robot_service`)。
+    *   完善单元测试说明文档。
