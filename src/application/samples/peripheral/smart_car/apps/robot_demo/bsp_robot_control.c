@@ -84,7 +84,6 @@ static void robot_wifi_lock(void);
 static void robot_wifi_unlock(void);
 static const char *robot_wifi_server_ip(void);
 static uint16_t robot_wifi_server_port(void);
-
 static osal_task *g_wifi_tcp_task_handle = NULL;
 static bool g_wifi_tcp_task_started = false;
 static osal_mutex g_wifi_mutex;
@@ -97,7 +96,10 @@ static size_t g_wifi_rx_filled = 0;
 static bool g_wifi_timeout_braked = false;
 static unsigned long long g_trace_last_report = 0;
 static unsigned long long g_obstacle_last_report = 0;
-
+static unsigned int g_trace_left_sensor = 0;
+static unsigned int g_trace_right_sensor = 0;
+static float g_obstacle_last_distance = 0.0f;
+static unsigned int g_obstacle_last_servo_angle = 90;
 /* =========================================================================
  *  底层辅助函数 (OLED / WiFi / Motor)
  * ========================================================================= */
@@ -255,6 +257,8 @@ void robot_trace_mode(void)
     while (g_car_status == CAR_TRACE_STATUS) {
         left = tcrt5000_get_left();
         right = tcrt5000_get_right();
+        g_trace_left_sensor = left;
+        g_trace_right_sensor = right;
 
         if (left == TCRT5000_ON_BLACK && right == TCRT5000_ON_BLACK) {
             // 两边黑 -> 直行
@@ -273,8 +277,12 @@ void robot_trace_mode(void)
         unsigned long long now = osal_get_jiffies();
         if (now - g_trace_last_report > osal_msecs_to_jiffies(500)) {
             g_trace_last_report = now;
-            robot_report_state("trace", (float)(left - right));
+            char payload[96] = {0};
+            snprintf(payload, sizeof(payload), "{\"mode\":\"trace\",\"left\":%u,\"right\":%u,\"diff\":%d}",
+                     g_trace_left_sensor, g_trace_right_sensor, (int)left - (int)right);
+            robot_report_state(payload, 0.0f);
         }
+
         osal_msleep(20);
     }
 
@@ -306,14 +314,17 @@ static unsigned int engine_go_where(void)
     engine_turn_left();
     osal_msleep(200);
     left_distance = hcsr04_get_distance();
+    g_obstacle_last_distance = left_distance;
     osal_msleep(100);
 
     regress_middle();
+
     osal_msleep(200);
 
     engine_turn_right();
     osal_msleep(200);
     right_distance = hcsr04_get_distance();
+    g_obstacle_last_distance = right_distance;
     osal_msleep(100);
 
     regress_middle();
@@ -355,12 +366,17 @@ void robot_obstacle_avoidance_mode(void)
 
     while (g_car_status == CAR_OBSTACLE_AVOIDANCE_STATUS) {
         distance = hcsr04_get_distance();
+        g_obstacle_last_distance = distance;
         car_where_to_go(distance);
         unsigned long long now = osal_get_jiffies();
         if (now - g_obstacle_last_report > osal_msecs_to_jiffies(500)) {
             g_obstacle_last_report = now;
-            robot_report_state("obstacle", distance);
+            char payload[128] = {0};
+            snprintf(payload, sizeof(payload), "{\"mode\":\"obstacle\",\"distance\":%.2f,\"servo\":%u}",
+                     g_obstacle_last_distance, g_obstacle_last_servo_angle);
+            robot_report_state(payload, distance);
         }
+
         osal_msleep(50);
     }
 
@@ -452,7 +468,12 @@ void robot_report_state(const char *mode, float metric)
     if (mode == NULL) {
         return;
     }
-    printf("[Report] %s => %.2f\r\n", mode, metric);
+    // 直接输出，不进行额外的格式化（因为 mode 可能已经是 JSON 字符串）
+    // 注意：该系统 printf 不支持浮点数格式化，将浮点数转换为整数*100输出
+    int metric_int = (int)(metric * 100);
+    printf("[Report] ");
+    printf(mode);
+    printf(" => %d\r\n", metric_int);
 }
 
 /* =========================================================================
