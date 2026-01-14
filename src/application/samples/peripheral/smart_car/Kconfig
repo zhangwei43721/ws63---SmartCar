@@ -16,6 +16,7 @@ choice SMART_CAR_RUN_MODE
         select SMART_CAR_DRIVER_TCRT5000
         select SMART_CAR_DRIVER_SG90
         select SMART_CAR_DRIVER_SSD1306
+        select SMART_CAR_DRIVER_WIFI
         help
             主要集成应用
 
