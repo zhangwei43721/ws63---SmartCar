@@ -19,7 +19,6 @@
 
 #ifndef __BSP_SG90_H__
 #define __BSP_SG90_H__
-
 #include <stdint.h>
 #include "pinctrl.h"
 #include "gpio.h"
@@ -48,5 +47,6 @@
 void sg90_init(void);
 void sg90_set_angle(unsigned int angle);
 unsigned int sg90_get_angle(void);
+void sg90_pwm_step(void);
 
 #endif /* __BSP_SG90_H__ */
