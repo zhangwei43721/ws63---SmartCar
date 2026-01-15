@@ -35,19 +35,20 @@ static unsigned int engine_go_where(void)
     float left_distance = 0.0f;
     float right_distance = 0.0f;
 
+    // 1. 左转看
     engine_turn_left();
-    osal_msleep(200);
+    // 舵机已经转到位 (内部约15*20ms=300ms)，稍微停顿稳定读数即可
+    osal_msleep(50);
     left_distance = hcsr04_get_distance();
-    osal_msleep(100);
+    robot_mgr_update_distance(left_distance);
 
-    regress_middle();
-    osal_msleep(200);
-
+    // 2. 右转看 (直接从左转到右，不需要回中)
     engine_turn_right();
-    osal_msleep(200);
+    osal_msleep(50);
     right_distance = hcsr04_get_distance();
-    osal_msleep(100);
+    robot_mgr_update_distance(right_distance);
 
+    // 3. 回中
     regress_middle();
 
     int left_cm_x100 = (int)(left_distance * 100.0f);

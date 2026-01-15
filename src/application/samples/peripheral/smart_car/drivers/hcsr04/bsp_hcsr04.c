@@ -105,5 +105,11 @@ float hcsr04_get_distance(void)
     // 声速约为 340m/s = 0.034 cm/us
     distance = (float)pulse_width * 0.034f / 2.0f;
 
+    // 限制在有效测量范围内 (2cm ~ 500cm)
+    // 超出范围的值通常表示测量异常或超出量程
+    if (distance < HCSR04_MIN_DISTANCE_CM || distance > HCSR04_MAX_DISTANCE_CM) {
+        return 0.0f;
+    }
+
     return distance;
 }

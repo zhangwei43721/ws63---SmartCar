@@ -35,6 +35,10 @@
 // 测距参数
 #define HCSR04_TIMEOUT_US 40000 // 超时时间 (us)
 
+// HC-SR04 有效测量范围: 2cm ~ 500cm
+#define HCSR04_MIN_DISTANCE_CM 2.0f
+#define HCSR04_MAX_DISTANCE_CM 500.0f
+
 /**
  * @brief 初始化HC-SR04超声波传感器
  * @return 无
