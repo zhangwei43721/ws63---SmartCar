@@ -3,16 +3,13 @@
  * @file        sg90_example.c
  * @author      SkyForever
  * @version     V1.0
- * @date        2025-01-09
+ * @date        2025-01-12
  * @brief       LiteOS SG90舵机示例
  * @license     Copyright (c) 2024-2034
  ****************************************************************************************************
  * @attention
  *
  * 实验平台:WS63
- * 在线视频:
- * 公司网址:
- * 购买地址:
  *
  ****************************************************************************************************
  * 实验现象：SG90舵机从0度转到180度，再从180度转回0度，循环往复
@@ -25,7 +22,8 @@
 #include "soc_osal.h"
 #include "gpio.h"
 #include "app_init.h"
-#include "bsp_include/bsp_sg90.h"
+#include "watchdog.h"
+#include "../../drivers/sg90/bsp_sg90.h"
 
 #define SG90_TASK_STACK_SIZE 0x1000
 #define SG90_TASK_PRIO 24
@@ -42,37 +40,23 @@ static void *sg90_task(const char *arg)
     UNUSED(arg);
     int angle = SG90_ANGLE_MIN;
     int step = SG90_ANGLE_STEP;
-
-    printf("SG90 servo task start\n");
-
-    // 初始化舵机
     sg90_init();
 
     while (1) {
-        // 设置角度
-        sg90_set_angle((unsigned int)angle);
-        printf("SG90 angle: %d\n", angle);
+        uapi_watchdog_kick();                // 喂狗
+        sg90_set_angle((unsigned int)angle); // 设置目标角度
+        sg90_pwm_step();                     // 发送PWM波形
 
-        // 更新角度
+        // 更新角度逻辑
         angle += step;
-
-        // 到达边界时反向
         if (angle >= SG90_ANGLE_MAX) {
             angle = SG90_ANGLE_MAX;
             step = -SG90_ANGLE_STEP;
-            // 在最大角度停顿一下
-            osal_msleep(10);
         } else if (angle <= SG90_ANGLE_MIN) {
             angle = SG90_ANGLE_MIN;
             step = SG90_ANGLE_STEP;
-            // 在最小角度停顿一下
-            osal_msleep(10);
         }
-
-        // 延时
-        osal_msleep(SG90_DELAY_MS);
     }
-
     return NULL;
 }
 

@@ -40,21 +40,28 @@ static void *sg90_task(const char *arg)
     UNUSED(arg);
     int angle = SG90_ANGLE_MIN;
     int step = SG90_ANGLE_STEP;
+
+    printf("SG90 servo task start\n");
     sg90_init();
 
     while (1) {
-        uapi_watchdog_kick();                // 喂狗
-        sg90_set_angle((unsigned int)angle); // 设置目标角度
-        sg90_pwm_step();                     // 发送PWM波形
+        // 设置目标角度，后台守护任务会持续发送PWM波形
+        sg90_set_angle((unsigned int)angle);
+        
+        // 由于后台守护任务会持续发送PWM波形，这里只需要延时即可
+        osal_msleep(20);  // 小延时让舵机有时间反应
 
         // 更新角度逻辑
         angle += step;
+
         if (angle >= SG90_ANGLE_MAX) {
             angle = SG90_ANGLE_MAX;
             step = -SG90_ANGLE_STEP;
+            osal_msleep(500); // 到达边缘停顿 0.5s
         } else if (angle <= SG90_ANGLE_MIN) {
             angle = SG90_ANGLE_MIN;
             step = SG90_ANGLE_STEP;
+            osal_msleep(500); // 到达边缘停顿 0.5s
         }
     }
     return NULL;

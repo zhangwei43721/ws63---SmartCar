@@ -22,6 +22,7 @@
  */
 
 #include "pinctrl.h"
+#include "watchdog.h"
 #include "common_def.h"
 #include "soc_osal.h"
 #include "osal_timer.h"
@@ -34,7 +35,7 @@
 #define ROBOT_DEMO_TASK_STACK_SIZE CAR_CONTROL_DEMO_TASK_STACK_SIZE
 #define ROBOT_DEMO_TASK_PRIO CAR_CONTROL_DEMO_TASK_PRIORITY
 
-/* GPIO 配置（仅 KEY1 用于模式切换） */
+/* GPIO 配置（KEY1，用于模式切换） */
 #define ROBOT_MODE_SWITCH_GPIO 3
 
 static unsigned long long g_mode_switch_tick = 0;
@@ -149,6 +150,7 @@ static void *robot_demo_task(const char *arg)
     // 3. 主循环
     while (1) {
         robot_mgr_process_loop();
+        uapi_watchdog_kick();
 
         // 短暂延时，让出 CPU 时间片，避免任务饿死其他线程
         osal_msleep(20);
@@ -177,9 +179,9 @@ static void robot_demo_entry(void)
         if (ret != OSAL_SUCCESS) {
             printf("智能小车演示: 设置任务优先级失败\r\n");
         }
-    } else {
+    } else
         printf("智能小车演示: 创建任务失败\r\n");
-    }
+
     osal_kthread_unlock();
 }
 

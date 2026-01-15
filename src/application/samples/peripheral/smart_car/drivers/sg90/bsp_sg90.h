@@ -25,6 +25,7 @@
 #include "hal_gpio.h"
 #include "tcxo.h"
 #include "soc_osal.h"
+#include <stdio.h>
 
 // 舵机引脚定义 (JP4 舵机接口 SG1)
 // 注意: GPIO_13 也连接了 LED2 (蓝色)，控制舵机时蓝色LED2会闪烁
@@ -47,6 +48,5 @@
 void sg90_init(void);
 void sg90_set_angle(unsigned int angle);
 unsigned int sg90_get_angle(void);
-void sg90_pwm_step(void);
 
 #endif /* __BSP_SG90_H__ */
