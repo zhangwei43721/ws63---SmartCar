@@ -214,6 +214,27 @@ static void handle_api_ctrl(int fd, const char *query)
     http_send_response(fd, "200 OK", "application/json", "{\"ok\":true}\n");
 }
 
+static void handle_api_status(int fd)
+{
+    RobotState state;
+    robot_mgr_get_state_copy(&state);
+
+    char json_body[256];
+    int dist_x100 = (int)(state.distance * 100.0f);
+
+    (void)snprintf(json_body, sizeof(json_body),
+                   "{\"mode\":%u,\"ang\":%u,\"dist\":%d.%02d,\"ir\":[%u,%u,%u]}",
+                   (unsigned int)state.mode,
+                   state.servo_angle,
+                   dist_x100 / 100,
+                   (dist_x100 >= 0 ? dist_x100 % 100 : (-dist_x100) % 100),
+                   state.ir_left,
+                   state.ir_middle,
+                   state.ir_right);
+
+    http_send_response(fd, "200 OK", "application/json", json_body);
+}
+
 static void handle_http(int fd, const char *method, const char *path, const char *query)
 {
     if (strcmp(method, "OPTIONS") == 0) {
@@ -239,6 +260,10 @@ static void handle_http(int fd, const char *method, const char *path, const char
     }
     if (strcmp(path, "/api/ctrl") == 0) {
         handle_api_ctrl(fd, query);
+        return;
+    }
+    if (strcmp(path, "/api/status") == 0) {
+        handle_api_status(fd);
         return;
     }
 

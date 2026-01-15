@@ -30,6 +30,7 @@ static void apply_servo_cmd(int8_t val)
 {
     if (val == 0) {
         sg90_set_angle(90);
+        robot_mgr_update_servo_angle(90);
         return;
     }
 
@@ -49,6 +50,7 @@ static void apply_servo_cmd(int8_t val)
     }
 
     sg90_set_angle((unsigned int)angle);
+    robot_mgr_update_servo_angle((unsigned int)angle);
 }
 
 void mode_remote_run(void)
@@ -81,6 +83,4 @@ void mode_remote_run(void)
     car_stop();
 }
 
-void mode_remote_tick(void)
-{
-}
+void mode_remote_tick(void) {}

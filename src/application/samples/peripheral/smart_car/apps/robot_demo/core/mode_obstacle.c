@@ -15,16 +15,19 @@
 static void engine_turn_left(void)
 {
     sg90_set_angle(150);
+    robot_mgr_update_servo_angle(150);
 }
 
 static void engine_turn_right(void)
 {
     sg90_set_angle(30);
+    robot_mgr_update_servo_angle(30);
 }
 
 static void regress_middle(void)
 {
     sg90_set_angle(90);
+    robot_mgr_update_servo_angle(90);
 }
 
 static unsigned int engine_go_where(void)
@@ -89,6 +92,7 @@ void mode_obstacle_run(void)
 
     while (robot_mgr_get_status() == CAR_OBSTACLE_AVOIDANCE_STATUS) {
         distance = hcsr04_get_distance();
+        robot_mgr_update_distance(distance);
         car_where_to_go(distance);
 
         unsigned long long now = osal_get_jiffies();

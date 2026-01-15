@@ -19,6 +19,13 @@
 
 static CarStatus g_status = CAR_STOP_STATUS;
 
+// 全局机器人状态，供 HTTP 服务读取
+static RobotState g_robot_state = {0};
+
+// 互斥锁保护状态访问
+static osal_mutex g_state_mutex;
+static bool g_state_mutex_inited = false;
+
 static void robot_mgr_run_standby(void)
 {
     car_stop();
@@ -40,6 +47,19 @@ static void robot_mgr_run_standby(void)
     car_stop();
 }
 
+static void robot_mgr_state_mutex_init(void)
+{
+    if (g_state_mutex_inited) {
+        return;
+    }
+
+    if (osal_mutex_init(&g_state_mutex) == OSAL_SUCCESS) {
+        g_state_mutex_inited = true;
+    } else {
+        printf("RobotMgr: state mutex init failed\r\n");
+    }
+}
+
 void robot_mgr_init(void)
 {
     l9110s_init();
@@ -51,6 +71,7 @@ void robot_mgr_init(void)
     net_service_init();
     http_ctrl_service_init();
 
+    robot_mgr_state_mutex_init();
     robot_mgr_set_status(CAR_STOP_STATUS);
 
     printf("RobotMgr: initialized\r\n");
@@ -64,6 +85,16 @@ CarStatus robot_mgr_get_status(void)
 void robot_mgr_set_status(CarStatus status)
 {
     g_status = status;
+
+    // 更新状态中的模式
+    if (g_state_mutex_inited) {
+        (void)osal_mutex_lock(&g_state_mutex);
+    }
+    g_robot_state.mode = status;
+    if (g_state_mutex_inited) {
+        osal_mutex_unlock(&g_state_mutex);
+    }
+
     ui_show_mode_page(status);
 }
 
@@ -86,5 +117,55 @@ void robot_mgr_process_loop(void)
             break;
         default:
             break;
+    }
+}
+
+void robot_mgr_update_servo_angle(unsigned int angle)
+{
+    if (g_state_mutex_inited) {
+        (void)osal_mutex_lock(&g_state_mutex);
+    }
+    g_robot_state.servo_angle = angle;
+    if (g_state_mutex_inited) {
+        osal_mutex_unlock(&g_state_mutex);
+    }
+}
+
+void robot_mgr_update_distance(float distance)
+{
+    if (g_state_mutex_inited) {
+        (void)osal_mutex_lock(&g_state_mutex);
+    }
+    g_robot_state.distance = distance;
+    if (g_state_mutex_inited) {
+        osal_mutex_unlock(&g_state_mutex);
+    }
+}
+
+void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right)
+{
+    if (g_state_mutex_inited) {
+        (void)osal_mutex_lock(&g_state_mutex);
+    }
+    g_robot_state.ir_left = left;
+    g_robot_state.ir_middle = middle;
+    g_robot_state.ir_right = right;
+    if (g_state_mutex_inited) {
+        osal_mutex_unlock(&g_state_mutex);
+    }
+}
+
+void robot_mgr_get_state_copy(RobotState *out)
+{
+    if (out == NULL) {
+        return;
+    }
+
+    if (g_state_mutex_inited) {
+        (void)osal_mutex_lock(&g_state_mutex);
+    }
+    *out = g_robot_state;
+    if (g_state_mutex_inited) {
+        osal_mutex_unlock(&g_state_mutex);
     }
 }

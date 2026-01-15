@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart Car Web Control</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header>
+    <div class="app-title">
+      SmartCar <span style="font-size: 0.8em; color: #888">K12</span>
+    </div>
+    <div class="config-btn" onclick="toggleConfig()">⚙️</div>
+  </header>
+
+  <!-- 可视化舞台 -->
+  <div id="stage">
+    <div class="car-wrapper">
+      <div class="car-container">
+        <!-- 舵机雷达系统 -->
+        <div class="servo-head" id="servoHead">
+          <div class="servo-eye"></div>
+          <div class="servo-eye"></div>
+          <!-- 扫描波束 -->
+          <div class="radar-beam" id="radarBeam"></div>
+        </div>
+
+        <div class="wheel left" id="wheelL"></div>
+        <div class="car-body">
+          <!-- 循迹传感器 (L M R) -->
+          <div class="ir-bar">
+            <div class="ir-sensor" id="irL"></div>
+            <div class="ir-sensor" id="irM"></div>
+            <div class="ir-sensor" id="irR"></div>
+          </div>
+          <!-- 尾轮 -->
+          <div class="castor-wheel"></div>
+        </div>
+        <div class="wheel right" id="wheelR"></div>
+      </div>
+      <!-- 状态显示 -->
+      <div class="car-status">
+        <span id="statusDist">-- cm</span>
+        <span id="statusAngle">90°</span>
+        <span id="statusConn">●</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部面板 -->
+  <div id="controls">
+    <div class="mode-group">
+      <button class="mode-btn active" onclick="changeMode('standby')">
+        待机
+      </button>
+      <button class="mode-btn" onclick="changeMode('remote')">遥控</button>
+      <button class="mode-btn" onclick="changeMode('tracking')">循迹</button>
+      <button class="mode-btn" onclick="changeMode('avoid')">避障</button>
+    </div>
+
+    <div id="joystick-zone" class="disabled">
+      <div
+        style="
+          position: absolute;
+          bottom: 10px;
+          width: 100%;
+          text-align: center;
+          color: #ccc;
+          font-size: 12px;
+        "
+      >
+        虚拟摇杆 (仅遥控模式可用)
+      </div>
+    </div>
+  </div>
+
+  <!-- 配置弹窗 -->
+  <div class="modal" id="configModal">
+    <div class="modal-content">
+      <h3 style="margin-top: 0">连接设置</h3>
+      <div class="input-group">
+        <label>小车 IP 地址</label>
+        <input type="text" id="cfgIP" value="192.168.3.151" />
+      </div>
+      <div class="input-group">
+        <label>端口 (Port)</label>
+        <input type="number" id="cfgPort" value="8080" />
+      </div>
+      <button class="btn-primary" onclick="saveConfig()">保存并连接</button>
+    </div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

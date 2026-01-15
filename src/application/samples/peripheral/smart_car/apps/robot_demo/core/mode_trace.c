@@ -24,6 +24,9 @@ void mode_trace_run(void)
         middle = tcrt5000_get_middle();
         right = tcrt5000_get_right();
 
+        // 更新红外传感器状态
+        robot_mgr_update_ir_status(left, middle, right);
+
         if (middle == TCRT5000_ON_BLACK) {
             car_forward();
         } else if (left == TCRT5000_ON_BLACK) {

@@ -54,8 +54,8 @@ void sg90_set_angle(unsigned int angle)
     g_current_angle = angle;
 
     // 1. 计算高电平时间 (us)
-    unsigned int high_time_us = SG90_PULSE_0_DEG +
-                                (unsigned int)((angle * (SG90_PULSE_180_DEG - SG90_PULSE_0_DEG)) / 180U);
+    unsigned int high_time_us =
+        SG90_PULSE_0_DEG + (unsigned int)((angle * (SG90_PULSE_180_DEG - SG90_PULSE_0_DEG)) / 180.0);
 
     // 2. 计算低电平时间 (us)
     unsigned int low_time_us = SG90_PWM_PERIOD_US - high_time_us;
