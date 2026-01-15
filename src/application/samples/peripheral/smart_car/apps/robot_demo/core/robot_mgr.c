@@ -6,6 +6,7 @@
 
 #include "../services/net_service.h"
 #include "../services/ui_service.h"
+#include "../services/http_ctrl_service.h"
 
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../../drivers/l9110s/bsp_l9110s.h"
@@ -48,6 +49,7 @@ void robot_mgr_init(void)
 
     ui_service_init();
     net_service_init();
+    http_ctrl_service_init();
 
     robot_mgr_set_status(CAR_STOP_STATUS);
 

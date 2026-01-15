@@ -47,8 +47,9 @@ static int g_tcp_socket_fd = -1;
 static uint8_t g_rx_buffer[4];
 static size_t g_rx_filled = 0;
 
-static uint8_t g_latest_cmd = 0;
-static uint8_t g_latest_val = 0;
+static int8_t g_latest_motor = 0;
+static int8_t g_latest_servo1 = 0;
+static int8_t g_latest_servo2 = 0;
 static bool g_has_latest = false;
 
 static void net_service_mutex_init(void)
@@ -112,22 +113,33 @@ const char *net_service_get_ip(void)
     return g_ip;
 }
 
-bool net_service_pop_cmd(uint8_t *cmd_out, uint8_t *val_out)
+bool net_service_pop_cmd(int8_t *motor_out, int8_t *servo1_out, int8_t *servo2_out)
 {
-    if (cmd_out == NULL || val_out == NULL) {
+    if (motor_out == NULL || servo1_out == NULL || servo2_out == NULL) {
         return false;
     }
 
     net_service_lock();
     bool has = g_has_latest;
     if (has) {
-        *cmd_out = g_latest_cmd;
-        *val_out = g_latest_val;
+        *motor_out = g_latest_motor;
+        *servo1_out = g_latest_servo1;
+        *servo2_out = g_latest_servo2;
         g_has_latest = false;
     }
     net_service_unlock();
 
     return has;
+}
+
+void net_service_push_cmd(int8_t motor, int8_t servo1, int8_t servo2)
+{
+    net_service_lock();
+    g_latest_motor = motor;
+    g_latest_servo1 = servo1;
+    g_latest_servo2 = servo2;
+    g_has_latest = true;
+    net_service_unlock();
 }
 
 bool net_service_send_text(const char *text)
@@ -307,8 +319,9 @@ static void net_service_handle_frame(const uint8_t frame[4])
     }
 
     net_service_lock();
-    g_latest_cmd = frame[0];
-    g_latest_val = frame[1];
+    g_latest_motor = (int8_t)frame[0];
+    g_latest_servo1 = (int8_t)frame[1];
+    g_latest_servo2 = (int8_t)frame[2];
     g_has_latest = true;
     net_service_unlock();
 }

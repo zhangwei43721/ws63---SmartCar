@@ -15,23 +15,32 @@
 
 static unsigned long long g_last_cmd_tick = 0;
 
-static void apply_motor_cmd(uint8_t cmd)
+static void apply_motor_cmd(int8_t cmd)
 {
-    int8_t motor_cmd = (int8_t)cmd;
-
-    if (motor_cmd > 5) {
+    if (cmd > 0) {
         car_forward();
-    } else if (motor_cmd < -5) {
+    } else if (cmd < 0) {
         car_backward();
     } else {
         car_stop();
     }
 }
 
-static void apply_servo_cmd(uint8_t val)
+static void apply_servo_cmd(int8_t val)
 {
-    int8_t servo_cmd = (int8_t)val;
-    int angle = 90 + (servo_cmd * 90) / 100;
+    if (val == 0) {
+        sg90_set_angle(90);
+        return;
+    }
+
+    int sign = (val > 0) ? 1 : -1;
+    int mag = (val > 0) ? val : -val;
+    if (mag > 100) {
+        mag = 100;
+    }
+
+    int offset = (mag * 90) / 100;
+    int angle = 90 + (sign * offset);
 
     if (angle < (int)SG90_ANGLE_MIN) {
         angle = SG90_ANGLE_MIN;
@@ -50,12 +59,14 @@ void mode_remote_run(void)
     g_last_cmd_tick = osal_get_jiffies();
 
     while (robot_mgr_get_status() == CAR_WIFI_CONTROL_STATUS) {
-        uint8_t cmd;
-        uint8_t val;
+        int8_t motor;
+        int8_t servo1;
+        int8_t servo2;
 
-        if (net_service_pop_cmd(&cmd, &val)) {
-            apply_motor_cmd(cmd);
-            apply_servo_cmd(val);
+        if (net_service_pop_cmd(&motor, &servo1, &servo2)) {
+            apply_motor_cmd(motor);
+            apply_servo_cmd(servo1);
+            (void)servo2;
             g_last_cmd_tick = osal_get_jiffies();
         }
 
