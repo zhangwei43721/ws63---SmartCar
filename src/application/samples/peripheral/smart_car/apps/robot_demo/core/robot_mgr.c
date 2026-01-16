@@ -1,5 +1,6 @@
 #include "robot_mgr.h"
 #include "robot_config.h"
+#include "../services/udp_service.h"
 
 static CarStatus g_status = CAR_STOP_STATUS;
 
@@ -39,14 +40,14 @@ static void robot_mgr_run_standby(void)
 
     while (robot_mgr_get_status() == CAR_STOP_STATUS) {
         char ip_line[IP_BUFFER_SIZE] = {0};
-        const char *ip = net_service_get_ip();
+        const char *ip = udp_service_get_ip();
 
         if (ip != NULL)
             (void)snprintf(ip_line, sizeof(ip_line), "IP: %s", ip);
         else
             (void)snprintf(ip_line, sizeof(ip_line), "IP: Pending");
 
-        ui_render_standby(net_service_is_connected() ? "WiFi: Connected" : "WiFi: Connecting", ip_line);
+        ui_render_standby(udp_service_is_connected() ? "WiFi: Connected" : "WiFi: Connecting", ip_line);
         osal_msleep(STANDBY_UPDATE_DELAY_MS);
     }
 
@@ -79,9 +80,9 @@ void robot_mgr_init(void)
     sg90_init();
 
     ui_service_init();
-    net_service_init();
-    http_ctrl_service_init();
-
+    // net_service_init();
+    // http_ctrl_service_init();
+    udp_service_init();
     robot_mgr_state_mutex_init();
     robot_mgr_set_status(CAR_STOP_STATUS);
 

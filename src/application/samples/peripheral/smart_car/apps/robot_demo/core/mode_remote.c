@@ -9,51 +9,26 @@
 #include "mode_remote.h"
 #include "mode_common.h"
 #include "robot_config.h"
+#include "../services/udp_service.h"
+#include "../../../drivers/l9110s/bsp_l9110s.h"
 
 // 遥控命令超时时间
 static unsigned long long g_last_cmd_tick = 0;
 
 /**
- * @brief 执行电机控制命令
- * @param cmd 电机命令值（正数前进，负数后退，0停止）
+ * @brief 应用差速控制
+ * @param motor1 左电机速度 (-100~100)
+ * @param motor2 右电机速度 (-100~100)
+ * @param servo 舵机角度 (0~180)
  */
-static void apply_motor_cmd(int8_t cmd)
+static void apply_differential_control(int8_t motor1, int8_t motor2, int8_t servo)
 {
-    if (cmd > 0)
-        car_forward();
-    else if (cmd < 0)
-        car_backward();
-    else
-        car_stop();
-}
+    // 应用差速控制
+    l9110s_set_differential(motor1, motor2);
 
-/**
- * @brief 执行舵机控制命令
- * @param val 舵机命令值（-100到100，0为中心）
- */
-static void apply_servo_cmd(int8_t val)
-{
-    if (val == 0) {
-        sg90_set_angle(SERVO_MIDDLE_ANGLE);
-        robot_mgr_update_servo_angle(SERVO_MIDDLE_ANGLE);
-        return;
-    }
-
-    int sign = (val > 0) ? 1 : -1;
-    int mag = (val > 0) ? val : -val;
-    if (mag > 100)
-        mag = 100;
-
-    int offset = (mag * 90) / 100;
-    int angle = SERVO_MIDDLE_ANGLE + (sign * offset);
-
-    if (angle < (int)SG90_ANGLE_MIN)
-        angle = SG90_ANGLE_MIN;
-    else if (angle > (int)SG90_ANGLE_MAX)
-        angle = SG90_ANGLE_MAX;
-
-    sg90_set_angle((unsigned int)angle);
-    robot_mgr_update_servo_angle((unsigned int)angle);
+    // 应用舵机控制
+    sg90_set_angle((unsigned int)servo);
+    robot_mgr_update_servo_angle((unsigned int)servo);
 }
 
 /**
@@ -63,18 +38,19 @@ static void remote_run_func(ModeContext *ctx)
 {
     UNUSED(ctx);
 
-    int8_t motor, servo1, servo2;
-    if (net_service_pop_cmd(&motor, &servo1, &servo2)) {
-        apply_motor_cmd(motor);
-        apply_servo_cmd(servo1);
-        (void)servo2;
+    int8_t motor1, motor2, servo;
+    if (udp_service_pop_cmd(&motor1, &motor2, &servo)) {
+        apply_differential_control(motor1, motor2, servo);
         g_last_cmd_tick = osal_get_jiffies();
     }
 
     // 命令超时自动停车
     unsigned long long now = osal_get_jiffies();
-    if (now - g_last_cmd_tick > osal_msecs_to_jiffies(REMOTE_CMD_TIMEOUT_MS))
-        car_stop();
+    if (now - g_last_cmd_tick > osal_msecs_to_jiffies(REMOTE_CMD_TIMEOUT_MS)) {
+        l9110s_set_differential(0, 0);  // 双电机停止
+        sg90_set_angle(SERVO_MIDDLE_ANGLE);
+        robot_mgr_update_servo_angle(SERVO_MIDDLE_ANGLE);
+    }
 }
 
 /**

@@ -122,3 +122,53 @@ void car_stop(void)
     gpio_control(L9110S_RIGHT_A_GPIO, 1);
     gpio_control(L9110S_RIGHT_B_GPIO, 1);
 }
+
+/**
+ * @brief 设置单路电机PWM和方向
+ * @param a_gpio A相GPIO
+ * @param b_gpio B相GPIO
+ * @param speed 速度 -100~100
+ * @note 当前版本简化为纯GPIO控制，速度仅表示方向
+ *       未来可扩展为PWM控制实现真正的速度调节
+ */
+static void set_motor_gpio(unsigned int a_gpio, unsigned int b_gpio, int8_t speed)
+{
+    if (speed > 0) {
+        // 正转
+        gpio_control(a_gpio, 1);
+        gpio_control(b_gpio, 0);
+    } else if (speed < 0) {
+        // 反转
+        gpio_control(a_gpio, 0);
+        gpio_control(b_gpio, 1);
+    } else {
+        // 停止（刹车）
+        gpio_control(a_gpio, 1);
+        gpio_control(b_gpio, 1);
+    }
+}
+
+/**
+ * @brief 设置左轮电机速度和方向
+ */
+void l9110s_set_left_motor(int8_t speed)
+{
+    set_motor_gpio(L9110S_LEFT_A_GPIO, L9110S_LEFT_B_GPIO, speed);
+}
+
+/**
+ * @brief 设置右轮电机速度和方向
+ */
+void l9110s_set_right_motor(int8_t speed)
+{
+    set_motor_gpio(L9110S_RIGHT_A_GPIO, L9110S_RIGHT_B_GPIO, speed);
+}
+
+/**
+ * @brief 设置双轮差速
+ */
+void l9110s_set_differential(int8_t left_speed, int8_t right_speed)
+{
+    l9110s_set_left_motor(left_speed);
+    l9110s_set_right_motor(right_speed);
+}

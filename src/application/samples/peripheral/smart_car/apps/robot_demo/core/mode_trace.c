@@ -19,7 +19,7 @@ static void trace_run_func(ModeContext *ctx)
     unsigned int middle = tcrt5000_get_middle();
     unsigned int right = tcrt5000_get_right();
 
-    // 更新红外传感器状态
+    // 更新红外传感器状态到全局状态
     robot_mgr_update_ir_status(left, middle, right);
 
     // 根据传感器状态控制小车

@@ -77,3 +77,11 @@ src/analyzerJson/
 src/.vscode/launch.json
 src/build/config/target_config/ws63/__pycache__/config.cpython-311.pyc
 src/build/config/target_config/ws63/__pycache__/target_config.cpython-311.pyc
+src/application/samples/peripheral/smart_car/proxy/package-lock.json
+src/application/samples/peripheral/smart_car/proxy/node_modules/.package-lock.json
+src/application/samples/peripheral/smart_car/proxy/node_modules/ws/browser.js
+src/application/samples/peripheral/smart_car/proxy/node_modules/ws/index.js
+src/application/samples/peripheral/smart_car/proxy/node_modules/ws/wrapper.mjs
+src/application/samples/peripheral/smart_car/proxy/node_modules/ws/LICENSE
+src/application/samples/peripheral/smart_car/proxy/node_modules/ws/README.md
+src/application/samples/peripheral/smart_car/proxy/node_modules/ws/package.json

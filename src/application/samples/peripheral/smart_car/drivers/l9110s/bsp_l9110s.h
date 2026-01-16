@@ -73,4 +73,26 @@ void car_right(void);
  */
 void car_stop(void);
 
+/**
+ * @brief 设置左轮电机速度和方向
+ * @param speed 速度值 -100~100 (负=反转, 0=停止, 正=正转)
+ * @return 无
+ */
+void l9110s_set_left_motor(int8_t speed);
+
+/**
+ * @brief 设置右轮电机速度和方向
+ * @param speed 速度值 -100~100 (负=反转, 0=停止, 正=正转)
+ * @return 无
+ */
+void l9110s_set_right_motor(int8_t speed);
+
+/**
+ * @brief 设置双轮差速（遥控模式使用）
+ * @param left_speed 左轮速度 -100~100
+ * @param right_speed 右轮速度 -100~100
+ * @return 无
+ */
+void l9110s_set_differential(int8_t left_speed, int8_t right_speed);
+
 #endif /* __BSP_L9110S_H__ */

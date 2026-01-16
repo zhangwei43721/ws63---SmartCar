@@ -9,6 +9,7 @@
 #include "../services/net_service.h"
 #include "../services/ui_service.h"
 #include "../services/http_ctrl_service.h"
+#include "../services/udp_service.h"
 
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../../drivers/l9110s/bsp_l9110s.h"

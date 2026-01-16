@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>智能小车UDP控制台</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+
+<body>
+  <!-- 顶部导航 -->
+  <header>
+    <div class="brand">
+      <div class="logo-icon">🚗</div>
+      <div class="title">
+        SmartCar <span class="badge">UDP</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="status-indicator" id="statusConn" title="连接状态"></div>
+      <div class="btn-icon" onclick="toggleConfig()">⚙️</div>
+    </div>
+  </header>
+
+  <!-- 主舞台区域 -->
+  <main id="stage">
+    <div class="car-wrapper">
+      <!-- 车辆模型容器 -->
+      <div class="car-model">
+        <!-- 1. 舵机云台与超声波 -->
+        <div class="servo-assembly" id="servoHead">
+          <div class="ultrasonic-sensor">
+            <div class="eye left"></div>
+            <div class="eye right"></div>
+          </div>
+          <!-- 雷达扫描波束 -->
+          <div class="radar-beam" id="radarBeam"></div>
+        </div>
+
+        <!-- 2. 动力轮 -->
+        <div class="wheel left" id="wheelL">
+          <div class="tire-tread"></div>
+        </div>
+        <div class="wheel right" id="wheelR">
+          <div class="tire-tread"></div>
+        </div>
+
+        <!-- 3. 车身主体 -->
+        <div class="chassis">
+          <!-- 装饰性芯片图案 -->
+          <div class="mcu-deco">HI3863</div>
+
+          <!-- 循迹传感器模块 -->
+          <div class="sensor-bar">
+            <div class="ir-led" id="irL"></div>
+            <div class="ir-led" id="irM"></div>
+            <div class="ir-led" id="irR"></div>
+          </div>
+
+          <!-- 后万向轮 -->
+          <div class="caster-wheel"></div>
+        </div>
+      </div>
+
+      <!-- 实时数据悬浮窗 -->
+      <div class="dashboard-stats">
+        <div class="stat-item">
+          <span class="label">距离</span>
+          <span class="value" id="statusDist">--</span>
+          <span class="unit">cm</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">舵机</span>
+          <span class="value" id="statusAngle">90</span>
+          <span class="unit">°</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 底部控制面板 -->
+  <section id="controls">
+    <!-- 模式切换栏 -->
+    <div class="mode-switcher">
+      <button class="mode-btn active" onclick="changeMode('standby')">待机</button>
+      <button class="mode-btn" onclick="changeMode('remote')">遥控</button>
+      <button class="mode-btn" onclick="changeMode('tracking')">循迹</button>
+      <button class="mode-btn" onclick="changeMode('avoid')">避障</button>
+    </div>
+
+    <!-- 摇杆区域 -->
+    <div class="joystick-container disabled" id="joystick-zone">
+      <div class="joystick-placeholder">
+        <span>虚拟摇杆区域</span>
+        <small>仅遥控模式可用</small>
+      </div>
+    </div>
+  </section>
+
+  <!-- 设置弹窗 -->
+  <div class="modal-backdrop" id="configModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>UDP连接配置</h3>
+        <span class="close-btn" onclick="toggleConfig()">×</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>小车 IP 地址</label>
+          <input type="text" id="cfgIP" placeholder="自动发现" readonly />
+        </div>
+        <div class="form-group">
+          <label>控制端口</label>
+          <input type="number" id="cfgPort" value="8888" readonly />
+        </div>
+        <div class="form-group">
+          <label>广播端口</label>
+          <input type="number" id="cfgBCast" value="8889" readonly />
+        </div>
+        <div class="form-group">
+          <label>连接状态</label>
+          <div id="discoveryStatus">正在搜索设备...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-save" onclick="connectToProxy()">重新连接</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 库文件 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+  <script src="./udp_app.js"></script>
+</body>
+
+</html>
