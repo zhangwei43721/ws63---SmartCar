@@ -1,6 +1,27 @@
 #include "robot_mgr.h"
+#include "robot_config.h"
 
 static CarStatus g_status = CAR_STOP_STATUS;
+
+// =============== 互斥锁操作宏 ===============
+#define ROBOT_STATE_LOCK() \
+    do { \
+        if (g_state_mutex_inited) \
+            (void)osal_mutex_lock(&g_state_mutex); \
+    } while(0)
+
+#define ROBOT_STATE_UNLOCK() \
+    do { \
+        if (g_state_mutex_inited) \
+            osal_mutex_unlock(&g_state_mutex); \
+    } while(0)
+
+#define UPDATE_STATE_FIELD(field, value) \
+    do { \
+        ROBOT_STATE_LOCK(); \
+        g_robot_state.field = value; \
+        ROBOT_STATE_UNLOCK(); \
+    } while(0)
 
 // 全局机器人状态，供 HTTP 服务读取
 static RobotState g_robot_state = {0};
@@ -17,7 +38,7 @@ static void robot_mgr_run_standby(void)
     car_stop();
 
     while (robot_mgr_get_status() == CAR_STOP_STATUS) {
-        char ip_line[32] = {0};
+        char ip_line[IP_BUFFER_SIZE] = {0};
         const char *ip = net_service_get_ip();
 
         if (ip != NULL)
@@ -26,7 +47,7 @@ static void robot_mgr_run_standby(void)
             (void)snprintf(ip_line, sizeof(ip_line), "IP: Pending");
 
         ui_render_standby(net_service_is_connected() ? "WiFi: Connected" : "WiFi: Connecting", ip_line);
-        osal_msleep(500);
+        osal_msleep(STANDBY_UPDATE_DELAY_MS);
     }
 
     car_stop();
@@ -83,15 +104,7 @@ CarStatus robot_mgr_get_status(void)
 void robot_mgr_set_status(CarStatus status)
 {
     g_status = status;
-
-    // 更新状态中的模式
-    if (g_state_mutex_inited)
-        (void)osal_mutex_lock(&g_state_mutex);
-
-    g_robot_state.mode = status;
-    if (g_state_mutex_inited)
-        osal_mutex_unlock(&g_state_mutex);
-
+    UPDATE_STATE_FIELD(mode, status);
     ui_show_mode_page(status);
 }
 
@@ -127,12 +140,7 @@ void robot_mgr_process_loop(void)
  */
 void robot_mgr_update_servo_angle(unsigned int angle)
 {
-    if (g_state_mutex_inited)
-        (void)osal_mutex_lock(&g_state_mutex);
-
-    g_robot_state.servo_angle = angle;
-    if (g_state_mutex_inited)
-        osal_mutex_unlock(&g_state_mutex);
+    UPDATE_STATE_FIELD(servo_angle, angle);
 }
 
 /**
@@ -141,12 +149,7 @@ void robot_mgr_update_servo_angle(unsigned int angle)
  */
 void robot_mgr_update_distance(float distance)
 {
-    if (g_state_mutex_inited)
-        (void)osal_mutex_lock(&g_state_mutex);
-
-    g_robot_state.distance = distance;
-    if (g_state_mutex_inited)
-        osal_mutex_unlock(&g_state_mutex);
+    UPDATE_STATE_FIELD(distance, distance);
 }
 
 /**
@@ -157,14 +160,11 @@ void robot_mgr_update_distance(float distance)
  */
 void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right)
 {
-    if (g_state_mutex_inited)
-        (void)osal_mutex_lock(&g_state_mutex);
-
+    ROBOT_STATE_LOCK();
     g_robot_state.ir_left = left;
     g_robot_state.ir_middle = middle;
     g_robot_state.ir_right = right;
-    if (g_state_mutex_inited)
-        osal_mutex_unlock(&g_state_mutex);
+    ROBOT_STATE_UNLOCK();
 }
 
 /**
@@ -177,10 +177,7 @@ void robot_mgr_get_state_copy(RobotState *out)
     if (out == NULL)
         return;
 
-    if (g_state_mutex_inited)
-        (void)osal_mutex_lock(&g_state_mutex);
-
+    ROBOT_STATE_LOCK();
     *out = g_robot_state;
-    if (g_state_mutex_inited)
-        osal_mutex_unlock(&g_state_mutex);
+    ROBOT_STATE_UNLOCK();
 }

@@ -1,4 +1,5 @@
 #include "net_service.h"
+#include "../core/robot_config.h"
 
 static void *net_service_tcp_task(const char *arg);
 static void net_service_wifi_ensure_connected(void);
@@ -11,10 +12,23 @@ static bool g_tcp_task_started = false;
 static osal_mutex g_mutex;
 static bool g_mutex_inited = false;
 
+// =============== 互斥锁操作宏 ===============
+#define NET_LOCK() \
+    do { \
+        if (g_mutex_inited) \
+            (void)osal_mutex_lock(&g_mutex); \
+    } while(0)
+
+#define NET_UNLOCK() \
+    do { \
+        if (g_mutex_inited) \
+            osal_mutex_unlock(&g_mutex); \
+    } while(0)
+
 static bool g_wifi_inited = false;
 static bool g_wifi_connected = false;
 static bool g_wifi_has_ip = false;
-static char g_ip[32] = "0.0.0.0";
+static char g_ip[IP_BUFFER_SIZE] = "0.0.0.0";
 static unsigned int g_wifi_last_retry = 0;
 
 static bool g_tcp_connected = false;
@@ -40,24 +54,6 @@ static void net_service_mutex_init(void)
         g_mutex_inited = true;
     else
         printf("net_service: 互斥锁初始化失败\r\n");
-}
-
-/**
- * @brief 加锁网络服务互斥锁
- */
-static void net_service_lock(void)
-{
-    if (g_mutex_inited)
-        (void)osal_mutex_lock(&g_mutex);
-}
-
-/**
- * @brief 解锁网络服务互斥锁
- */
-static void net_service_unlock(void)
-{
-    if (g_mutex_inited)
-        osal_mutex_unlock(&g_mutex);
 }
 
 /**
@@ -89,9 +85,9 @@ void net_service_init(void)
  */
 bool net_service_is_connected(void)
 {
-    net_service_lock();
+    NET_LOCK();
     bool connected = g_tcp_connected;
-    net_service_unlock();
+    NET_UNLOCK();
     return connected;
 }
 
@@ -116,7 +112,7 @@ bool net_service_pop_cmd(int8_t *motor_out, int8_t *servo1_out, int8_t *servo2_o
     if (motor_out == NULL || servo1_out == NULL || servo2_out == NULL)
         return false;
 
-    net_service_lock();
+    NET_LOCK();
     bool has = g_has_latest;
     if (has) {
         *motor_out = g_latest_motor;
@@ -124,7 +120,7 @@ bool net_service_pop_cmd(int8_t *motor_out, int8_t *servo1_out, int8_t *servo2_o
         *servo2_out = g_latest_servo2;
         g_has_latest = false;
     }
-    net_service_unlock();
+    NET_UNLOCK();
 
     return has;
 }
@@ -137,12 +133,12 @@ bool net_service_pop_cmd(int8_t *motor_out, int8_t *servo1_out, int8_t *servo2_o
  */
 void net_service_push_cmd(int8_t motor, int8_t servo1, int8_t servo2)
 {
-    net_service_lock();
+    NET_LOCK();
     g_latest_motor = motor;
     g_latest_servo1 = servo1;
     g_latest_servo2 = servo2;
     g_has_latest = true;
-    net_service_unlock();
+    NET_UNLOCK();
 }
 
 /**
@@ -155,10 +151,10 @@ bool net_service_send_text(const char *text)
     if (text == NULL)
         return false;
 
-    net_service_lock();
+    NET_LOCK();
     int fd = g_tcp_socket_fd;
     bool connected = g_tcp_connected;
-    net_service_unlock();
+    NET_UNLOCK();
 
     if (!connected || fd < 0)
         return false;
@@ -256,11 +252,11 @@ static void *net_service_tcp_task(const char *arg)
         tv.tv_usec = (NET_SERVICE_RECV_TIMEOUT_MS % 1000) * 1000;
         (void)lwip_setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-        net_service_lock();
+        NET_LOCK();
         g_tcp_connected = true;
         g_tcp_socket_fd = sockfd;
         g_rx_filled = 0;
-        net_service_unlock();
+        NET_UNLOCK();
 
         printf("net_service: 已连接\r\n");
 
@@ -278,11 +274,11 @@ static void *net_service_tcp_task(const char *arg)
         }
 
         lwip_close(sockfd);
-        net_service_lock();
+        NET_LOCK();
         g_tcp_connected = false;
         g_tcp_socket_fd = -1;
         g_rx_filled = 0;
-        net_service_unlock();
+        NET_UNLOCK();
 
         printf("net_service: 已断开连接，%u 毫秒后重试\r\n", NET_SERVICE_TCP_RECONNECT_DELAY_MS);
         osal_msleep(NET_SERVICE_TCP_RECONNECT_DELAY_MS);
@@ -339,10 +335,10 @@ static void net_service_handle_frame(const uint8_t frame[4])
     if (checksum != frame[3])
         return;
 
-    net_service_lock();
+    NET_LOCK();
     g_latest_motor = (int8_t)frame[0];
     g_latest_servo1 = (int8_t)frame[1];
     g_latest_servo2 = (int8_t)frame[2];
     g_has_latest = true;
-    net_service_unlock();
+    NET_UNLOCK();
 }

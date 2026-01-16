@@ -1,9 +1,29 @@
 #include "http_ctrl_service.h"
+#include "../core/robot_config.h"
 
 static void *http_ctrl_task(const char *arg);
 
 static osal_task *g_http_task_handle = NULL;
 static bool g_http_started = false;
+
+/**
+ * @brief 模式名称到状态枚举的映射结构
+ */
+typedef struct {
+    const char *name;
+    CarStatus status;
+} ModeMapping;
+
+/**
+ * @brief 模式名称查找表
+ */
+static const ModeMapping g_mode_map[] = {
+    {"stop", CAR_STOP_STATUS},
+    {"trace", CAR_TRACE_STATUS},
+    {"obstacle", CAR_OBSTACLE_AVOIDANCE_STATUS},
+    {"remote", CAR_WIFI_CONTROL_STATUS},
+    {NULL, CAR_STOP_STATUS}  // 默认值
+};
 
 static const char g_index_html[] =
     "<!doctype html>\n"
@@ -185,18 +205,23 @@ static void handle_api_mode(int fd, const char *query)
         return;
     }
 
-    if (strncmp(val, "stop", 4) == 0)
-        robot_mgr_set_status(CAR_STOP_STATUS);
-    else if (strncmp(val, "trace", 5) == 0)
-        robot_mgr_set_status(CAR_TRACE_STATUS);
-    else if (strncmp(val, "obstacle", 8) == 0)
-        robot_mgr_set_status(CAR_OBSTACLE_AVOIDANCE_STATUS);
-    else if (strncmp(val, "remote", 6) == 0)
-        robot_mgr_set_status(CAR_WIFI_CONTROL_STATUS);
-    else
-        http_send_response(fd, "400 Bad Request", "text/plain", "invalid mode\n");
-    return;
+    // 查表法查找模式
+    CarStatus status = CAR_STOP_STATUS;
+    bool found = false;
+    for (const ModeMapping *p = g_mode_map; p->name != NULL; p++) {
+        if (strcmp(val, p->name) == 0) {
+            status = p->status;
+            found = true;
+            break;
+        }
+    }
 
+    if (!found) {
+        http_send_response(fd, "400 Bad Request", "text/plain", "invalid mode\n");
+        return;
+    }
+
+    robot_mgr_set_status(status);
     http_send_response(fd, "200 OK", "application/json", "{\"ok\":true}\n");
 }
 
@@ -255,18 +280,7 @@ static void handle_http(int fd, const char *method, const char *path, const char
         return;
     }
 
-    if (strcmp(path, "/") == 0) {
-        http_send_response(fd, "200 OK", "text/html", g_index_html);
-        return;
-    }
-    if (strcmp(path, "/style.css") == 0) {
-        http_send_response(fd, "200 OK", "text/css", g_style_css);
-        return;
-    }
-    if (strcmp(path, "/app.js") == 0) {
-        http_send_response(fd, "200 OK", "application/javascript", g_app_js);
-        return;
-    }
+    // API 路由处理
     if (strcmp(path, "/api/mode") == 0) {
         handle_api_mode(fd, query);
         return;
@@ -277,6 +291,26 @@ static void handle_http(int fd, const char *method, const char *path, const char
     }
     if (strcmp(path, "/api/status") == 0) {
         handle_api_status(fd);
+        return;
+    }
+
+    // 静态资源路由查表法
+    const char *content = NULL;
+    const char *ctype = NULL;
+
+    if (strcmp(path, "/") == 0) {
+        content = g_index_html;
+        ctype = "text/html";
+    } else if (strcmp(path, "/style.css") == 0) {
+        content = g_style_css;
+        ctype = "text/css";
+    } else if (strcmp(path, "/app.js") == 0) {
+        content = g_app_js;
+        ctype = "application/javascript";
+    }
+
+    if (content != NULL) {
+        http_send_response(fd, "200 OK", ctype, content);
         return;
     }
 

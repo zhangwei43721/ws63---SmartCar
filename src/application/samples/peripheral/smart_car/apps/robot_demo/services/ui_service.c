@@ -3,6 +3,27 @@
 static bool g_oled_ready = false;
 
 /**
+ * @brief 模式显示信息结构体
+ */
+typedef struct {
+    CarStatus status;
+    const char *line0;
+    const char *line1;
+    const char *line2;
+} ModeDisplayInfo;
+
+/**
+ * @brief 模式显示信息查找表
+ */
+static const ModeDisplayInfo g_mode_display[] = {
+    {CAR_STOP_STATUS,             "Mode: Standby",  "WiFi: Check...",  "Press KEY1"},
+    {CAR_TRACE_STATUS,            "Mode: Trace",    "Infrared ON",     "KEY1 -> Next"},
+    {CAR_OBSTACLE_AVOIDANCE_STATUS, "Mode: Obstacle", "Ultrasonic ON",  "KEY1 -> Next"},
+    {CAR_WIFI_CONTROL_STATUS,     "Mode: WiFi Ctrl", "Waiting cmd...", "KEY1 -> Stop"},
+    {CAR_BT_CONTROL_STATUS,       "Mode: Bluetooth", "Current: Disabled", "KEY1 -> Stop"},
+};
+
+/**
  * @brief 初始化 UI 服务（OLED 显示屏）
  * @note 初始化 I2C 总线和 SSD1306 显示屏
  */
@@ -36,50 +57,32 @@ void ui_show_mode_page(CarStatus status)
         return;
     }
 
-    char line0[32] = {0};
-    char line1[32] = {0};
-    char line2[32] = {0};
+    const ModeDisplayInfo *info = NULL;
+    const char *line0 = "Mode: Unknown";
+    const char *line1 = "Resetting...";
+    const char *line2 = "";
 
-    switch (status) {
-        case CAR_STOP_STATUS:
-            snprintf(line0, sizeof(line0), "Mode: Standby");
-            snprintf(line1, sizeof(line1), "WiFi: Check...");
-            snprintf(line2, sizeof(line2), "Press KEY1");
+    // 查表法查找对应模式的显示信息
+    for (size_t i = 0; i < sizeof(g_mode_display) / sizeof(g_mode_display[0]); i++) {
+        if (g_mode_display[i].status == status) {
+            info = &g_mode_display[i];
             break;
-        case CAR_TRACE_STATUS:
-            snprintf(line0, sizeof(line0), "Mode: Trace");
-            snprintf(line1, sizeof(line1), "Infrared ON");
-            snprintf(line2, sizeof(line2), "KEY1 -> Next");
-            break;
-        case CAR_OBSTACLE_AVOIDANCE_STATUS:
-            snprintf(line0, sizeof(line0), "Mode: Obstacle");
-            snprintf(line1, sizeof(line1), "Ultrasonic ON");
-            snprintf(line2, sizeof(line2), "KEY1 -> Next");
-            break;
-        case CAR_WIFI_CONTROL_STATUS:
-            snprintf(line0, sizeof(line0), "Mode: WiFi Ctrl");
-            snprintf(line1, sizeof(line1), "Waiting cmd...");
-            snprintf(line2, sizeof(line2), "KEY1 -> Stop");
-            break;
-        case CAR_BT_CONTROL_STATUS:
-            snprintf(line0, sizeof(line0), "Mode: Bluetooth");
-            snprintf(line1, sizeof(line1), "Current: Disabled");
-            snprintf(line2, sizeof(line2), "KEY1 -> Stop");
-            break;
-        default:
-            snprintf(line0, sizeof(line0), "Mode: Unknown");
-            snprintf(line1, sizeof(line1), "Resetting...");
-            (void)memset_s(line2, sizeof(line2), 0, sizeof(line2));
-            break;
+        }
+    }
+
+    if (info != NULL) {
+        line0 = info->line0;
+        line1 = info->line1;
+        line2 = info->line2;
     }
 
     ssd1306_Fill(Black);
     ssd1306_SetCursor(0, 0);
-    ssd1306_DrawString(line0, Font_7x10, White);
+    ssd1306_DrawString((char *)line0, Font_7x10, White);
     ssd1306_SetCursor(0, 16);
-    ssd1306_DrawString(line1, Font_7x10, White);
+    ssd1306_DrawString((char *)line1, Font_7x10, White);
     ssd1306_SetCursor(0, 32);
-    ssd1306_DrawString(line2, Font_7x10, White);
+    ssd1306_DrawString((char *)line2, Font_7x10, White);
     ssd1306_UpdateScreen();
 }
 
