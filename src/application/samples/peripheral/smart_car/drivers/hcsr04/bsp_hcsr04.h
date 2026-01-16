@@ -24,6 +24,9 @@
 #include "pinctrl.h"
 #include "gpio.h"
 #include "soc_osal.h"
+#include "hal_gpio.h"
+#include "tcxo.h"
+#include <stdio.h>
 
 // HC-SR04引脚定义
 #define HCSR04_TRIG_GPIO 11 // 触发信号引脚

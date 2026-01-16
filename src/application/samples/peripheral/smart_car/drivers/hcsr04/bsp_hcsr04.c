@@ -18,12 +18,7 @@
  */
 
 #include "bsp_hcsr04.h"
-#include "gpio.h"
-#include "pinctrl.h"
-#include "hal_gpio.h"
-#include "soc_osal.h"
-#include "tcxo.h"
-#include <stdio.h>
+
 
 /**
  * @brief 初始化HC-SR04超声波传感器
