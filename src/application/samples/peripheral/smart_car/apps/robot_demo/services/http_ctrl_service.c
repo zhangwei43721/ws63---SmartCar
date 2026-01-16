@@ -1,26 +1,5 @@
 #include "http_ctrl_service.h"
 
-#include "../core/robot_mgr.h"
-#include "net_service.h"
-
-#include "securec.h"
-#include "soc_osal.h"
-
-#include "lwip/inet.h"
-#include "lwip/ip_addr.h"
-#include "lwip/sockets.h"
-
-#include <errno.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#define HTTP_CTRL_LISTEN_PORT 8080
-#define HTTP_CTRL_STACK_SIZE 4096
-#define HTTP_CTRL_TASK_PRIORITY 23
-
 static void *http_ctrl_task(const char *arg);
 
 static osal_task *g_http_task_handle = NULL;
@@ -107,6 +86,13 @@ static const char g_app_js[] =
     "},25);\n"
     "setMode('stop');\n";
 
+/**
+ * @brief 发送 HTTP 响应
+ * @param fd 套接字文件描述符
+ * @param status HTTP 状态码（如 "200 OK"）
+ * @param ctype 内容类型（如 "text/html"）
+ * @param body 响应体内容
+ */
 static void http_send_response(int fd, const char *status, const char *ctype, const char *body)
 {
     char header[256] = {0};
@@ -125,21 +111,29 @@ static void http_send_response(int fd, const char *status, const char *ctype, co
                    status, ctype, (unsigned)body_len);
 
     (void)lwip_send(fd, header, strlen(header), 0);
-    if (body_len > 0) {
+    if (body_len > 0)
         (void)lwip_send(fd, body, body_len, 0);
-    }
 }
 
+/**
+ * @brief 发送 204 No Content 响应
+ * @param fd 套接字文件描述符
+ */
 static void http_send_no_content(int fd)
 {
     http_send_response(fd, "204 No Content", "text/plain", "");
 }
 
+/**
+ * @brief 从 URL 查询字符串中获取指定键的值
+ * @param query URL 查询字符串（如 "key1=value1&key2=value2"）
+ * @param key 要查找的键名
+ * @return 找到的值，未找到返回 NULL
+ */
 static const char *query_get(const char *query, const char *key)
 {
-    if (query == NULL || key == NULL) {
+    if (query == NULL || key == NULL)
         return NULL;
-    }
 
     size_t klen = strlen(key);
     const char *p = query;
@@ -157,23 +151,32 @@ static const char *query_get(const char *query, const char *key)
     return NULL;
 }
 
+/**
+ * @brief 解析字符串为 int8_t 值，并限制在 -100 到 100 范围内
+ * @param s 待解析的字符串
+ * @param out 输出参数，存储解析结果
+ * @return 成功返回 0，失败返回 -1
+ */
 static int parse_i8(const char *s, int8_t *out)
 {
-    if (s == NULL || out == NULL) {
+    if (s == NULL || out == NULL)
         return -1;
-    }
 
     int v = atoi(s);
-    if (v > 100) {
+    if (v > 100)
         v = 100;
-    } else if (v < -100) {
+    else if (v < -100)
         v = -100;
-    }
 
     *out = (int8_t)v;
     return 0;
 }
 
+/**
+ * @brief 处理 /api/mode 请求，切换小车模式
+ * @param fd 套接字文件描述符
+ * @param query URL 查询字符串
+ */
 static void handle_api_mode(int fd, const char *query)
 {
     const char *val = query_get(query, "val");
@@ -182,22 +185,26 @@ static void handle_api_mode(int fd, const char *query)
         return;
     }
 
-    if (strncmp(val, "stop", 4) == 0) {
+    if (strncmp(val, "stop", 4) == 0)
         robot_mgr_set_status(CAR_STOP_STATUS);
-    } else if (strncmp(val, "trace", 5) == 0) {
+    else if (strncmp(val, "trace", 5) == 0)
         robot_mgr_set_status(CAR_TRACE_STATUS);
-    } else if (strncmp(val, "obstacle", 8) == 0) {
+    else if (strncmp(val, "obstacle", 8) == 0)
         robot_mgr_set_status(CAR_OBSTACLE_AVOIDANCE_STATUS);
-    } else if (strncmp(val, "remote", 6) == 0) {
+    else if (strncmp(val, "remote", 6) == 0)
         robot_mgr_set_status(CAR_WIFI_CONTROL_STATUS);
-    } else {
+    else
         http_send_response(fd, "400 Bad Request", "text/plain", "invalid mode\n");
-        return;
-    }
+    return;
 
     http_send_response(fd, "200 OK", "application/json", "{\"ok\":true}\n");
 }
 
+/**
+ * @brief 处理 /api/ctrl 请求，控制电机和舵机
+ * @param fd 套接字文件描述符
+ * @param query URL 查询字符串，包含 m/s1/s2 参数
+ */
 static void handle_api_ctrl(int fd, const char *query)
 {
     int8_t m = 0;
@@ -214,6 +221,10 @@ static void handle_api_ctrl(int fd, const char *query)
     http_send_response(fd, "200 OK", "application/json", "{\"ok\":true}\n");
 }
 
+/**
+ * @brief 处理 /api/status 请求，返回小车当前状态
+ * @param fd 套接字文件描述符
+ */
 static void handle_api_status(int fd)
 {
     RobotState state;
@@ -222,19 +233,21 @@ static void handle_api_status(int fd)
     char json_body[256];
     int dist_x100 = (int)(state.distance * 100.0f);
 
-    (void)snprintf(json_body, sizeof(json_body),
-                   "{\"mode\":%u,\"ang\":%u,\"dist\":%d.%02d,\"ir\":[%u,%u,%u]}",
-                   (unsigned int)state.mode,
-                   state.servo_angle,
-                   dist_x100 / 100,
-                   (dist_x100 >= 0 ? dist_x100 % 100 : (-dist_x100) % 100),
-                   state.ir_left,
-                   state.ir_middle,
+    (void)snprintf(json_body, sizeof(json_body), "{\"mode\":%u,\"ang\":%u,\"dist\":%d.%02d,\"ir\":[%u,%u,%u]}",
+                   (unsigned int)state.mode, state.servo_angle, dist_x100 / 100,
+                   (dist_x100 >= 0 ? dist_x100 % 100 : (-dist_x100) % 100), state.ir_left, state.ir_middle,
                    state.ir_right);
 
     http_send_response(fd, "200 OK", "application/json", json_body);
 }
 
+/**
+ * @brief 处理 HTTP 请求并路由到相应的处理函数
+ * @param fd 套接字文件描述符
+ * @param method HTTP 方法（GET/POST/OPTIONS 等）
+ * @param path 请求路径
+ * @param query URL 查询字符串
+ */
 static void handle_http(int fd, const char *method, const char *path, const char *query)
 {
     if (strcmp(method, "OPTIONS") == 0) {
@@ -270,13 +283,18 @@ static void handle_http(int fd, const char *method, const char *path, const char
     http_send_response(fd, "404 Not Found", "text/plain", "not found\n");
 }
 
+/**
+ * @brief HTTP 控制服务任务主函数
+ * @param arg 任务参数（未使用）
+ * @note 监听 8080 端口，提供 Web 控制界面和 API 接口
+ */
 static void *http_ctrl_task(const char *arg)
 {
     UNUSED(arg);
 
     int listen_fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd < 0) {
-        printf("http_ctrl: socket create failed, err=%d\r\n", errno);
+        printf("http_ctrl: 套接字创建失败，错误码=%d\r\n", errno);
         return NULL;
     }
 
@@ -290,18 +308,18 @@ static void *http_ctrl_task(const char *arg)
     addr.sin_addr.s_addr = PP_HTONL(INADDR_ANY);
 
     if (lwip_bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        printf("http_ctrl: bind failed, err=%d\r\n", errno);
+        printf("http_ctrl: 绑定失败，错误码=%d\r\n", errno);
         lwip_close(listen_fd);
         return NULL;
     }
 
     if (lwip_listen(listen_fd, 2) < 0) {
-        printf("http_ctrl: listen failed, err=%d\r\n", errno);
+        printf("http_ctrl: 监听失败，错误码=%d\r\n", errno);
         lwip_close(listen_fd);
         return NULL;
     }
 
-    printf("http_ctrl: listening on %d\r\n", HTTP_CTRL_LISTEN_PORT);
+    printf("http_ctrl: 正在监听端口 %d\r\n", HTTP_CTRL_LISTEN_PORT);
 
     while (1) {
         int client_fd = lwip_accept(listen_fd, NULL, NULL);
@@ -356,20 +374,23 @@ static void *http_ctrl_task(const char *arg)
     return NULL;
 }
 
+/**
+ * @brief 初始化 HTTP 控制服务
+ * @note 创建 HTTP 服务任务，监听 8080 端口
+ */
 void http_ctrl_service_init(void)
 {
-    if (g_http_started) {
+    if (g_http_started)
         return;
-    }
 
     osal_kthread_lock();
-    g_http_task_handle = osal_kthread_create((osal_kthread_handler)http_ctrl_task, NULL, "http_ctrl_task",
-                                            HTTP_CTRL_STACK_SIZE);
+    g_http_task_handle =
+        osal_kthread_create((osal_kthread_handler)http_ctrl_task, NULL, "http_ctrl_task", HTTP_CTRL_STACK_SIZE);
     if (g_http_task_handle != NULL) {
         (void)osal_kthread_set_priority(g_http_task_handle, HTTP_CTRL_TASK_PRIORITY);
         g_http_started = true;
-    } else {
-        printf("http_ctrl: failed to create task\r\n");
-    }
+    } else
+        printf("http_ctrl: 创建任务失败\r\n");
+
     osal_kthread_unlock();
 }

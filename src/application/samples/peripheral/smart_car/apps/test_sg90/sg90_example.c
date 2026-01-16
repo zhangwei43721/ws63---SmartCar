@@ -47,9 +47,9 @@ static void *sg90_task(const char *arg)
     while (1) {
         // 设置目标角度，后台守护任务会持续发送PWM波形
         sg90_set_angle((unsigned int)angle);
-        
+
         // 由于后台守护任务会持续发送PWM波形，这里只需要延时即可
-        osal_msleep(20);  // 小延时让舵机有时间反应
+        osal_msleep(20); // 小延时让舵机有时间反应
 
         // 更新角度逻辑
         angle += step;

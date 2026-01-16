@@ -1,6 +1,5 @@
 #include "mode_obstacle.h"
 
-
 // 舵机角度定义
 #define SERVO_LEFT 150
 #define SERVO_RIGHT 30
@@ -51,7 +50,7 @@ static unsigned int scan_and_decide_direction(void)
     // 3. 舵机回中
     set_servo_angle_wait(SERVO_MIDDLE);
 
-    // 打印调试信息 (保留原有的整数打印方式以兼容不支持%f的printf)
+    // 打印调试信息
     int l_val = (int)(left_dist * 100);
     int r_val = (int)(right_dist * 100);
     printf("扫描结果: 左=%d.%02d cm, 右=%d.%02d cm\r\n", l_val / 100, l_val % 100, r_val / 100, r_val % 100);
@@ -77,18 +76,16 @@ static void perform_obstacle_avoidance(float distance)
         unsigned int direction = scan_and_decide_direction();
 
         // 3. 执行转向
-        if (direction == CAR_TURN_LEFT) {
+        if (direction == CAR_TURN_LEFT)
             car_left();
-        } else {
+        else
             car_right();
-        }
+
         osal_msleep(DELAY_TURN);
         car_stop();
 
-    } else {
-        // 路径通畅，继续直行
-        car_forward();
-    }
+    } else
+        car_forward(); // 路径通畅，继续直行
 }
 
 void mode_obstacle_run(void)
@@ -118,9 +115,7 @@ void mode_obstacle_run(void)
             snprintf(payload, sizeof(payload), "{\"mode\":\"obstacle\",\"dist_x100\":%d}\n", dist_x100);
             net_service_send_text(payload);
         }
-
-        // 循环间隔
-        osal_msleep(50);
+        osal_msleep(50); // 循环间隔
     }
 
     // 退出模式前复位

@@ -19,7 +19,6 @@
 
 #include "bsp_hcsr04.h"
 
-
 /**
  * @brief 初始化HC-SR04超声波传感器
  * @return 无

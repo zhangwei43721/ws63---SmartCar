@@ -1,24 +1,11 @@
 #include "ui_service.h"
 
-#include "../../../drivers/ssd1306/ssd1306.h"
-
-#include "i2c.h"
-#include "pinctrl.h"
-#include "securec.h"
-
-#include <stdbool.h>
-#include <stdio.h>
-#include <string.h>
-
-#define ROBOT_I2C_BUS_ID 1
-#define ROBOT_I2C_BAUDRATE 400000
-#define ROBOT_I2C_HS_CODE 0x0
-#define ROBOT_I2C_SCL_PIN 15
-#define ROBOT_I2C_SDA_PIN 16
-#define ROBOT_I2C_PIN_MODE 2
-
 static bool g_oled_ready = false;
 
+/**
+ * @brief 初始化 UI 服务（OLED 显示屏）
+ * @note 初始化 I2C 总线和 SSD1306 显示屏
+ */
 void ui_service_init(void)
 {
     if (g_oled_ready) {
@@ -30,7 +17,7 @@ void ui_service_init(void)
 
     errcode_t ret = uapi_i2c_master_init(ROBOT_I2C_BUS_ID, ROBOT_I2C_BAUDRATE, ROBOT_I2C_HS_CODE);
     if (ret != ERRCODE_SUCC) {
-        printf("OLED: I2C init failed, ret=0x%x\r\n", ret);
+        printf("OLED: I2C 初始化失败，返回值=0x%x\r\n", ret);
         return;
     }
 
@@ -38,6 +25,10 @@ void ui_service_init(void)
     g_oled_ready = true;
 }
 
+/**
+ * @brief 在 OLED 上显示当前模式页面
+ * @param status 小车当前状态
+ */
 void ui_show_mode_page(CarStatus status)
 {
     ui_service_init();
@@ -92,6 +83,11 @@ void ui_show_mode_page(CarStatus status)
     ssd1306_UpdateScreen();
 }
 
+/**
+ * @brief 在 OLED 上渲染待机页面
+ * @param wifi_state WiFi 连接状态描述
+ * @param ip_addr IP 地址字符串
+ */
 void ui_render_standby(const char *wifi_state, const char *ip_addr)
 {
     ui_service_init();

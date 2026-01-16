@@ -1,15 +1,9 @@
 #include "mode_trace.h"
 
-#include "robot_mgr.h"
-
-#include "../../../drivers/l9110s/bsp_l9110s.h"
-#include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
-
-#include "soc_osal.h"
-
-#include <stdio.h>
-#include "../services/net_service.h"
-
+/**
+ * @brief 循迹模式主运行函数
+ * @note 根据红外传感器状态控制小车前进、左转、右转或停止
+ */
 void mode_trace_run(void)
 {
     unsigned int left = 0;
@@ -27,15 +21,14 @@ void mode_trace_run(void)
         // 更新红外传感器状态
         robot_mgr_update_ir_status(left, middle, right);
 
-        if (middle == TCRT5000_ON_BLACK) {
+        if (middle == TCRT5000_ON_BLACK)
             car_forward();
-        } else if (left == TCRT5000_ON_BLACK) {
+        else if (left == TCRT5000_ON_BLACK)
             car_left();
-        } else if (right == TCRT5000_ON_BLACK) {
+        else if (right == TCRT5000_ON_BLACK)
             car_right();
-        } else {
+        else
             car_stop();
-        }
 
         unsigned long long now = osal_get_jiffies();
         if (now - last_report > osal_msecs_to_jiffies(500)) {
@@ -43,8 +36,8 @@ void mode_trace_run(void)
             printf("[trace] L=%u M=%u R=%u\r\n", left, middle, right);
 
             char payload[96] = {0};
-            (void)snprintf(payload, sizeof(payload), "{\"mode\":\"trace\",\"left\":%u,\"mid\":%u,\"right\":%u}\n",
-                            left, middle, right);
+            (void)snprintf(payload, sizeof(payload), "{\"mode\":\"trace\",\"left\":%u,\"mid\":%u,\"right\":%u}\n", left,
+                           middle, right);
             (void)net_service_send_text(payload);
         }
 
@@ -54,6 +47,7 @@ void mode_trace_run(void)
     car_stop();
 }
 
-void mode_trace_tick(void)
-{
-}
+/**
+ * @brief 循迹模式周期回调函数（当前为空实现）
+ */
+void mode_trace_tick(void) {}

@@ -29,10 +29,10 @@
 // I2C 引脚定义 (使用 I2C1)
 #define CONFIG_I2C_SCL_MASTER_PIN 15
 #define CONFIG_I2C_SDA_MASTER_PIN 16
-#define CONFIG_I2C_MASTER_PIN_MODE 2  // I2C功能模式
+#define CONFIG_I2C_MASTER_PIN_MODE 2 // I2C功能模式
 #define I2C_MASTER_ADDR 0x0
-#define I2C_SLAVE_ADDR 0x3C            // OLED默认地址
-#define I2C_SET_BANDRATE 400000        // 400kHz
+#define I2C_SLAVE_ADDR 0x3C     // OLED默认地址
+#define I2C_SET_BANDRATE 400000 // 400kHz
 #define I2C_TASK_STACK_SIZE 0x1000
 #define I2C_TASK_PRIO 17
 
@@ -121,8 +121,7 @@ static void ssd1306_example_entry(void)
 
     // 创建任务
     osal_kthread_lock();
-    task_handle = osal_kthread_create((osal_kthread_handler)ssd1306_task, NULL,
-                                      "ssd1306_task", I2C_TASK_STACK_SIZE);
+    task_handle = osal_kthread_create((osal_kthread_handler)ssd1306_task, NULL, "ssd1306_task", I2C_TASK_STACK_SIZE);
     if (task_handle != NULL) {
         ret = osal_kthread_set_priority(task_handle, I2C_TASK_PRIO);
         if (ret != OSAL_SUCCESS) {
