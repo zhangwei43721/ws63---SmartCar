@@ -1,274 +1,282 @@
-      // --- 1. 配置管理 ---
-      let config = {
-        ip: localStorage.getItem("car_ip") || "192.168.3.151",
-        port: localStorage.getItem("car_port") || "8080",
-        baseUrl: "",
-      };
+/**
+ * Smart Car Control Logic
+ * 保持原有接口和控制逻辑不变
+ */
 
-      // 更新 BaseUrl
-      function updateBaseUrl() {
-        config.baseUrl = `http://${config.ip}:${config.port}`;
-      }
-      updateBaseUrl();
+// --- 配置管理 ---
+const config = {
+  ip: localStorage.getItem('car_ip') || '192.168.3.151',
+  port: localStorage.getItem('car_port') || '8080',
+  baseUrl: ''
+};
 
-      // 状态变量
-      let appState = {
-        mode: "standby",
-        power: 0,
-        turn: 0,
-        // 传感器数据
-        servoAngle: 90, // 0~180
-        distance: 0,
-        ir: [0, 0, 0],
-      };
+function updateBaseUrl() {
+  config.baseUrl = `http://${config.ip}:${config.port}`;
+}
+updateBaseUrl(); // 初始化执行
 
-      // --- 2. 摇杆逻辑 (Nipple.js) ---
-      const joystickManager = nipplejs.create({
-        zone: document.getElementById("joystick-zone"),
-        mode: "static",
-        position: { left: "50%", top: "50%" },
-        color: "#007bff",
-        size: 120,
-      });
+// --- 全局状态 ---
+const appState = {
+  mode: 'standby', // standby, remote, tracking, avoid
+  power: 0,        // -100 ~ 100
+  turn: 0,         // -100 ~ 100 (左负右正)
+  // 传感器数据
+  servoAngle: 90,
+  distance: 0,
+  ir: [1, 1, 1],   // 1为白(无), 0为黑(有)
+  connected: false
+};
 
-      joystickManager.on("move", (evt, data) => {
-        if (appState.mode !== "remote") return;
+// --- 摇杆初始化 (Nipple.js) ---
+const joystickManager = nipplejs.create({
+  zone: document.getElementById('joystick-zone'),
+  mode: 'static',
+  position: { left: '50%', top: '50%' },
+  color: '#4f46e5', // 对应CSS --primary
+  size: 120,
+  restOpacity: 0.8
+});
 
-        // 映射逻辑：Y轴向上为正(前进)，X轴向右为正
-        // 转向协议：turn>0右转, turn<0左转
-        // 摇杆数据：y [0~1], x [0~1]
+// 摇杆事件监听
+joystickManager.on('move', (evt, data) => {
+  if (appState.mode !== 'remote') return;
 
-        let p = Math.round(data.vector.y * 100);
-        // 摇杆往左 x是负数(左转)，摇杆往右 x是正数(右转)
-        let t = Math.round(data.vector.x * 100);
+  // 计算逻辑保持不变
+  // vector.y: 上正下负; vector.x: 右正左负
+  const p = Math.round(data.vector.y * 100);
+  const t = Math.round(data.vector.x * 100);
 
-        appState.power = clamp(p, -100, 100);
-        appState.turn = clamp(t, -100, 100);
+  appState.power = clamp(p, -100, 100);
+  appState.turn = clamp(t, -100, 100);
 
-        // 本地动画立即响应
-        updateLocalCarAnim();
-      });
+  updateLocalAnimations();
+});
 
-      joystickManager.on("end", () => {
-        appState.power = 0;
-        appState.turn = 0;
-        updateLocalCarAnim();
-        sendControlCmd(); // 立即停
-      });
+joystickManager.on('end', () => {
+  appState.power = 0;
+  appState.turn = 0;
+  updateLocalAnimations();
+  sendControlCmd(); // 立即发送停止指令
+});
 
-      // --- 3. 核心通信循环 ---
+// --- 核心循环 ---
 
-      // A. 发送控制指令 (仅遥控模式, 50ms一次)
-      setInterval(() => {
-        if (appState.mode === "remote") {
-          sendControlCmd();
-        }
-      }, 50);
+// 1. 发送控制指令 (仅遥控模式, 50ms/次)
+setInterval(() => {
+  if (appState.mode === 'remote') {
+    sendControlCmd();
+  }
+}, 50);
 
-      // B. 获取状态数据 (所有模式, 200ms一次)
-      setInterval(fetchStatus, 200);
+// 2. 获取状态 (200ms/次)
+setInterval(fetchStatus, 200);
 
-      function sendControlCmd() {
-        // API: /api/ctrl?m=POWER&s1=TURN&s2=0
-        const url = `${config.baseUrl}/api/ctrl?m=${appState.power}&s1=${appState.turn}&s2=0`;
-        // 使用 fetch 发送，忽略返回值以提高性能
-        fetch(url, { method: "GET", signal: AbortSignal.timeout(100) }).catch(
-          () => {},
-        );
-      }
+// --- 网络请求 ---
 
-      async function fetchStatus() {
-        // API: /api/status (需要嵌入式端配合实现返回 JSON)
-        try {
-          const resp = await fetch(`${config.baseUrl}/api/status`, {
-            signal: AbortSignal.timeout(300),
-          });
-          if (resp.ok) {
-            const data = await resp.json();
-            // 期望数据格式: { "mode": "avoid", "ang": 45, "dist": 20, "ir": [0,1,0] }
+function sendControlCmd() {
+  // 接口保持不变: /api/ctrl?m=POWER&s1=TURN&s2=0
+  const url = `${config.baseUrl}/api/ctrl?m=${appState.power}&s1=${appState.turn}&s2=0`;
 
-            // 更新数据
-            appState.servoAngle = data.ang !== undefined ? data.ang : 90;
-            appState.distance = data.dist !== undefined ? data.dist : 0;
-            if (data.ir) appState.ir = data.ir;
+  // 使用 AbortSignal 防止请求堆积
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 100);
 
-            // 界面反馈 - 更新连接状态指示灯
-            const connEl = document.getElementById("statusConn");
-            connEl.classList.remove("disconnected");
-            connEl.classList.add("connected");
+  fetch(url, { method: 'GET', signal: controller.signal })
+    .catch(() => { }); // 忽略控制指令的错误，以免刷屏报错
 
-            renderVisuals();
-          }
-        } catch (e) {
-          // 界面反馈 - 更新连接状态指示灯
-          const connEl = document.getElementById("statusConn");
-          connEl.classList.remove("connected");
-          connEl.classList.add("disconnected");
+  clearTimeout(timeoutId);
+}
 
-          // [调试用] 如果连接断开，且处于避障模式，生成假动画以便查看效果
-          if (appState.mode === "avoid") simulateAvoidance();
-        }
-      }
+async function fetchStatus() {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300);
 
-      function changeMode(mode) {
-        appState.mode = mode;
+    const resp = await fetch(`${config.baseUrl}/api/status`, { signal: controller.signal });
+    clearTimeout(timeoutId);
 
-        // UI 按钮高亮
-        document.querySelectorAll(".mode-btn").forEach((b) => {
-          b.classList.toggle("active", b.innerText === getModeName(mode)); // 简单匹配，实际可用dataset
-        });
+    if (resp.ok) {
+      const data = await resp.json();
+      // 解析数据: { "mode": "...", "ang": 90, "dist": 20, "ir": [0,1,0] }
+      if (data.ang !== undefined) appState.servoAngle = data.ang;
+      if (data.dist !== undefined) appState.distance = data.dist;
+      if (data.ir) appState.ir = data.ir;
 
-        // 摇杆显隐
-        const joyZone = document.getElementById("joystick-zone");
-        if (mode === "remote") joyZone.classList.remove("disabled");
-        else joyZone.classList.add("disabled");
+      setConnectionStatus(true);
+      renderVisuals();
+    } else {
+      throw new Error("Status Error");
+    }
+  } catch (e) {
+    setConnectionStatus(false);
+    // [调试用] 如果在避障模式且断开连接，模拟一下雷达动画效果
+    if (appState.mode === 'avoid') simulateRadar();
+  }
+}
 
-        // 发送切换指令 (映射前端模式名到后端API格式)
-        const modeMap = {
-          standby: "stop",
-          remote: "remote",
-          tracking: "trace",
-          avoid: "obstacle"
-        };
-        fetch(`${config.baseUrl}/api/mode?val=${modeMap[mode]}`).catch(console.error);
-      }
+// 模式切换
+function changeMode(mode) {
+  appState.mode = mode;
 
-      function getModeName(m) {
-        const map = {
-          standby: "待机",
-          remote: "遥控",
-          tracking: "循迹",
-          avoid: "避障",
-        };
-        return map[m];
-      }
+  // 更新UI按钮
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('onclick').includes(mode));
+  });
 
-      // --- 4. 视觉渲染 (UI 更新) ---
-      function renderVisuals() {
-        // 更新小车下方的状态显示
-        document.getElementById("statusDist").innerText = appState.distance + " cm";
-        document.getElementById("statusAngle").innerText = appState.servoAngle + "°";
+  // 摇杆显隐
+  const joyZone = document.getElementById('joystick-zone');
+  if (mode === 'remote') {
+    joyZone.classList.remove('disabled');
+  } else {
+    joyZone.classList.add('disabled');
+    // 退出遥控模式时重置动力
+    appState.power = 0;
+    appState.turn = 0;
+    updateLocalAnimations();
+  }
 
-        // 1. 舵机与雷达动画
-        const servoEl = document.getElementById("servoHead");
-        const beamEl = document.getElementById("radarBeam");
+  // 发送模式指令 (映射保持原样)
+  const modeMap = {
+    'standby': 'stop',
+    'remote': 'remote',
+    'tracking': 'trace',
+    'avoid': 'obstacle'
+  };
 
-        // 舵机旋转 (注意 CSS 旋转中心已设为 center)
-        // 假设 90度是正前。CSS rotate(0) 默认朝向可能需要调整。
-        // 这里假设 0度右，90度前，180度左。
-        // 为了让视觉符合，我们需要映射：CSS rotate(0) 是正上方吗？不，通常是原样。
-        // 假设 servoHead 默认是水平摆放的？
-        // 让我们简单点：CSS rotate(X deg). 如果 C代码 90度是正前，而CSS 0度是正前，则：rotate(angle - 90)
-        servoEl.style.transform = `rotate(${appState.servoAngle - 90}deg)`;
+  fetch(`${config.baseUrl}/api/mode?val=${modeMap[mode]}`).catch(console.error);
+}
 
-        // 雷达波束长度与颜色
-        // 限制最大显示长度 150px
-        let beamLen = Math.min(appState.distance * 3, 150);
-        beamEl.style.borderTopWidth = `${beamLen}px`;
+// --- 视觉渲染 ---
 
-        if (appState.distance > 0 && appState.distance < 20) {
-          beamEl.classList.add("danger");
-        } else {
-          beamEl.classList.remove("danger");
-        }
+function renderVisuals() {
+  // 1. 更新数值显示
+  document.getElementById('statusDist').innerText = appState.distance;
+  document.getElementById('statusAngle').innerText = appState.servoAngle;
 
-        // 2. 循迹传感器 (0=检测到黑线时高亮, 1=白色时不亮)
-        document
-          .getElementById("irL")
-          .classList.toggle("active", appState.ir[0] === 0);
-        document
-          .getElementById("irM")
-          .classList.toggle("active", appState.ir[1] === 0);
-        document
-          .getElementById("irR")
-          .classList.toggle("active", appState.ir[2] === 0);
-      }
+  // 2. 舵机旋转 (假设90度是正前)
+  // CSS中 transform-origin 已经设置到底部中心
+  // 0度在CSS里通常是正上方，如果90度是正前，可能需要(ang - 90)或者其他修正
+  // 这里假设: 90度=正前, 0度=右, 180度=左. 
+  // HTML布局上，舵机初始是朝上的。
+  // rotate(0deg) 是朝上。所以如果要向左转(180)，需要 rotate(90deg)? 
+  // 让我们做个通用映射：angle - 90. 这样 90->0(正中), 180->90(左/右), 0->-90.
+  const rotation = appState.servoAngle - 90;
+  document.getElementById('servoHead').style.transform = `translateX(-50%) rotate(${rotation}deg)`;
 
-      function updateLocalCarAnim() {
-        // 更新轮子旋转动画 - 差速驱动模拟
-        const wheelL = document.getElementById("wheelL");
-        const wheelR = document.getElementById("wheelR");
+  // 3. 雷达波束 (距离越远越长，最大150px)
+  const beam = document.getElementById('radarBeam');
+  const beamLen = Math.min(appState.distance * 3, 150);
+  beam.style.borderTopWidth = `${beamLen}px`;
 
-        if (appState.mode === "remote") {
-          // 计算左右轮的动力
-          // power: 前进正值, 后退负值
-          // turn: 右转正值, 左转负值
+  // 距离过近变红
+  if (appState.distance > 0 && appState.distance < 20) {
+    beam.classList.add('danger');
+  } else {
+    beam.classList.remove('danger');
+  }
 
-          let leftPower = appState.power;
-          let rightPower = appState.power;
+  // 4. 循迹传感器 (0=黑线=Active)
+  const irs = ['irL', 'irM', 'irR'];
+  appState.ir.forEach((val, idx) => {
+    const el = document.getElementById(irs[idx]);
+    if (val === 0) el.classList.add('active'); // 检测到黑线
+    else el.classList.remove('active');
+  });
+}
 
-          // 差速转向：转向时减少一侧轮子的动力
-          if (appState.turn > 0) {
-            // 右转：左轮减少/反转，右轮保持动力
-            leftPower = leftPower - appState.turn;
-          } else if (appState.turn < 0) {
-            // 左转：右轮保持动力，左轮减少/反转
-            rightPower = rightPower + appState.turn; // turn是负数，所以加
-          }
+function updateLocalAnimations() {
+  const wheelL = document.getElementById('wheelL');
+  const wheelR = document.getElementById('wheelR');
 
-          // 根据动力设置动画状态
-          // 正动力=向前转(spinning)，负动力=向后转(spinning-reverse)，无动力=停止
-          updateWheelAnimation(wheelL, leftPower);
-          updateWheelAnimation(wheelR, rightPower);
-        } else {
-          // 非遥控模式，停止所有轮子
-          updateWheelAnimation(wheelL, 0);
-          updateWheelAnimation(wheelR, 0);
-        }
-      }
+  // 清除动画
+  wheelL.classList.remove('spinning', 'spinning-reverse');
+  wheelR.classList.remove('spinning', 'spinning-reverse');
 
-      function updateWheelAnimation(wheel, power) {
-        // 清除所有动画类
-        wheel.classList.remove("spinning", "spinning-reverse");
+  if (appState.mode !== 'remote') return;
 
-        if (power > 10) {
-          // 向前转
-          wheel.classList.add("spinning");
-        } else if (power < -10) {
-          // 向后转
-          wheel.classList.add("spinning-reverse");
-        }
-        // power 在 -10 到 10 之间视为停止
-      }
+  // 简单的差速动画模拟
+  // 前进
+  if (appState.power > 10) {
+    wheelL.classList.add('spinning');
+    wheelR.classList.add('spinning');
+    // 右转时右轮不动/反转? 这里简单处理：右转减速右轮
+    if (appState.turn > 30) wheelR.classList.remove('spinning');
+    // 左转时左轮减速
+    if (appState.turn < -30) wheelL.classList.remove('spinning');
+  }
+  // 后退
+  else if (appState.power < -10) {
+    wheelL.classList.add('spinning-reverse');
+    wheelR.classList.add('spinning-reverse');
+  }
+  // 原地转向 (无动力，纯转向)
+  else if (Math.abs(appState.power) <= 10 && Math.abs(appState.turn) > 20) {
+    if (appState.turn > 0) { // 右转: 左轮进，右轮退
+      wheelL.classList.add('spinning');
+      wheelR.classList.add('spinning-reverse');
+    } else { // 左转
+      wheelL.classList.add('spinning-reverse');
+      wheelR.classList.add('spinning');
+    }
+  }
+}
 
-      // [调试用] 模拟避障模式下的雷达扫描效果
-      let simDir = 1;
-      function simulateAvoidance() {
-        appState.servoAngle += 5 * simDir;
-        if (appState.servoAngle > 170 || appState.servoAngle < 10) simDir *= -1;
+// --- 辅助工具 ---
 
-        // 模拟前方有障碍
-        if (Math.abs(appState.servoAngle - 90) < 30) appState.distance = 15;
-        else appState.distance = 80;
+function setConnectionStatus(isOnline) {
+  const el = document.getElementById('statusConn');
+  if (isOnline) {
+    el.classList.add('connected');
+    el.classList.remove('disconnected');
+  } else {
+    el.classList.remove('connected');
+    el.classList.add('disconnected');
+  }
+}
 
-        renderVisuals();
-      }
+function clamp(v, min, max) {
+  return Math.min(Math.max(v, min), max);
+}
 
-      // --- 5. 辅助函数 ---
-      function clamp(v, min, max) {
-        return Math.min(Math.max(v, min), max);
-      }
+// 模拟雷达摆动 (仅在断开连接且避障模式时为了UI演示)
+let simDir = 1;
+function simulateRadar() {
+  appState.servoAngle += 5 * simDir;
+  if (appState.servoAngle > 160 || appState.servoAngle < 20) simDir *= -1;
+  appState.distance = Math.floor(Math.random() * 50) + 10;
+  renderVisuals();
+}
 
-      function toggleConfig() {
-        const m = document.getElementById("configModal");
-        m.style.display = m.style.display === "flex" ? "none" : "flex";
-      }
+// --- 设置弹窗逻辑 ---
+function toggleConfig() {
+  const m = document.getElementById('configModal');
+  m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
+}
 
-      function saveConfig() {
-        config.ip = document.getElementById("cfgIP").value;
-        config.port = document.getElementById("cfgPort").value;
-        localStorage.setItem("car_ip", config.ip);
-        localStorage.setItem("car_port", config.port);
-        updateBaseUrl();
-        toggleConfig();
-        alert(`地址已更新为: ${config.baseUrl}`);
-      }
+function saveConfig() {
+  const ip = document.getElementById('cfgIP').value;
+  const port = document.getElementById('cfgPort').value;
 
-      // 初始化 UI 选中态
-      document.querySelectorAll(".mode-btn")[0].click();
-      document.getElementById("cfgIP").value = config.ip;
-      document.getElementById("cfgPort").value = config.port;
+  if (ip) {
+    config.ip = ip;
+    localStorage.setItem('car_ip', ip);
+  }
+  if (port) {
+    config.port = port;
+    localStorage.setItem('car_port', port);
+  }
 
-      // 初始化连接状态指示灯为断开状态
-      const connEl = document.getElementById("statusConn");
-      connEl.classList.add("disconnected");
+  updateBaseUrl();
+  toggleConfig();
+  alert("配置已保存，尝试连接...");
+}
+
+// --- 初始化 ---
+(function init() {
+  // 填入配置
+  document.getElementById('cfgIP').value = config.ip;
+  document.getElementById('cfgPort').value = config.port;
+
+  // 默认高亮待机
+  changeMode('standby');
+})();

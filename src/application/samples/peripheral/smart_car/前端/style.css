@@ -1,284 +1,360 @@
 :root {
-  /* 浅色系配色方案 */
-  --primary: #007bff; /* 科技蓝 */
-  --primary-light: #e6f2ff;
-  --danger: #ff4d4f; /* 警示红 */
-  --bg: #f5f7fa; /* 浅灰背景 */
-  --panel: #ffffff; /* 纯白面板 */
-  --text-main: #333333;
-  --text-sub: #888888;
-  --border: #e0e0e0;
-  --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --primary: #4f46e5;
+  /* 科技蓝紫 */
+  --primary-light: #e0e7ff;
+  --bg-color: #f3f4f6;
+  /* 浅灰背景 */
+  --card-bg: #ffffff;
+  --text-main: #1f2937;
+  --text-sub: #6b7280;
+  --accent-danger: #ef4444;
+  --accent-success: #10b981;
+  --accent-warn: #f59e0b;
+  --border-radius: 16px;
+  --shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   margin: 0;
-  background-color: var(--bg);
-  color: var(--text-main);
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
   height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg-color);
+  color: var(--text-main);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  user-select: none;
+  /* 防止滚动 */
 }
 
-/* --- 顶部配置栏 --- */
+/* --- 顶部导航 --- */
 header {
-  background: var(--panel);
-  padding: 10px 15px;
+  height: 60px;
+  background: var(--card-bg);
+  padding: 0 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--border);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   z-index: 10;
 }
-.app-title {
-  font-weight: 600;
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
   font-size: 18px;
-  color: var(--primary);
-}
-.config-btn {
-  font-size: 20px;
-  cursor: pointer;
-  color: var(--text-sub);
 }
 
-/* --- 主舞台 (可视化区域) --- */
+.badge {
+  background: var(--primary-light);
+  color: var(--primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7em;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #ccc;
+  box-shadow: 0 0 0 2px #eee;
+  transition: all 0.3s;
+}
+
+.status-indicator.connected {
+  background-color: var(--accent-success);
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
+}
+
+.status-indicator.disconnected {
+  background-color: var(--accent-danger);
+}
+
+.btn-icon {
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.btn-icon:hover {
+  background: #f0f0f0;
+}
+
+/* --- 主舞台 (网格背景) --- */
 #stage {
   flex: 1;
   position: relative;
+  background-image:
+    linear-gradient(#e5e7eb 1px, transparent 1px),
+    linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-position: center;
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: var(--bg);
-  /* 网格背景装饰 */
-  background-image: radial-gradient(#d1d5db 1px, transparent 1px);
-  background-size: 20px 20px;
+  overflow: hidden;
 }
 
-/* --- 小车模型 (前驱三轮结构) --- */
+/* --- 车辆模型 CSS Art --- */
 .car-wrapper {
+  position: relative;
+  width: 200px;
+  height: 300px;
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   align-items: center;
 }
 
-.car-container {
-  width: 140px;
-  height: 200px;
+/* 车身容器 - 相对定位基准 */
+.car-model {
   position: relative;
+  width: 100px;
+  /* 车宽 */
+  height: 160px;
+  /* 车长 */
 }
 
-/* 车身主体 */
-.car-body {
+/* 1. 车身 */
+.chassis {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   background: #fff;
-  border: 2px solid #ccc;
+  border: 2px solid #d1d5db;
   border-radius: 20px;
-  position: relative;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
 }
 
-/* 动力轮 (位于上方/车头) */
+/* 装饰文字 */
+.mcu-deco {
+  margin-top: 60px;
+  font-size: 10px;
+  color: #9ca3af;
+  font-weight: bold;
+  border: 1px solid #e5e7eb;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+/* 2. 动力轮 (位于车头两侧) */
 .wheel {
   position: absolute;
-  width: 25px;
+  top: 25px;
+  /* 靠前 */
+  width: 24px;
   height: 50px;
-  background: #333;
+  background: #374151;
   border-radius: 6px;
-  top: 20px; /* 靠前 */
-  transition: transform 0.1s;
+  z-index: 1;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
+
 .wheel.left {
-  left: -12px;
+  left: -14px;
 }
+
 .wheel.right {
-  right: -12px;
+  right: -14px;
 }
 
-/* 轮子旋转动画 */
-.wheel.spinning {
-  animation: wheel-spin 0.15s linear infinite;
+/* 轮胎花纹与动画 */
+.tire-tread {
+  width: 100%;
+  height: 200%;
+  background: repeating-linear-gradient(0deg,
+      transparent 0px,
+      transparent 4px,
+      rgba(255, 255, 255, 0.2) 4px,
+      rgba(255, 255, 255, 0.2) 6px);
 }
 
-.wheel.spinning-reverse {
-  animation: wheel-spin-reverse 0.15s linear infinite;
+/* 动画：通过JS添加类名控制 */
+.wheel.spinning .tire-tread {
+  animation: tread-scroll 0.5s linear infinite;
 }
 
-.wheel.spinning::after,
-.wheel.spinning-reverse::after {
-  content: "";
+.wheel.spinning-reverse .tire-tread {
+  animation: tread-scroll 0.5s linear infinite reverse;
+}
+
+@keyframes tread-scroll {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+/* 3. 后万向轮 */
+.caster-wheel {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0px,
-    transparent 8px,
-    rgba(255, 255, 255, 0.3) 8px,
-    rgba(255, 255, 255, 0.3) 10px
-  );
-  border-radius: 6px;
-}
-
-@keyframes wheel-spin {
-  0% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(3px);
-  }
-  100% {
-    transform: translateY(0);
-  }
-}
-
-@keyframes wheel-spin-reverse {
-  0% {
-    transform: translateY(3px);
-  }
-  50% {
-    transform: translateY(0);
-  }
-  100% {
-    transform: translateY(3px);
-  }
-}
-
-/* 万向轮 (位于下方/车尾) */
-.castor-wheel {
-  width: 20px;
-  height: 20px;
-  background: #999;
+  bottom: 15px;
+  width: 16px;
+  height: 16px;
+  background: #9ca3af;
   border-radius: 50%;
-  margin-bottom: 20px;
-  border: 2px solid #666;
+  border: 2px solid #6b7280;
 }
 
-/* --- 传感器组件 --- */
+/* 4. 传感器模块 (循迹) */
+.sensor-bar {
+  position: absolute;
+  top: 15px;
+  /* 位于轮子前方/平行 */
+  display: flex;
+  gap: 12px;
+  z-index: 3;
+}
 
-/* 1. 舵机云台 + 超声波 (位于车头) */
-.servo-head {
-  width: 60px;
+.ir-led {
+  width: 8px;
+  height: 8px;
+  background: #e5e7eb;
+  border: 1px solid #9ca3af;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+/* 黑色检测到线(逻辑0)时亮起 */
+.ir-led.active {
+  background: #111;
+  box-shadow: 0 0 5px var(--accent-success);
+  border-color: var(--accent-success);
+}
+
+/* 5. 舵机云台 + 超声波 (最前端) */
+.servo-assembly {
+  position: absolute;
+  top: -15px;
+  /* 突出车身 */
+  left: 50%;
+  transform: translateX(-50%) rotate(0deg);
+  /* 旋转中心 */
+  width: 50px;
   height: 20px;
+  transform-origin: center 25px;
+  /* 调整旋转轴心到底座 */
+  z-index: 10;
+  transition: transform 0.1s linear;
+}
+
+.ultrasonic-sensor {
+  width: 100%;
+  height: 100%;
   background: var(--primary);
   border-radius: 4px;
-  position: absolute;
-  top: -10px; /* 突出车头 */
-  left: 50%;
-  margin-left: -30px;
-  z-index: 5;
-  transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94); /* 平滑转动 */
   display: flex;
   justify-content: space-around;
   align-items: center;
+  box-shadow: 0 4px 6px rgba(79, 70, 229, 0.3);
 }
-.servo-eye {
-  width: 15px;
-  height: 15px;
+
+.eye {
+  width: 14px;
+  height: 14px;
   background: #fff;
   border-radius: 50%;
-  border: 2px solid #333;
+  border: 3px solid #333;
 }
 
-/* 雷达扫描波束 */
+/* 雷达波束 */
 .radar-beam {
   position: absolute;
-  bottom: 100%; /* 从舵机向上延伸 */
+  bottom: 100%;
   left: 50%;
-  transform: translateX(-50%);
-  width: 4px; /* 初始宽度 */
-  height: 0px; /* 初始长度 */
-  background: rgba(0, 123, 255, 0.2);
+  width: 0;
+  height: 0;
   border-left: 20px solid transparent;
   border-right: 20px solid transparent;
-  border-top: 100px solid rgba(0, 123, 255, 0.3); /* 波束长度 */
-  width: 0;
-  border-radius: 50%;
-  transform-origin: bottom center;
+  border-top: 0px solid rgba(79, 70, 229, 0.2);
+  /* 动态高度 */
+  transform: translateX(-50%);
+  transition: border-top-color 0.2s;
   pointer-events: none;
-  transition:
-    border-top-color 0.2s,
-    height 0.2s; /* 颜色变化动画 */
 }
+
 .radar-beam.danger {
-  border-top-color: rgba(255, 77, 79, 0.5);
+  border-top-color: rgba(239, 68, 68, 0.4);
 }
 
-/* 2. 循迹传感器 (车头底部) */
-.ir-bar {
+/* --- 仪表盘悬浮 --- */
+.dashboard-stats {
+  min-width: 220px; 
+  white-space: nowrap;
+  justify-content: space-around;
+  padding: 10px 20px;
   position: absolute;
-  top: 40px; /* 在轮子后面一点 */
-  display: flex;
-  gap: 15px;
-}
-.ir-sensor {
-  width: 10px;
-  height: 10px;
-  background: #e0e0e0;
-  border: 1px solid #999;
-  border-radius: 50%;
-}
-.ir-sensor.active {
-  background: #333;
-  border-color: #000;
-  box-shadow: 0 0 5px #000;
-} /* 黑线识别 */
-
-/* --- 状态显示 (小车下方) --- */
-.car-status {
-  margin-top: 15px;
+  bottom: -10px;
   display: flex;
   gap: 20px;
-  font-size: 13px;
-  color: var(--text-sub);
-}
-.car-status span {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-#statusConn {
-  font-size: 16px;
-}
-#statusConn.connected {
-  color: #28a745;
-}
-#statusConn.disconnected {
-  color: var(--danger);
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+  border: 1px solid #fff;
+  box-shadow: var(--shadow);
 }
 
-/* --- 底部控制面板 --- */
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-sub);
+}
+
+.stat-item .value {
+  display: inline-block;
+  min-width: 50px;
+  text-align: right;
+  font-weight: 700;
+  color: var(--text-main);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- 底部控制区 --- */
 #controls {
-  background: var(--panel);
+  background: var(--card-bg);
+  border-radius: 24px 24px 0 0;
   padding: 20px;
-  border-top: 1px solid var(--border);
-  border-radius: 20px 20px 0 0;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
   gap: 15px;
+  z-index: 20;
 }
 
-/* 模式按钮组 */
-.mode-group {
+.mode-switcher {
   display: flex;
-  background: var(--bg);
+  background: var(--bg-color);
   padding: 4px;
   border-radius: 12px;
 }
+
 .mode-btn {
   flex: 1;
   border: none;
@@ -290,29 +366,41 @@ header {
   cursor: pointer;
   transition: all 0.2s;
 }
+
 .mode-btn.active {
   background: #fff;
   color: var(--primary);
-  font-weight: bold;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 /* 摇杆容器 */
-#joystick-zone {
-  height: 160px;
+.joystick-container {
+  height: 180px;
   position: relative;
-  background: radial-gradient(circle at center, #eff2f5 0%, #fff 70%);
-  border-radius: 12px;
-  border: 1px dashed #ddd;
+  background: radial-gradient(circle at center, #f9fafb 0%, #fff 70%);
+  border: 2px dashed #e5e7eb;
+  border-radius: 16px;
   transition: opacity 0.3s;
 }
-.disabled {
-  opacity: 0.3;
+
+.joystick-container.disabled {
+  opacity: 0.5;
   pointer-events: none;
 }
 
-/* 配置弹窗 */
-.modal {
+.joystick-placeholder {
+  position: absolute;
+  width: 100%;
+  bottom: 10px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  color: #9ca3af;
+}
+
+/* --- 弹窗 --- */
+.modal-backdrop {
   display: none;
   position: fixed;
   top: 0;
@@ -323,36 +411,128 @@ header {
   z-index: 100;
   align-items: center;
   justify-content: center;
+  backdrop-filter: blur(2px);
 }
-.modal-content {
+
+.modal-card {
   background: #fff;
-  padding: 25px;
-  border-radius: 12px;
-  width: 80%;
-  max-width: 300px;
+  width: 90%;
+  max-width: 320px;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  animation: modal-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
-.input-group {
+
+@keyframes modal-pop {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.close-btn {
+  font-size: 24px;
+  cursor: pointer;
+  color: #999;
+}
+
+.form-group {
   margin-bottom: 15px;
 }
-.input-group label {
+
+.form-group label {
   display: block;
-  margin-bottom: 5px;
-  font-size: 12px;
-  color: #666;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-sub);
 }
-.input-group input {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  box-sizing: border-box;
-}
-.btn-primary {
+
+.form-group input {
   width: 100%;
   padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border 0.2s;
+}
+
+.form-group input:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
+.btn-save {
+  width: 100%;
+  padding: 12px;
   background: var(--primary);
   color: #fff;
   border: none;
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-save:active {
+  opacity: 0.9;
+}
+
+/* 桌面端适配优化 */
+@media (min-width: 768px) {
+  body {
+    flex-direction: row;
+  }
+
+  header {
+    flex-direction: column;
+    width: 80px;
+    height: 100vh;
+    padding: 20px 0;
+    border-right: 1px solid #e5e7eb;
+    box-shadow: none;
+  }
+
+  .brand {
+    flex-direction: column;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .logo-icon {
+    font-size: 24px;
+  }
+
+  .header-right {
+    flex-direction: column;
+    margin-top: auto;
+    margin-bottom: 20px;
+  }
+
+  #controls {
+    width: 350px;
+    height: 100vh;
+    border-radius: 0;
+    border-left: 1px solid #e5e7eb;
+    order: 2;
+    /* 放在右侧 */
+  }
+  
 }

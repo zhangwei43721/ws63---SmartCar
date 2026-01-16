@@ -1,96 +1,129 @@
 <!doctype html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Smart Car Web Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>智能小车控制台</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
+
 <body>
+  <!-- 顶部导航 -->
   <header>
-    <div class="app-title">
-      SmartCar <span style="font-size: 0.8em; color: #888">K12</span>
+    <div class="brand">
+      <div class="logo-icon">🚗</div>
+      <div class="title">
+        SmartCar <span class="badge">K12</span>
+      </div>
     </div>
-    <div class="config-btn" onclick="toggleConfig()">⚙️</div>
+    <div class="header-right">
+      <div class="status-indicator" id="statusConn" title="连接状态"></div>
+      <div class="btn-icon" onclick="toggleConfig()">⚙️</div>
+    </div>
   </header>
 
-  <!-- 可视化舞台 -->
-  <div id="stage">
+  <!-- 主舞台区域 -->
+  <main id="stage">
     <div class="car-wrapper">
-      <div class="car-container">
-        <!-- 舵机雷达系统 -->
-        <div class="servo-head" id="servoHead">
-          <div class="servo-eye"></div>
-          <div class="servo-eye"></div>
-          <!-- 扫描波束 -->
+      <!-- 车辆模型容器 -->
+      <div class="car-model">
+        <!-- 1. 舵机云台与超声波 (位于最前端) -->
+        <div class="servo-assembly" id="servoHead">
+          <div class="ultrasonic-sensor">
+            <div class="eye left"></div>
+            <div class="eye right"></div>
+          </div>
+          <!-- 雷达扫描波束 -->
           <div class="radar-beam" id="radarBeam"></div>
         </div>
 
-        <div class="wheel left" id="wheelL"></div>
-        <div class="car-body">
-          <!-- 循迹传感器 (L M R) -->
-          <div class="ir-bar">
-            <div class="ir-sensor" id="irL"></div>
-            <div class="ir-sensor" id="irM"></div>
-            <div class="ir-sensor" id="irR"></div>
-          </div>
-          <!-- 尾轮 -->
-          <div class="castor-wheel"></div>
+        <!-- 2. 动力轮 (前轮驱动布局) -->
+        <div class="wheel left" id="wheelL">
+          <div class="tire-tread"></div>
         </div>
-        <div class="wheel right" id="wheelR"></div>
+        <div class="wheel right" id="wheelR">
+          <div class="tire-tread"></div>
+        </div>
+
+        <!-- 3. 车身主体 -->
+        <div class="chassis">
+          <!-- 装饰性芯片图案 -->
+          <div class="mcu-deco">HI3863</div>
+
+          <!-- 循迹传感器模块 (车头底部) -->
+          <div class="sensor-bar">
+            <div class="ir-led" id="irL"></div>
+            <div class="ir-led" id="irM"></div>
+            <div class="ir-led" id="irR"></div>
+          </div>
+
+          <!-- 后万向轮 -->
+          <div class="caster-wheel"></div>
+        </div>
       </div>
-      <!-- 状态显示 -->
-      <div class="car-status">
-        <span id="statusDist">-- cm</span>
-        <span id="statusAngle">90°</span>
-        <span id="statusConn">●</span>
+
+      <!-- 实时数据悬浮窗 -->
+      <div class="dashboard-stats">
+        <div class="stat-item">
+          <span class="label">距离</span>
+          <span class="value" id="statusDist">--</span>
+          <span class="unit">cm</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">舵机</span>
+          <span class="value" id="statusAngle">90</span>
+          <span class="unit">°</span>
+        </div>
       </div>
     </div>
-  </div>
+  </main>
 
-  <!-- 底部面板 -->
-  <div id="controls">
-    <div class="mode-group">
-      <button class="mode-btn active" onclick="changeMode('standby')">
-        待机
-      </button>
+  <!-- 底部控制面板 -->
+  <section id="controls">
+    <!-- 模式切换栏 -->
+    <div class="mode-switcher">
+      <button class="mode-btn active" onclick="changeMode('standby')">待机</button>
       <button class="mode-btn" onclick="changeMode('remote')">遥控</button>
       <button class="mode-btn" onclick="changeMode('tracking')">循迹</button>
       <button class="mode-btn" onclick="changeMode('avoid')">避障</button>
     </div>
 
-    <div id="joystick-zone" class="disabled">
-      <div
-        style="
-          position: absolute;
-          bottom: 10px;
-          width: 100%;
-          text-align: center;
-          color: #ccc;
-          font-size: 12px;
-        "
-      >
-        虚拟摇杆 (仅遥控模式可用)
+    <!-- 摇杆区域 -->
+    <div class="joystick-container disabled" id="joystick-zone">
+      <div class="joystick-placeholder">
+        <span>虚拟摇杆区域</span>
+        <small>仅遥控模式可用</small>
+      </div>
+    </div>
+  </section>
+
+  <!-- 设置弹窗 -->
+  <div class="modal-backdrop" id="configModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>连接配置</h3>
+        <span class="close-btn" onclick="toggleConfig()">×</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>小车 IP 地址</label>
+          <input type="text" id="cfgIP" placeholder="192.168.x.x" />
+        </div>
+        <div class="form-group">
+          <label>端口 (Port)</label>
+          <input type="number" id="cfgPort" placeholder="8080" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-save" onclick="saveConfig()">保存并重连</button>
       </div>
     </div>
   </div>
 
-  <!-- 配置弹窗 -->
-  <div class="modal" id="configModal">
-    <div class="modal-content">
-      <h3 style="margin-top: 0">连接设置</h3>
-      <div class="input-group">
-        <label>小车 IP 地址</label>
-        <input type="text" id="cfgIP" value="192.168.3.151" />
-      </div>
-      <div class="input-group">
-        <label>端口 (Port)</label>
-        <input type="number" id="cfgPort" value="8080" />
-      </div>
-      <button class="btn-primary" onclick="saveConfig()">保存并连接</button>
-    </div>
-  </div>
+  <!-- 库文件与逻辑 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
   <script src="./app.js"></script>
 </body>
+
 </html>
