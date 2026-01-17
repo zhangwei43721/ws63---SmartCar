@@ -41,39 +41,28 @@ static void gpio_control(unsigned int gpio, unsigned int value)
  */
 void l9110s_init(void)
 {
-    // 初始化左轮电机控制引脚为输出
+    // 配置管脚复用模式为 GPIO (Mode 0)
+    uapi_pin_set_mode(L9110S_LEFT_A_GPIO, 4);
+    uapi_pin_set_mode(L9110S_LEFT_B_GPIO, 0);
+    uapi_pin_set_mode(L9110S_RIGHT_A_GPIO, 0);
+    uapi_pin_set_mode(L9110S_RIGHT_B_GPIO, 0);
+
+    // 配置为输出模式
     uapi_gpio_set_dir(L9110S_LEFT_A_GPIO, GPIO_DIRECTION_OUTPUT);
     uapi_gpio_set_dir(L9110S_LEFT_B_GPIO, GPIO_DIRECTION_OUTPUT);
-
-    // 初始化右轮电机控制引脚为输出
     uapi_gpio_set_dir(L9110S_RIGHT_A_GPIO, GPIO_DIRECTION_OUTPUT);
     uapi_gpio_set_dir(L9110S_RIGHT_B_GPIO, GPIO_DIRECTION_OUTPUT);
 
-    // 初始状态停止
-    car_stop();
+    car_stop(); // 初始状态停止
 }
 
 /**
  * @brief 小车前进
- * 左轮正转: LEFT_A=1, LEFT_B=0
- * 右轮正转: RIGHT_A=1, RIGHT_B=0
+ * 左轮正转: LEFT_A=0, LEFT_B=1
+ * 右轮正转: RIGHT_A=0, RIGHT_B=1
  * @return 无
  */
 void car_forward(void)
-{
-    gpio_control(L9110S_LEFT_A_GPIO, 1);
-    gpio_control(L9110S_LEFT_B_GPIO, 0);
-    gpio_control(L9110S_RIGHT_A_GPIO, 1);
-    gpio_control(L9110S_RIGHT_B_GPIO, 0);
-}
-
-/**
- * @brief 小车后退
- * 左轮反转: LEFT_A=0, LEFT_B=1
- * 右轮反转: RIGHT_A=0, RIGHT_B=1
- * @return 无
- */
-void car_backward(void)
 {
     gpio_control(L9110S_LEFT_A_GPIO, 0);
     gpio_control(L9110S_LEFT_B_GPIO, 1);
@@ -82,45 +71,59 @@ void car_backward(void)
 }
 
 /**
+ * @brief 小车后退
+ * 左轮反转: LEFT_A=1, LEFT_B=0
+ * 右轮反转: RIGHT_A=1, RIGHT_B=0
+ * @return 无
+ */
+void car_backward(void)
+{
+    gpio_control(L9110S_LEFT_A_GPIO, 1);
+    gpio_control(L9110S_LEFT_B_GPIO, 0);
+    gpio_control(L9110S_RIGHT_A_GPIO, 1);
+    gpio_control(L9110S_RIGHT_B_GPIO, 0);
+}
+
+/**
  * @brief 小车左转
  * 左轮停止: LEFT_A=0, LEFT_B=0
- * 右轮正转: RIGHT_A=1, RIGHT_B=0
+ * 右轮正转: RIGHT_A=0, RIGHT_B=1
  * @return 无
  */
 void car_left(void)
 {
     gpio_control(L9110S_LEFT_A_GPIO, 0);
     gpio_control(L9110S_LEFT_B_GPIO, 0);
-    gpio_control(L9110S_RIGHT_A_GPIO, 1);
-    gpio_control(L9110S_RIGHT_B_GPIO, 0);
+    gpio_control(L9110S_RIGHT_A_GPIO, 0);
+    gpio_control(L9110S_RIGHT_B_GPIO, 1);
 }
 
 /**
  * @brief 小车右转
- * 左轮正转: LEFT_A=1, LEFT_B=0
+ * 左轮正转: LEFT_A=0, LEFT_B=1
  * 右轮停止: RIGHT_A=0, RIGHT_B=0
  * @return 无
  */
 void car_right(void)
 {
-    gpio_control(L9110S_LEFT_A_GPIO, 1);
-    gpio_control(L9110S_LEFT_B_GPIO, 0);
+    gpio_control(L9110S_LEFT_A_GPIO, 0);
+    gpio_control(L9110S_LEFT_B_GPIO, 1);
     gpio_control(L9110S_RIGHT_A_GPIO, 0);
     gpio_control(L9110S_RIGHT_B_GPIO, 0);
 }
 
 /**
  * @brief 小车停止
- * 左轮刹车: LEFT_A=1, LEFT_B=1
- * 右轮刹车: RIGHT_A=1, RIGHT_B=1
+ * 左轮停止: LEFT_A=0, LEFT_B=0
+ * 右轮停止: RIGHT_A=0, RIGHT_B=0
  * @return 无
  */
 void car_stop(void)
 {
-    gpio_control(L9110S_LEFT_A_GPIO, 1);
-    gpio_control(L9110S_LEFT_B_GPIO, 1);
-    gpio_control(L9110S_RIGHT_A_GPIO, 1);
-    gpio_control(L9110S_RIGHT_B_GPIO, 1);
+    gpio_control(L9110S_LEFT_A_GPIO, 0);
+    gpio_control(L9110S_LEFT_B_GPIO, 0);
+    gpio_control(L9110S_RIGHT_A_GPIO, 0);
+    gpio_control(L9110S_RIGHT_B_GPIO, 0);
 }
 
 /**
@@ -135,16 +138,16 @@ static void set_motor_gpio(unsigned int a_gpio, unsigned int b_gpio, int8_t spee
 {
     if (speed > 0) {
         // 正转
-        gpio_control(a_gpio, 1);
-        gpio_control(b_gpio, 0);
-    } else if (speed < 0) {
-        // 反转
         gpio_control(a_gpio, 0);
         gpio_control(b_gpio, 1);
-    } else {
-        // 停止（刹车）
+    } else if (speed < 0) {
+        // 反转
         gpio_control(a_gpio, 1);
-        gpio_control(b_gpio, 1);
+        gpio_control(b_gpio, 0);
+    } else {
+        // 停止（断电）
+        gpio_control(a_gpio, 0);
+        gpio_control(b_gpio, 0);
     }
 }
 

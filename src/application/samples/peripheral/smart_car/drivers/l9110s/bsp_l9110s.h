@@ -27,15 +27,12 @@
 
 // L9110S电机驱动引脚定义 (根据硬件原理图)
 // 左轮电机控制引脚
-#define L9110S_LEFT_A_GPIO 6 // MOTOR_IN1 (GPIO_06)
-#define L9110S_LEFT_B_GPIO 7 // MOTOR_IN2 (GPIO_07)
+#define L9110S_LEFT_A_GPIO 7 // MOTOR_IN1 (GPIO_07)
+#define L9110S_LEFT_B_GPIO 8 // MOTOR_IN2 (GPIO_08)
 
 // 右轮电机控制引脚
-#define L9110S_RIGHT_A_GPIO 8 // MOTOR_IN3 (GPIO_08)
-#define L9110S_RIGHT_B_GPIO 9 // MOTOR_IN4 (GPIO_09)
-
-// GPIO功能号
-#define L9110S_GPIO_FUNC 0
+#define L9110S_RIGHT_A_GPIO 5 // MOTOR_IN3 (GPIO_05)
+#define L9110S_RIGHT_B_GPIO 6 // MOTOR_IN4 (GPIO_06)
 
 /**
  * @brief 初始化L9110S电机驱动

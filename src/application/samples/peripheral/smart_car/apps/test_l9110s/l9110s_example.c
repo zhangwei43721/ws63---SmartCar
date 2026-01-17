@@ -22,11 +22,11 @@
 #include "soc_osal.h"
 #include "gpio.h"
 #include "app_init.h"
-#include "../../drivers/hcsr04/bsp_l9110s.h"
+#include "../../drivers/l9110s/bsp_l9110s.h"
 
 #define L9110S_TASK_STACK_SIZE 0x1000
 #define L9110S_TASK_PRIO 24
-#define L9110S_DELAY_MS 500
+#define L9110S_DELAY_MS 1000
 
 /**
  * @brief L9110S电机测试任务
@@ -43,25 +43,25 @@ static void *l9110s_task(const char *arg)
     l9110s_init();
 
     while (1) {
-        // 前进
-        printf("Car moving forward\n");
-        car_forward();
-        osal_msleep(L9110S_DELAY_MS);
+        // // 前进
+        // printf("Car moving forward\n");
+        // car_forward();
+        // osal_msleep(L9110S_DELAY_MS);
 
-        // 后退
-        printf("Car moving backward\n");
-        car_backward();
-        osal_msleep(L9110S_DELAY_MS);
+        // // 后退
+        // printf("Car moving backward\n");
+        // car_backward();
+        // osal_msleep(L9110S_DELAY_MS);
 
-        // 左转
-        printf("Car turning left\n");
-        car_left();
-        osal_msleep(L9110S_DELAY_MS);
+        // // 左转
+        // printf("Car turning left\n");
+        // car_left();
+        // osal_msleep(L9110S_DELAY_MS);
 
-        // 右转
-        printf("Car turning right\n");
-        car_right();
-        osal_msleep(L9110S_DELAY_MS);
+        // // 右转
+        // printf("Car turning right\n");
+        // car_right();
+        // osal_msleep(L9110S_DELAY_MS);
 
         // 停止
         printf("Car stopping\n");

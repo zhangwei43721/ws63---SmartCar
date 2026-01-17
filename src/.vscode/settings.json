@@ -73,6 +73,7 @@
         "platform_core_rom.h": "c",
         "bsp_bt_spp.h": "c",
         "bsp_wifi.h": "c",
-        "ssd1306.h": "c"
+        "ssd1306.h": "c",
+        "bsp_l9110s.h": "c"
     }
 }
