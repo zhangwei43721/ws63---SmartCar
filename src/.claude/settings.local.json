@@ -9,5 +9,6 @@
       "Bash(grep:*)",
       "Bash(find:*)"
     ]
-  }
+  },
+  "outputStyle": "default"
 }
