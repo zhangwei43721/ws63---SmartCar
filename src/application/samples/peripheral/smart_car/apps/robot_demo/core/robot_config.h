@@ -14,8 +14,8 @@ extern "C" {
 #endif
 
 /* =============== 舵机配置 =============== */
-#define SERVO_LEFT_ANGLE       150     // 舵机左转角度
-#define SERVO_RIGHT_ANGLE       30     // 舵机右转角度
+#define SERVO_LEFT_ANGLE       180     // 舵机左转角度
+#define SERVO_RIGHT_ANGLE       0     // 舵机右转角度
 #define SERVO_MIDDLE_ANGLE      90     // 舵机中间角度
 
 /* =============== 时间配置（毫秒） =============== */

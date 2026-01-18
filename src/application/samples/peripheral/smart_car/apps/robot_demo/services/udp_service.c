@@ -1,6 +1,6 @@
 #include "udp_service.h"
-#include "../../../drivers/wifi_client/bsp_wifi.h"
 #include "../core/robot_mgr.h"
+#include "udp_net_common.h"
 
 static void *udp_service_task(const char *arg);
 static void udp_service_broadcast_presence(void);
@@ -24,15 +24,7 @@ static bool g_mutex_inited = false;
             osal_mutex_unlock(&g_mutex); \
     } while (0)
 
-static bool g_wifi_inited = false;
-static bool g_wifi_connected = false;
-static bool g_wifi_has_ip = false;
 static bool g_ip_printed = false; // 标记是否已打印IP
-static char g_ip[IP_BUFFER_SIZE] = "0.0.0.0";
-static unsigned int g_wifi_last_retry = 0;
-
-static int g_udp_socket_fd = -1;
-static bool g_udp_bound = false;
 
 static uint8_t g_rx_buffer[UDP_BUFFER_SIZE];
 static uint8_t g_tx_buffer[UDP_BUFFER_SIZE];
@@ -46,18 +38,6 @@ static bool g_has_latest = false;
 static RobotState g_last_sent_state = {0};
 static bool g_state_initialized = false;
 static unsigned long long g_last_state_send_time = 0;
-
-/**
- * @brief 计算校验和
- */
-static uint8_t udp_service_checksum(const uint8_t *data, size_t len)
-{
-    uint8_t sum = 0;
-    for (size_t i = 0; i < len; i++) {
-        sum += data[i];
-    }
-    return sum;
-}
 
 /**
  * @brief 初始化UDP服务互斥锁
@@ -82,6 +62,7 @@ void udp_service_init(void)
         return;
 
     udp_service_mutex_init();
+    udp_net_common_init();
 
     osal_kthread_lock();
     g_udp_task_handle = osal_kthread_create((osal_kthread_handler)udp_service_task, NULL, "udp_task", UDP_STACK_SIZE);
@@ -101,10 +82,7 @@ void udp_service_init(void)
  */
 bool udp_service_is_connected(void)
 {
-    UDP_LOCK();
-    bool bound = g_udp_bound;
-    UDP_UNLOCK();
-    return bound;
+    return g_udp_net_bound;
 }
 
 /**
@@ -113,7 +91,7 @@ bool udp_service_is_connected(void)
  */
 const char *udp_service_get_ip(void)
 {
-    return g_ip;
+    return g_udp_net_ip;
 }
 
 /**
@@ -176,14 +154,6 @@ static bool has_state_changed(const RobotState *new_state)
  */
 static void send_state_packet(const RobotState *state)
 {
-    UDP_LOCK();
-    int fd = g_udp_socket_fd;
-    bool bound = g_udp_bound;
-    UDP_UNLOCK();
-
-    if (!bound || fd < 0)
-        return;
-
     udp_packet_t *pkt = (udp_packet_t *)g_tx_buffer;
     pkt->type = 0x02; // 传感器状态
     pkt->cmd = (uint8_t)state->mode;
@@ -194,17 +164,9 @@ static void send_state_packet(const RobotState *state)
     // 红外数据打包到 ir_data (bit0=左, bit1=中, bit2=右)
     pkt->ir_data = ((state->ir_left & 1) << 0) | ((state->ir_middle & 1) << 1) | ((state->ir_right & 1) << 2);
 
-    pkt->checksum = udp_service_checksum((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
+    pkt->checksum = udp_net_common_checksum8_add((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
 
-    // 广播发送
-    struct sockaddr_in broadcast_addr;
-    (void)memset_s(&broadcast_addr, sizeof(broadcast_addr), 0, sizeof(broadcast_addr));
-    broadcast_addr.sin_family = AF_INET;
-    broadcast_addr.sin_port = lwip_htons(UDP_BROADCAST_PORT);
-    broadcast_addr.sin_addr.s_addr = lwip_htonl(INADDR_BROADCAST);
-
-    (void)lwip_sendto(fd, g_tx_buffer, sizeof(udp_packet_t), 0, (struct sockaddr *)&broadcast_addr,
-                      sizeof(broadcast_addr));
+    (void)udp_net_common_send_broadcast(g_tx_buffer, sizeof(udp_packet_t), UDP_BROADCAST_PORT);
 
     // 更新上次发送的状态和时间
     g_last_sent_state = *state;
@@ -217,14 +179,6 @@ static void send_state_packet(const RobotState *state)
  */
 static void send_heartbeat(void)
 {
-    UDP_LOCK();
-    int fd = g_udp_socket_fd;
-    bool bound = g_udp_bound;
-    UDP_UNLOCK();
-
-    if (!bound || fd < 0)
-        return;
-
     udp_packet_t *pkt = (udp_packet_t *)g_tx_buffer;
     pkt->type = 0xFE; // 心跳包
     pkt->cmd = 0x00;
@@ -232,16 +186,8 @@ static void send_heartbeat(void)
     pkt->motor2 = 0;
     pkt->servo = 0;
     pkt->ir_data = 0;
-    pkt->checksum = udp_service_checksum((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
-
-    struct sockaddr_in broadcast_addr;
-    (void)memset_s(&broadcast_addr, sizeof(broadcast_addr), 0, sizeof(broadcast_addr));
-    broadcast_addr.sin_family = AF_INET;
-    broadcast_addr.sin_port = lwip_htons(UDP_BROADCAST_PORT);
-    broadcast_addr.sin_addr.s_addr = lwip_htonl(INADDR_BROADCAST);
-
-    (void)lwip_sendto(fd, g_tx_buffer, sizeof(udp_packet_t), 0, (struct sockaddr *)&broadcast_addr,
-                      sizeof(broadcast_addr));
+    pkt->checksum = udp_net_common_checksum8_add((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
+    (void)udp_net_common_send_broadcast(g_tx_buffer, sizeof(udp_packet_t), UDP_BROADCAST_PORT);
 }
 
 /**
@@ -263,55 +209,10 @@ void udp_service_send_state(void)
 }
 
 /**
- * @brief 确保 WiFi 连接并获取 IP 地址
- * @note 自动处理 WiFi 初始化、连接和重连
- */
-static void udp_service_wifi_ensure_connected(void)
-{
-    unsigned long long now_jiffies = osal_get_jiffies();
-    unsigned int now = (unsigned int)now_jiffies;
-
-    if (!g_wifi_inited) {
-        if (bsp_wifi_init() != 0)
-            return;
-
-        g_wifi_inited = true;
-        g_wifi_last_retry = 0;
-    }
-
-    if (!g_wifi_connected) {
-        if (g_wifi_last_retry == 0 || (now - g_wifi_last_retry >= 5000)) {
-            g_wifi_last_retry = now;
-            if (bsp_wifi_connect_default() == 0)
-                g_wifi_connected = true;
-        }
-    }
-
-    if (g_wifi_connected) {
-        bsp_wifi_status_t status = bsp_wifi_get_status();
-        if (status == BSP_WIFI_STATUS_GOT_IP) {
-            if (bsp_wifi_get_ip(g_ip, sizeof(g_ip)) == 0)
-                g_wifi_has_ip = true;
-        } else if (status == BSP_WIFI_STATUS_DISCONNECTED) {
-            g_wifi_connected = false;
-            g_wifi_has_ip = false;
-        }
-    }
-}
-
-/**
  * @brief 广播设备存在信息
  */
 static void udp_service_broadcast_presence(void)
 {
-    UDP_LOCK();
-    int fd = g_udp_socket_fd;
-    bool bound = g_udp_bound;
-    UDP_UNLOCK();
-
-    if (!bound || fd < 0)
-        return;
-
     // 创建存在广播包
     udp_packet_t *pkt = (udp_packet_t *)g_tx_buffer;
     pkt->type = 0xFF; // 存在广播
@@ -320,17 +221,8 @@ static void udp_service_broadcast_presence(void)
     pkt->motor2 = 0;
     pkt->servo = 0;
     pkt->ir_data = 0;
-    pkt->checksum = udp_service_checksum((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
-
-    // 广播发送
-    struct sockaddr_in broadcast_addr;
-    (void)memset_s(&broadcast_addr, sizeof(broadcast_addr), 0, sizeof(broadcast_addr));
-    broadcast_addr.sin_family = AF_INET;
-    broadcast_addr.sin_port = lwip_htons(UDP_BROADCAST_PORT);
-    broadcast_addr.sin_addr.s_addr = lwip_htonl(INADDR_BROADCAST);
-
-    (void)lwip_sendto(fd, g_tx_buffer, sizeof(udp_packet_t), 0, (struct sockaddr *)&broadcast_addr,
-                      sizeof(broadcast_addr));
+    pkt->checksum = udp_net_common_checksum8_add((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
+    (void)udp_net_common_send_broadcast(g_tx_buffer, sizeof(udp_packet_t), UDP_BROADCAST_PORT);
 }
 
 /**
@@ -342,40 +234,10 @@ static void *udp_service_task(const char *arg)
 {
     UNUSED(arg);
 
-    // 创建UDP套接字
-    int sockfd = lwip_socket(AF_INET, SOCK_DGRAM, 0);
+    int sockfd = udp_net_common_open_and_bind(UDP_SERVER_PORT, 100, true);
     if (sockfd < 0) {
-        printf("udp_service: 套接字创建失败，错误码=%d\r\n", errno);
         return NULL;
     }
-
-    // 设置接收超时，防止 recvfrom 阻塞导致心跳包无法发送
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = 100 * 1000; // 100ms 超时
-    (void)lwip_setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-    // 设置广播权限
-    int broadcast = 1;
-    (void)lwip_setsockopt(sockfd, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast));
-
-    // 绑定到本地端口
-    struct sockaddr_in addr;
-    (void)memset_s(&addr, sizeof(addr), 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = lwip_htons(UDP_SERVER_PORT);
-    addr.sin_addr.s_addr = IPADDR_ANY;
-
-    if (lwip_bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        printf("udp_service: 绑定失败，错误码=%d\r\n", errno);
-        lwip_close(sockfd);
-        return NULL;
-    }
-
-    UDP_LOCK();
-    g_udp_socket_fd = sockfd;
-    g_udp_bound = true;
-    UDP_UNLOCK();
 
     printf("udp_service: UDP 服务已启动，监听端口 %d\r\n", UDP_SERVER_PORT);
 
@@ -385,20 +247,21 @@ static void *udp_service_task(const char *arg)
 
     while (1) {
         // 确保WiFi连接
-        udp_service_wifi_ensure_connected();
+        udp_net_common_wifi_ensure_connected();
 
         // 打印WiFi和IP状态（只打印一次）
-        if (g_wifi_connected && g_wifi_has_ip && !g_ip_printed) {
-            if (strlen(g_ip) > 0 && g_ip[0] != '0') {
-                printf("udp_service: WiFi已连接，IP: %s\r\n", g_ip);
+        const char *ip = g_udp_net_ip;
+        if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip && !g_ip_printed) {
+            if (ip != NULL && strlen(ip) > 0 && ip[0] != '0') {
+                printf("udp_service: WiFi已连接，IP: %s\r\n", ip);
                 g_ip_printed = true; // 标记已打印
             }
-        } else if (!g_wifi_connected || !g_wifi_has_ip) {
+        } else if (!g_udp_net_wifi_connected || !g_udp_net_wifi_has_ip) {
             // 断开连接时重置打印标记
             g_ip_printed = false;
         }
 
-        if (g_wifi_connected && g_wifi_has_ip) {
+        if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip) {
             unsigned long long now_jiffies = osal_get_jiffies();
 
             // 每2秒广播一次存在信息
@@ -429,7 +292,7 @@ static void *udp_service_task(const char *arg)
                 udp_packet_t *pkt = (udp_packet_t *)g_rx_buffer;
 
                 // 验证校验和
-                uint8_t checksum = udp_service_checksum((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
+                uint8_t checksum = udp_net_common_checksum8_add((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
                 if (checksum == pkt->checksum) {
                     // 处理控制命令
                     if (pkt->type == 0x01) { // 控制命令

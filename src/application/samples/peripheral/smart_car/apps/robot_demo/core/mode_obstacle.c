@@ -49,10 +49,10 @@ static unsigned int scan_and_decide_direction(void)
     // 舵机回中
     set_servo_angle_wait(SERVO_MIDDLE_ANGLE);
 
-    // 打印调试信息
-    int l_val = (int)(left_dist * 100);
-    int r_val = (int)(right_dist * 100);
-    printf("扫描结果: 左=%d.%02d cm, 右=%d.%02d cm\r\n", l_val / 100, l_val % 100, r_val / 100, r_val % 100);
+    // // 打印调试信息
+    // int l_val = (int)(left_dist * 100);
+    // int r_val = (int)(right_dist * 100);
+    // printf("扫描结果: 左=%d.%02d cm, 右=%d.%02d cm\r\n", l_val / 100, l_val % 100, r_val / 100, r_val % 100);
 
     return (left_dist > right_dist) ? CAR_TURN_LEFT : CAR_TURN_RIGHT;
 }

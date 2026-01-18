@@ -41,7 +41,7 @@ let socket = null;
 let sendLoopTimer = null;
 let reconnectTimer = null;
 let isManualClose = false;
-const DPAD_SPEED = 80;
+const DPAD_SPEED = 100;
 
 function setDrive(m1, m2) {
     appState.motor1 = clamp(m1, -100, 100);
