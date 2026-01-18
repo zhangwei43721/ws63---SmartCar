@@ -14,4 +14,9 @@ void robot_mgr_update_distance(float distance);
 void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right);
 void robot_mgr_get_state_copy(RobotState *out);
 
+// 获取避障阈值（cm）。优先读取 NV 配置，异常时回退到编译期默认值。
+unsigned int robot_mgr_get_obstacle_threshold_cm(void);
+// 获取舵机回中角度（0~180）。优先读取 NV 配置，异常时回退到编译期默认值。
+unsigned int robot_mgr_get_servo_center_angle(void);
+
 #endif

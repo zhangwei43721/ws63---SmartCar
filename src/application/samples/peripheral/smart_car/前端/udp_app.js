@@ -43,6 +43,21 @@ let reconnectTimer = null;
 let isManualClose = false;
 const DPAD_SPEED = 100;
 
+const otaState = {
+    active: false,
+    phase: 'idle',
+    file: null,
+    data: null,
+    total: 0,
+    offset: 0,
+    chunkSize: 200,
+    waitingForOffset: null,
+    waitingForLen: 0,
+    waitingForBase64: '',
+    retries: 0,
+    ackTimer: null
+};
+
 function setDrive(m1, m2) {
     appState.motor1 = clamp(m1, -100, 100);
     appState.motor2 = clamp(m2, -100, 100);
@@ -278,6 +293,11 @@ function handleProxyMessage(msg) {
             renderVisuals();
         }
     }
+    else if (msg.type === 'otaResponse') {
+        if (appState.carIP === msg.ip) {
+            handleOtaResponse(msg);
+        }
+    }
 }
 
 // --- 模式切换与UI ---
@@ -385,6 +405,218 @@ function clamp(v, min, max) {
     return Math.min(Math.max(v, min), max);
 }
 
+function setOtaUi(text, percent) {
+    const meta = document.getElementById('otaStatusText');
+    if (meta) meta.textContent = `OTA: ${text || '--'}`;
+    const bar = document.getElementById('otaProgressBar');
+    if (bar) {
+        const p = clamp(Number.isFinite(percent) ? percent : 0, 0, 100);
+        bar.style.width = `${p}%`;
+    }
+}
+
+function setOtaButtonEnabled(enabled) {
+    const btn = document.getElementById('btnOtaStart');
+    if (btn) btn.disabled = !enabled;
+}
+
+function base64FromU8(u8) {
+    let s = '';
+    for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+    return btoa(s);
+}
+
+function sendOtaStart(size) {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !appState.carIP) return false;
+    socket.send(JSON.stringify({ type: 'otaStart', deviceIP: appState.carIP, size: (size >>> 0) }));
+    return true;
+}
+
+function sendOtaData(offset, base64Data) {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !appState.carIP) return false;
+    socket.send(JSON.stringify({ type: 'otaData', deviceIP: appState.carIP, offset: (offset >>> 0), data: base64Data }));
+    return true;
+}
+
+function sendOtaEnd() {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !appState.carIP) return false;
+    socket.send(JSON.stringify({ type: 'otaEnd', deviceIP: appState.carIP }));
+    return true;
+}
+
+function clearOtaAckTimer() {
+    if (otaState.ackTimer) {
+        clearTimeout(otaState.ackTimer);
+        otaState.ackTimer = null;
+    }
+}
+
+function scheduleOtaRetry() {
+    clearOtaAckTimer();
+    otaState.ackTimer = setTimeout(() => {
+        if (!otaState.active) return;
+        if (otaState.retries >= 5) {
+            otaFail('超时');
+            return;
+        }
+        otaState.retries += 1;
+        if (otaState.phase === 'start') {
+            sendOtaStart(otaState.total);
+        } else if (otaState.phase === 'data' && otaState.waitingForOffset !== null) {
+            sendOtaData(otaState.waitingForOffset, otaState.waitingForBase64);
+        } else if (otaState.phase === 'end') {
+            sendOtaEnd();
+        }
+        scheduleOtaRetry();
+    }, 1200);
+}
+
+function otaFail(reason) {
+    otaState.active = false;
+    otaState.phase = 'idle';
+    otaState.waitingForOffset = null;
+    otaState.waitingForLen = 0;
+    otaState.waitingForBase64 = '';
+    otaState.retries = 0;
+    clearOtaAckTimer();
+    setOtaButtonEnabled(true);
+    setOtaUi(`失败(${reason || '错误'})`, 0);
+}
+
+function otaFinish() {
+    otaState.active = false;
+    otaState.phase = 'idle';
+    otaState.waitingForOffset = null;
+    otaState.waitingForLen = 0;
+    otaState.waitingForBase64 = '';
+    otaState.retries = 0;
+    clearOtaAckTimer();
+    setOtaButtonEnabled(true);
+    setOtaUi('完成', 100);
+}
+
+function otaSendNextChunk() {
+    if (!otaState.active || otaState.phase !== 'data') return;
+    if (!otaState.data || otaState.total === 0) {
+        otaFail('文件为空');
+        return;
+    }
+    if (otaState.offset >= otaState.total) {
+        otaState.phase = 'end';
+        otaState.waitingForOffset = null;
+        otaState.waitingForLen = 0;
+        otaState.waitingForBase64 = '';
+        otaState.retries = 0;
+        sendOtaEnd();
+        setOtaUi('提交', 100);
+        scheduleOtaRetry();
+        return;
+    }
+
+    const start = otaState.offset;
+    const end = Math.min(start + otaState.chunkSize, otaState.total);
+    const chunk = otaState.data.subarray(start, end);
+    const b64 = base64FromU8(chunk);
+
+    otaState.waitingForOffset = start;
+    otaState.waitingForLen = chunk.length;
+    otaState.waitingForBase64 = b64;
+    otaState.retries = 0;
+
+    sendOtaData(start, b64);
+    const percent = Math.floor((end * 100) / otaState.total);
+    setOtaUi(`上传中 ${percent}%`, percent);
+    scheduleOtaRetry();
+}
+
+function handleOtaResponse(msg) {
+    const code = msg.code;
+    const status = msg.status || null;
+    const progress = status && Number.isFinite(status.progress) ? status.progress : null;
+
+    if (code !== 0) {
+        otaFail(`code=${code}`);
+        return;
+    }
+
+    otaState.retries = 0;
+    clearOtaAckTimer();
+
+    if (progress !== null) {
+        setOtaUi('设备处理中', progress);
+    }
+
+    if (!otaState.active) return;
+
+    if (otaState.phase === 'start') {
+        otaState.phase = 'data';
+        otaState.offset = 0;
+        otaSendNextChunk();
+        return;
+    }
+
+    if (otaState.phase === 'data') {
+        if (otaState.waitingForOffset === null) return;
+        if (msg.offset !== otaState.waitingForOffset) {
+            scheduleOtaRetry();
+            return;
+        }
+        otaState.offset = otaState.waitingForOffset + otaState.waitingForLen;
+        otaState.waitingForOffset = null;
+        otaState.waitingForLen = 0;
+        otaState.waitingForBase64 = '';
+        otaSendNextChunk();
+        return;
+    }
+
+    if (otaState.phase === 'end') {
+        otaFinish();
+    }
+}
+
+async function startOtaFromSelectedFile() {
+    if (!appState.connected || !socket || socket.readyState !== WebSocket.OPEN || !appState.carIP) {
+        setOtaUi('未连接', 0);
+        return;
+    }
+    const input = document.getElementById('otaFile');
+    const file = input && input.files && input.files[0] ? input.files[0] : null;
+    if (!file) {
+        setOtaUi('未选择文件', 0);
+        return;
+    }
+
+    setOtaButtonEnabled(false);
+    setOtaUi('读取文件', 0);
+
+    let buf;
+    try {
+        buf = await file.arrayBuffer();
+    } catch (e) {
+        otaFail('读取失败');
+        return;
+    }
+
+    const u8 = new Uint8Array(buf);
+    otaState.active = true;
+    otaState.phase = 'start';
+    otaState.file = file;
+    otaState.data = u8;
+    otaState.total = u8.length >>> 0;
+    otaState.offset = 0;
+    otaState.waitingForOffset = null;
+    otaState.waitingForLen = 0;
+    otaState.waitingForBase64 = '';
+    otaState.retries = 0;
+
+    if (!sendOtaStart(otaState.total)) {
+        otaFail('发送失败');
+        return;
+    }
+    setOtaUi('准备', 0);
+    scheduleOtaRetry();
+}
+
 // --- 设置面板 ---
 function toggleConfig() {
     const m = document.getElementById('configModal');
@@ -392,6 +624,14 @@ function toggleConfig() {
 }
 function saveConfig() {
     toggleConfig();
+}
+
+function toggleOtaModal(force) {
+    const m = document.getElementById('otaModal');
+    if (!m) return;
+
+    const shouldOpen = (force === true) ? true : (force === false) ? false : (m.style.display !== 'flex');
+    m.style.display = shouldOpen ? 'flex' : 'none';
 }
 
 // --- 初始化 ---
@@ -404,6 +644,31 @@ window.onload = function () {
     bindHoldButton(document.getElementById('btnLeft'), () => setDrive(0, DPAD_SPEED));
     bindHoldButton(document.getElementById('btnRight'), () => setDrive(DPAD_SPEED, 0));
     bindHoldButton(document.getElementById('btnStop'), () => setDrive(0, 0));
+
+    setOtaUi('--', 0);
+    const btnOta = document.getElementById('btnOtaStart');
+    if (btnOta) {
+        btnOta.addEventListener('click', (e) => {
+            e.preventDefault();
+            startOtaFromSelectedFile();
+        });
+    }
+
+    const otaModal = document.getElementById('otaModal');
+    if (otaModal) {
+        otaModal.addEventListener('click', (e) => {
+            if (e.target === otaModal) toggleOtaModal(false);
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const cm = document.getElementById('configModal');
+        if (cm && cm.style.display === 'flex') cm.style.display = 'none';
+        const om = document.getElementById('otaModal');
+        if (om && om.style.display === 'flex') om.style.display = 'none';
+    });
+
     startCommsLoop();
 };
 

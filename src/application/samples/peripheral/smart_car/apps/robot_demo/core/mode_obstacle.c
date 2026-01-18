@@ -69,7 +69,9 @@ static unsigned int scan_and_decide_direction(void)
  */
 static void perform_obstacle_avoidance(float distance)
 {
-    if (distance <= 0 || distance < DISTANCE_BETWEEN_CAR_AND_OBSTACLE) {
+    // 避障阈值可由 NV 配置动态调整；异常时函数内部会回退到默认宏
+    float threshold = (float)robot_mgr_get_obstacle_threshold_cm();
+    if (distance <= 0 || distance < threshold) {
         // 停车并后退
         car_stop();
         osal_msleep(200);

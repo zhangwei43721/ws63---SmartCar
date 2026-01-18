@@ -50,8 +50,10 @@ static void remote_run_func(ModeContext *ctx)
     unsigned long long now = osal_get_jiffies();
     if (now - g_last_cmd_tick > osal_msecs_to_jiffies(REMOTE_CMD_TIMEOUT_MS)) {
         l9110s_set_differential(0, 0); // 双电机停止
-        sg90_set_angle(SERVO_MIDDLE_ANGLE);
-        robot_mgr_update_servo_angle(SERVO_MIDDLE_ANGLE);
+        // 回中角可由 NV 配置调整；异常时函数内部会回退到默认宏
+        unsigned int center = robot_mgr_get_servo_center_angle();
+        sg90_set_angle(center);
+        robot_mgr_update_servo_angle(center);
     }
 }
 

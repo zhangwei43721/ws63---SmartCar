@@ -12,6 +12,39 @@ const wss = new WebSocket.Server({ port: CONFIG.WS_PORT });
 const udpClient = dgram.createSocket('udp4');
 udpClient.bind(CONFIG.UDP_BROADCAST_PORT);
 
+function checksum8(buf) {
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum = (sum + buf[i]) & 0xFF;
+    return sum & 0xFF;
+}
+
+function buildOtaPacket(type, cmd, offset, payloadBuf) {
+    const payload = payloadBuf || Buffer.alloc(0);
+    const headerLen = 8;
+    const totalLen = headerLen + payload.length + 1;
+    const buf = Buffer.alloc(totalLen);
+    buf.writeUInt8(type & 0xFF, 0);
+    buf.writeUInt8(cmd & 0xFF, 1);
+    buf.writeUInt32BE(offset >>> 0, 2);
+    buf.writeUInt16BE(payload.length & 0xFFFF, 6);
+    payload.copy(buf, 8);
+    buf.writeUInt8(checksum8(buf.subarray(0, totalLen - 1)), totalLen - 1);
+    return buf;
+}
+
+function parseOtaPacket(msg) {
+    if (!Buffer.isBuffer(msg) || msg.length < 9) return null;
+    const chk = checksum8(msg.subarray(0, msg.length - 1));
+    if (chk !== msg[msg.length - 1]) return null;
+    const type = msg.readUInt8(0);
+    const cmd = msg.readUInt8(1);
+    const offset = msg.readUInt32BE(2);
+    const length = msg.readUInt16BE(6);
+    if (msg.length !== 9 + length) return null;
+    const payload = msg.subarray(8, 8 + length);
+    return { type, cmd, offset, length, payload };
+}
+
 // 设备管理: ip -> { lastSeen, status, discovered, lastNotified }
 // lastNotected: 上次通知前端的时间戳（用于防止重复通知）
 const devices = new Map();
@@ -19,9 +52,36 @@ const devices = new Map();
 // 监听 UDP 广播
 udpClient.on('message', (msg, rinfo) => {
     if (msg.length >= 7) {
+        const type = msg[0];
+        const now = Date.now();
+        const existing = devices.get(rinfo.address);
+
+        if (type === 0x14) {
+            const pkt = parseOtaPacket(msg);
+            if (!pkt) return;
+
+            let status = null;
+            if (pkt.length >= 10) {
+                status = {
+                    otaStatus: pkt.payload.readUInt8(0),
+                    progress: pkt.payload.readUInt8(1),
+                    received: pkt.payload.readUInt32BE(2),
+                    total: pkt.payload.readUInt32BE(6),
+                };
+            }
+
+            broadcastToClients({
+                type: 'otaResponse',
+                ip: rinfo.address,
+                code: pkt.cmd,
+                offset: pkt.offset,
+                status
+            });
+            return;
+        }
+
         const checksum = (msg[0] + msg[1] + msg[2] + msg[3] + msg[4] + msg[5]) & 0xFF;
         if (checksum === msg[6]) {
-            const type = msg[0];
             const now = Date.now();
             const existing = devices.get(rinfo.address);
 
@@ -152,7 +212,6 @@ wss.on('connection', (ws) => {
     }
 
     ws.on('message', (data) => {
-        console.log('收到前端消息:', data.toString());
         try {
             // 确保数据是字符串格式
             let dataStr = data;
@@ -166,12 +225,33 @@ wss.on('connection', (ws) => {
             }
 
             const msg = JSON.parse(dataStr);
-            console.log('解析后的消息:', msg);
+            if (msg && typeof msg === 'object') {
+                if (msg.type === 'otaData') {
+                    console.log(`收到前端消息: otaData ip=${msg.deviceIP} offset=${msg.offset} b64len=${(msg.data || '').length}`);
+                } else {
+                    console.log('收到前端消息:', msg);
+                }
+            }
 
             if (msg.type === 'control') {
                 sendControl(msg.deviceIP, msg.motor1, msg.motor2, msg.servo);
             } else if (msg.type === 'modeChange') {
                 sendModeChange(msg.deviceIP, msg.mode);
+            } else if (msg.type === 'otaStart') {
+                const payload = Buffer.alloc(4);
+                payload.writeUInt32BE((msg.size >>> 0), 0);
+                const buf = buildOtaPacket(0x10, 0x00, 0, payload);
+                udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, msg.deviceIP);
+            } else if (msg.type === 'otaData') {
+                const dataBuf = Buffer.from(msg.data || '', 'base64');
+                const buf = buildOtaPacket(0x11, 0x00, (msg.offset >>> 0), dataBuf);
+                udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, msg.deviceIP);
+            } else if (msg.type === 'otaEnd') {
+                const buf = buildOtaPacket(0x12, 0x00, 0, Buffer.alloc(0));
+                udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, msg.deviceIP);
+            } else if (msg.type === 'otaQuery') {
+                const buf = buildOtaPacket(0x13, 0x00, 0, Buffer.alloc(0));
+                udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, msg.deviceIP);
             }
         } catch (error) {
             console.error('解析 WebSocket 消息失败:', error);

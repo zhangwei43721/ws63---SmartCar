@@ -66,6 +66,25 @@ int udp_net_common_send_broadcast(const void *buf, size_t len, uint16_t port)
     return (int)lwip_sendto(fd, buf, len, 0, (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr));
 }
 
+/**
+ * @brief 向指定地址发送 UDP 数据（非广播）
+ * @note 依赖 udp_net_common_open_and_bind() 已成功创建并绑定套接字
+ */
+int udp_net_common_send_to_addr(const void *buf, size_t len, const struct sockaddr_in *addr)
+{
+    if (buf == NULL || len == 0 || addr == NULL)
+        return -1;
+
+    NET_LOCK();
+    int fd = g_udp_net_socket_fd;
+    bool bound = g_udp_net_bound;
+    NET_UNLOCK();
+    if (!bound || fd < 0)
+        return -1;
+
+    return (int)lwip_sendto(fd, buf, len, 0, (const struct sockaddr *)addr, sizeof(*addr));
+}
+
 void udp_net_common_init(void)
 {
     if (g_net_mutex_inited)

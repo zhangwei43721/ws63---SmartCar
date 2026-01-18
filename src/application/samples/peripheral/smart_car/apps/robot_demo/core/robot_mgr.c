@@ -12,12 +12,34 @@
 #include "../../../drivers/sg90/bsp_sg90.h"
 #include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
 
+#include "nv.h"
+#include "securec.h"
 #include "soc_osal.h"
 
 #include <stdbool.h>
 #include <stdio.h>
 
 static CarStatus g_status = CAR_STOP_STATUS;
+
+// 机器人运行参数（保存到 NV 的轻量配置）
+// - magic/version: 结构有效性标识
+// - checksum: 对整个结构体做 16-bit 累加校验（校验时将 checksum 置 0）
+// - obstacle_threshold_cm: 避障阈值（cm）
+// - servo_center_angle: 舵机回中角度（0~180）
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t checksum;
+    uint16_t obstacle_threshold_cm;
+    uint16_t servo_center_angle;
+    uint8_t reserved[16];
+} robot_nv_config_t;
+
+#define ROBOT_NV_CONFIG_KEY ((uint16_t)0x2000)
+#define ROBOT_NV_CONFIG_MAGIC ((uint32_t)0x524F4254)
+#define ROBOT_NV_CONFIG_VERSION ((uint16_t)1)
+
+static robot_nv_config_t g_nv_cfg = {0};
 
 // =============== 互斥锁操作宏 ===============
 #define ROBOT_STATE_LOCK()                         \
@@ -45,6 +67,54 @@ static RobotState g_robot_state = {0};
 // 互斥锁保护状态访问
 static osal_mutex g_state_mutex;
 static bool g_state_mutex_inited = false;
+
+// NV 配置校验：简单累加，足够检测大部分写入异常/脏数据
+static uint16_t nv_checksum16_add(const uint8_t *data, size_t len)
+{
+    uint32_t sum = 0;
+    for (size_t i = 0; i < len; i++) {
+        sum += data[i];
+    }
+    return (uint16_t)(sum & 0xFFFFu);
+}
+
+// 生成默认 NV 配置并计算校验
+static void nv_set_defaults(robot_nv_config_t *cfg)
+{
+    (void)memset_s(cfg, sizeof(*cfg), 0, sizeof(*cfg));
+    cfg->magic = ROBOT_NV_CONFIG_MAGIC;
+    cfg->version = ROBOT_NV_CONFIG_VERSION;
+    cfg->obstacle_threshold_cm = DISTANCE_BETWEEN_CAR_AND_OBSTACLE;
+    cfg->servo_center_angle = SERVO_MIDDLE_ANGLE;
+    cfg->checksum = 0;
+    cfg->checksum = nv_checksum16_add((const uint8_t *)cfg, sizeof(*cfg));
+}
+
+// 校验 magic/version 与 checksum，避免使用损坏配置
+static bool nv_validate(robot_nv_config_t *cfg)
+{
+    if (cfg->magic != ROBOT_NV_CONFIG_MAGIC || cfg->version != ROBOT_NV_CONFIG_VERSION) {
+        return false;
+    }
+    uint16_t saved = cfg->checksum;
+    cfg->checksum = 0;
+    uint16_t calc = nv_checksum16_add((const uint8_t *)cfg, sizeof(*cfg));
+    cfg->checksum = saved;
+    return saved == calc;
+}
+
+// 从 NV 读取配置；读取失败或校验失败则写入默认值
+static void nv_load_or_init(void)
+{
+    (void)uapi_nv_init();
+
+    uint16_t out_len = 0;
+    errcode_t ret = uapi_nv_read(ROBOT_NV_CONFIG_KEY, (uint16_t)sizeof(g_nv_cfg), &out_len, (uint8_t *)&g_nv_cfg);
+    if (ret != ERRCODE_SUCC || out_len != sizeof(g_nv_cfg) || !nv_validate(&g_nv_cfg)) {
+        nv_set_defaults(&g_nv_cfg);
+        (void)uapi_nv_write(ROBOT_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
+    }
+}
 
 /**
  * @brief 运行待机模式，显示 WiFi 连接状态和 IP 地址
@@ -89,6 +159,9 @@ static void robot_mgr_state_mutex_init(void)
  */
 void robot_mgr_init(void)
 {
+    // 优先加载运行参数，供后续模式逻辑读取（避障阈值/舵机回中等）
+    nv_load_or_init();
+
     l9110s_init();
     hcsr04_init();
     tcrt5000_init();
@@ -196,4 +269,21 @@ void robot_mgr_get_state_copy(RobotState *out)
     ROBOT_STATE_LOCK();
     *out = g_robot_state;
     ROBOT_STATE_UNLOCK();
+}
+
+unsigned int robot_mgr_get_obstacle_threshold_cm(void)
+{
+    unsigned int cm = (unsigned int)g_nv_cfg.obstacle_threshold_cm;
+    if (cm == 0) {
+        cm = DISTANCE_BETWEEN_CAR_AND_OBSTACLE;
+    }
+    return cm;
+}
+
+unsigned int robot_mgr_get_servo_center_angle(void)
+{
+    unsigned int a = (unsigned int)g_nv_cfg.servo_center_angle;
+    if (a > 180)
+        a = SERVO_MIDDLE_ANGLE;
+    return a;
 }

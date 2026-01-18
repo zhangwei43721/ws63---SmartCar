@@ -19,6 +19,7 @@
     </div>
     <div class="header-right">
       <div class="status-indicator" id="statusConn" title="连接状态"></div>
+      <div class="btn-icon" onclick="toggleOtaModal()" title="固件升级">⬆️</div>
       <div class="btn-icon" onclick="toggleConfig()">⚙️</div>
     </div>
   </header>
@@ -96,6 +97,7 @@
       <button class="dpad-btn right" id="btnRight">右转</button>
       <button class="dpad-btn down" id="btnBackward">后退</button>
     </div>
+
   </section>
 
   <!-- 设置弹窗 -->
@@ -125,6 +127,29 @@
       </div>
       <div class="modal-footer">
         <button class="btn-save" onclick="connectToProxy()">重新连接</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- OTA 升级弹窗 -->
+  <div class="modal-backdrop" id="otaModal">
+    <div class="modal-card ota-modal">
+      <div class="modal-header">
+        <h3>固件升级 (OTA)</h3>
+        <span class="close-btn" onclick="toggleOtaModal()">×</span>
+      </div>
+      <div class="modal-body">
+        <div class="ota-panel">
+          <div class="ota-row">
+            <input type="file" id="otaFile" accept=".fwpkg" />
+            <button class="ota-btn" id="btnOtaStart">开始升级</button>
+          </div>
+          <div class="ota-hint">建议选择 ws63-liteos-app_all.fwpkg</div>
+          <div class="ota-progress">
+            <div class="ota-progress-bar" id="otaProgressBar"></div>
+          </div>
+          <div class="ota-meta" id="otaStatusText">OTA: --</div>
+        </div>
       </div>
     </div>
   </div>
