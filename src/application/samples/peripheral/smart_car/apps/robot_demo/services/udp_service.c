@@ -2,6 +2,28 @@
 #include "../core/robot_mgr.h"
 #include "udp_net_common.h"
 
+#include "securec.h"
+
+#include "lwip/inet.h"
+#include "lwip/ip_addr.h"
+#include "lwip/sockets.h"
+
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// UDP数据包格式 (7字节)
+typedef struct {
+    uint8_t type;     // 数据包类型: 0x01=控制, 0x02=状态, 0x03=模式, 0xFE=心跳, 0xFF=存在广播
+    uint8_t cmd;      // 命令类型/模式编号
+    int8_t motor1;    // 左电机值 -100~100
+    int8_t motor2;    // 右电机值 -100~100
+    int8_t servo;     // 舵机角度 0~180
+    int8_t ir_data;   // 红外传感器数据 (bit0=左, bit1=中, bit2=右)
+    uint8_t checksum; // 校验和（累加和）
+} __attribute__((packed)) udp_packet_t;
+
 static void *udp_service_task(const char *arg);
 static void udp_service_broadcast_presence(void);
 

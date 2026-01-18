@@ -11,7 +11,9 @@
 #include "robot_config.h"
 #include "securec.h"
 
-void mode_run_loop(int expected_status, ModeRunFunc run_func, ModeExitFunc exit_func,
+void mode_run_loop(int expected_status,
+                   ModeRunFunc run_func,
+                   ModeExitFunc exit_func,
                    unsigned int telemetry_interval_ms)
 {
     if (run_func == NULL) {

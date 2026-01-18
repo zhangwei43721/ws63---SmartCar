@@ -9,6 +9,12 @@
 #include "mode_trace.h"
 #include "mode_common.h"
 #include "robot_config.h"
+#include "robot_mgr.h"
+
+#include "../../../drivers/l9110s/bsp_l9110s.h"
+#include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
+
+#include <stdio.h>
 
 /**
  * @brief 循迹模式运行函数（通用框架回调）

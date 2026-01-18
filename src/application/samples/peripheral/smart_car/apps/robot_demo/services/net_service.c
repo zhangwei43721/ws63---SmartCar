@@ -1,6 +1,20 @@
 #include "net_service.h"
 #include "../core/robot_config.h"
 
+#include "../../../drivers/wifi_client/bsp_wifi.h"
+
+#include "securec.h"
+#include "soc_osal.h"
+
+#include "lwip/inet.h"
+#include "lwip/ip_addr.h"
+#include "lwip/sockets.h"
+
+#include <errno.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+
 static void *net_service_tcp_task(const char *arg);
 static void net_service_wifi_ensure_connected(void);
 static int net_service_read_frame(int sockfd, uint8_t frame_out[4]);
@@ -13,17 +27,17 @@ static osal_mutex g_mutex;
 static bool g_mutex_inited = false;
 
 // =============== 互斥锁操作宏 ===============
-#define NET_LOCK() \
-    do { \
-        if (g_mutex_inited) \
+#define NET_LOCK()                           \
+    do {                                     \
+        if (g_mutex_inited)                  \
             (void)osal_mutex_lock(&g_mutex); \
-    } while(0)
+    } while (0)
 
-#define NET_UNLOCK() \
-    do { \
-        if (g_mutex_inited) \
+#define NET_UNLOCK()                     \
+    do {                                 \
+        if (g_mutex_inited)              \
             osal_mutex_unlock(&g_mutex); \
-    } while(0)
+    } while (0)
 
 static bool g_wifi_inited = false;
 static bool g_wifi_connected = false;

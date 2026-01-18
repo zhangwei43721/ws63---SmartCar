@@ -3,20 +3,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "../../../drivers/wifi_client/bsp_wifi.h"
-
-#include "osal_mutex.h"
-#include "securec.h"
-#include "soc_osal.h"
-
-#include "lwip/inet.h"
-#include "lwip/ip_addr.h"
-#include "lwip/sockets.h"
-
-#include <errno.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <string.h>
 
 #define NET_SERVICE_SERVER_IP "192.168.3.150"
 #define NET_SERVICE_SERVER_PORT 8888
@@ -26,6 +12,7 @@
 #define NET_SERVICE_RECV_TIMEOUT_MS 100
 
 #define NET_SERVICE_WIFI_RETRY_INTERVAL_MS 5000
+
 void net_service_init(void);
 bool net_service_is_connected(void);
 const char *net_service_get_ip(void);

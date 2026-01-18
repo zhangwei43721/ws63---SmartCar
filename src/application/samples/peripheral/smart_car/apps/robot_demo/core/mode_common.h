@@ -21,7 +21,7 @@ extern "C" {
 typedef struct {
     unsigned long long enter_time;          // 模式进入时间
     unsigned long long last_telemetry_time; // 上次遥测时间
-    bool is_running;                         // 运行状态标志
+    bool is_running;                        // 运行状态标志
 } ModeContext;
 
 /* 模式函数指针类型 */
@@ -35,7 +35,9 @@ typedef void (*ModeExitFunc)(ModeContext *ctx);
  * @param exit_func 模式退出函数指针（可为NULL）
  * @param telemetry_interval_ms 遥测上报间隔（毫秒）
  */
-void mode_run_loop(int expected_status, ModeRunFunc run_func, ModeExitFunc exit_func,
+void mode_run_loop(int expected_status,
+                   ModeRunFunc run_func,
+                   ModeExitFunc exit_func,
                    unsigned int telemetry_interval_ms);
 
 /**

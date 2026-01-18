@@ -1,28 +1,43 @@
 #include "robot_mgr.h"
 #include "robot_config.h"
+#include "mode_obstacle.h"
+#include "mode_remote.h"
+#include "mode_trace.h"
+
+#include "../services/ui_service.h"
 #include "../services/udp_service.h"
+
+#include "../../../drivers/hcsr04/bsp_hcsr04.h"
+#include "../../../drivers/l9110s/bsp_l9110s.h"
+#include "../../../drivers/sg90/bsp_sg90.h"
+#include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
+
+#include "soc_osal.h"
+
+#include <stdbool.h>
+#include <stdio.h>
 
 static CarStatus g_status = CAR_STOP_STATUS;
 
 // =============== 互斥锁操作宏 ===============
-#define ROBOT_STATE_LOCK() \
-    do { \
-        if (g_state_mutex_inited) \
+#define ROBOT_STATE_LOCK()                         \
+    do {                                           \
+        if (g_state_mutex_inited)                  \
             (void)osal_mutex_lock(&g_state_mutex); \
-    } while(0)
+    } while (0)
 
-#define ROBOT_STATE_UNLOCK() \
-    do { \
-        if (g_state_mutex_inited) \
+#define ROBOT_STATE_UNLOCK()                   \
+    do {                                       \
+        if (g_state_mutex_inited)              \
             osal_mutex_unlock(&g_state_mutex); \
-    } while(0)
+    } while (0)
 
 #define UPDATE_STATE_FIELD(field, value) \
-    do { \
-        ROBOT_STATE_LOCK(); \
-        g_robot_state.field = value; \
-        ROBOT_STATE_UNLOCK(); \
-    } while(0)
+    do {                                 \
+        ROBOT_STATE_LOCK();              \
+        g_robot_state.field = value;     \
+        ROBOT_STATE_UNLOCK();            \
+    } while (0)
 
 // 全局机器人状态，供 HTTP 服务读取
 static RobotState g_robot_state = {0};

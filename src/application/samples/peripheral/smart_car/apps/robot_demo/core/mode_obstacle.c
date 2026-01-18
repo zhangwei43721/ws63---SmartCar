@@ -9,6 +9,13 @@
 #include "mode_obstacle.h"
 #include "mode_common.h"
 #include "robot_config.h"
+#include "robot_mgr.h"
+
+#include "../../../drivers/hcsr04/bsp_hcsr04.h"
+#include "../../../drivers/l9110s/bsp_l9110s.h"
+#include "../../../drivers/sg90/bsp_sg90.h"
+
+#include <stdio.h>
 
 /**
  * @brief 设置舵机角度并等待到位，同时更新全局状态

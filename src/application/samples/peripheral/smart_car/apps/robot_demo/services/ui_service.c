@@ -16,11 +16,11 @@ typedef struct {
  * @brief 模式显示信息查找表
  */
 static const ModeDisplayInfo g_mode_display[] = {
-    {CAR_STOP_STATUS,             "Mode: Standby",  "WiFi: Check...",  "Press KEY1"},
-    {CAR_TRACE_STATUS,            "Mode: Trace",    "Infrared ON",     "KEY1 -> Next"},
-    {CAR_OBSTACLE_AVOIDANCE_STATUS, "Mode: Obstacle", "Ultrasonic ON",  "KEY1 -> Next"},
-    {CAR_WIFI_CONTROL_STATUS,     "Mode: WiFi Ctrl", "Waiting cmd...", "KEY1 -> Stop"},
-    {CAR_BT_CONTROL_STATUS,       "Mode: Bluetooth", "Current: Disabled", "KEY1 -> Stop"},
+    {CAR_STOP_STATUS, "Mode: Standby", "WiFi: Check...", "Press KEY1"},
+    {CAR_TRACE_STATUS, "Mode: Trace", "Infrared ON", "KEY1 -> Next"},
+    {CAR_OBSTACLE_AVOIDANCE_STATUS, "Mode: Obstacle", "Ultrasonic ON", "KEY1 -> Next"},
+    {CAR_WIFI_CONTROL_STATUS, "Mode: WiFi Ctrl", "Waiting cmd...", "KEY1 -> Stop"},
+    {CAR_BT_CONTROL_STATUS, "Mode: Bluetooth", "Current: Disabled", "KEY1 -> Stop"},
 };
 
 /**

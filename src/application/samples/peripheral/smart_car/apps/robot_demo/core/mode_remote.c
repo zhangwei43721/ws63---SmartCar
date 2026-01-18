@@ -9,8 +9,10 @@
 #include "mode_remote.h"
 #include "mode_common.h"
 #include "robot_config.h"
+#include "robot_mgr.h"
 #include "../services/udp_service.h"
 #include "../../../drivers/l9110s/bsp_l9110s.h"
+#include "../../../drivers/sg90/bsp_sg90.h"
 
 // 遥控命令超时时间
 static unsigned long long g_last_cmd_tick = 0;
@@ -47,7 +49,7 @@ static void remote_run_func(ModeContext *ctx)
     // 命令超时自动停车
     unsigned long long now = osal_get_jiffies();
     if (now - g_last_cmd_tick > osal_msecs_to_jiffies(REMOTE_CMD_TIMEOUT_MS)) {
-        l9110s_set_differential(0, 0);  // 双电机停止
+        l9110s_set_differential(0, 0); // 双电机停止
         sg90_set_angle(SERVO_MIDDLE_ANGLE);
         robot_mgr_update_servo_angle(SERVO_MIDDLE_ANGLE);
     }

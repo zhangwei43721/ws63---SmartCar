@@ -1,5 +1,21 @@
 #include "http_ctrl_service.h"
 #include "../core/robot_config.h"
+#include "../core/robot_mgr.h"
+#include "net_service.h"
+
+#include "securec.h"
+#include "soc_osal.h"
+
+#include "lwip/inet.h"
+#include "lwip/ip_addr.h"
+#include "lwip/sockets.h"
+
+#include <errno.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static void *http_ctrl_task(const char *arg);
 
@@ -22,7 +38,7 @@ static const ModeMapping g_mode_map[] = {
     {"trace", CAR_TRACE_STATUS},
     {"obstacle", CAR_OBSTACLE_AVOIDANCE_STATUS},
     {"remote", CAR_WIFI_CONTROL_STATUS},
-    {NULL, CAR_STOP_STATUS}  // 默认值
+    {NULL, CAR_STOP_STATUS} // 默认值
 };
 
 static const char g_index_html[] =
