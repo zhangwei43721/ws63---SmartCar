@@ -11,6 +11,13 @@
 #include "robot_config.h"
 #include "securec.h"
 
+/**
+ * @brief 通用模式运行框架
+ * @param expected_status 期望的模式状态
+ * @param run_func 模式运行函数指针
+ * @param exit_func 模式退出函数指针（可为NULL）
+ * @param telemetry_interval_ms 遥测上报间隔（毫秒）
+ */
 void mode_run_loop(int expected_status,
                    ModeRunFunc run_func,
                    ModeExitFunc exit_func,
@@ -41,6 +48,11 @@ void mode_run_loop(int expected_status,
     }
 }
 
+/**
+ * @brief 发送遥测数据
+ * @param mode 模式名称
+ * @param data JSON格式的额外数据
+ */
 void send_telemetry(const char *mode, const char *data)
 {
     if (mode == NULL || data == NULL) {
