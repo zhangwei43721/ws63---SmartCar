@@ -374,29 +374,75 @@ header {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-/* 摇杆容器 */
-.joystick-container {
+.dpad {
   height: 180px;
-  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+  justify-items: center;
   background: radial-gradient(circle at center, #f9fafb 0%, #fff 70%);
-  border: 2px dashed #e5e7eb;
+  border: 2px solid #e5e7eb;
   border-radius: 16px;
+  padding: 14px;
   transition: opacity 0.3s;
 }
 
-.joystick-container.disabled {
+.dpad.disabled {
   opacity: 0.5;
   pointer-events: none;
 }
 
-.joystick-placeholder {
-  position: absolute;
+.dpad-btn {
   width: 100%;
-  bottom: 10px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  color: #9ca3af;
+  height: 100%;
+  border: none;
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--text-main);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.dpad-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+.dpad-btn.stop {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.dpad-btn.up {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.dpad-btn.left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.dpad-btn.stop {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.dpad-btn.right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.dpad-btn.down {
+  grid-column: 2;
+  grid-row: 3;
 }
 
 /* --- 弹窗 --- */

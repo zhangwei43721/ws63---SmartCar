@@ -89,12 +89,12 @@
       <button class="mode-btn" onclick="changeMode('avoid')">避障</button>
     </div>
 
-    <!-- 摇杆区域 -->
-    <div class="joystick-container disabled" id="joystick-zone">
-      <div class="joystick-placeholder">
-        <span>虚拟摇杆区域</span>
-        <small>仅遥控模式可用</small>
-      </div>
+    <div class="dpad disabled" id="dpad">
+      <button class="dpad-btn up" id="btnForward">前进</button>
+      <button class="dpad-btn left" id="btnLeft">左转</button>
+      <button class="dpad-btn stop" id="btnStop">停止</button>
+      <button class="dpad-btn right" id="btnRight">右转</button>
+      <button class="dpad-btn down" id="btnBackward">后退</button>
     </div>
   </section>
 
@@ -129,8 +129,6 @@
     </div>
   </div>
 
-  <!-- 库文件 -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
   <script src="./udp_app.js"></script>
 </body>
 

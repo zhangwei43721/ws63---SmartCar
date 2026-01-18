@@ -41,49 +41,34 @@ let socket = null;
 let sendLoopTimer = null;
 let reconnectTimer = null;
 let isManualClose = false;
+const DPAD_SPEED = 80;
 
-// --- 摇杆初始化 (Nipple.js) ---
-const joystickManager = nipplejs.create({
-    zone: document.getElementById('joystick-zone'),
-    mode: 'static',
-    position: { left: '50%', top: '50%' },
-    color: '#4f46e5',
-    size: 120,
-    restOpacity: 0.8
-});
-
-// 摇杆事件监听 (修复后的算法)
-joystickManager.on('move', (_evt, data) => {
-    if (appState.mode !== 'remote') return;
-
-    // 获取摇杆向量，范围 -100 ~ 100
-    // Y轴：上正下负
-    // X轴：右正左负
-    const x = Math.round(data.vector.x * 100);
-    const y = Math.round(data.vector.y * 100);
-
-    // --- 标准差速混控算法 (Arcade Drive) ---
-    // 这种算法在原地旋转和后退转向时更符合直觉
-    // 左轮 = 前进分量 + 转向分量
-    // 右轮 = 前进分量 - 转向分量
-    let m1 = y + x;
-    let m2 = y - x;
-
-    // 限幅处理 (-100 到 100)
+function setDrive(m1, m2) {
     appState.motor1 = clamp(m1, -100, 100);
     appState.motor2 = clamp(m2, -100, 100);
-
-    // console.log(`摇杆: x=${x}, y=${y} -> L=${appState.motor1}, R=${appState.motor2}`);
     updateLocalAnimations();
-});
+}
 
-joystickManager.on('end', () => {
-    if (appState.mode !== 'remote') return;
+function bindHoldButton(el, onPress) {
+    if (!el) return;
 
-    appState.motor1 = 0;
-    appState.motor2 = 0;
-    updateLocalAnimations();
-});
+    const press = (evt) => {
+        evt.preventDefault();
+        if (appState.mode !== 'remote') return;
+        onPress();
+    };
+
+    const release = (evt) => {
+        evt.preventDefault();
+        if (appState.mode !== 'remote') return;
+        setDrive(0, 0);
+    };
+
+    el.addEventListener('pointerdown', press);
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('pointerleave', release);
+}
 
 // --- 核心函数 ---
 
@@ -308,15 +293,13 @@ function updateModeButtons(mode) {
         }
     });
 
-    const joyZone = document.getElementById('joystick-zone');
+    const dpad = document.getElementById('dpad');
     if (mode === 'remote') {
-        joyZone.classList.remove('disabled');
+        dpad?.classList.remove('disabled');
     } else {
-        joyZone.classList.add('disabled');
+        dpad?.classList.add('disabled');
         // 非遥控模式，停止发送电机指令
-        appState.motor1 = 0;
-        appState.motor2 = 0;
-        updateLocalAnimations();
+        setDrive(0, 0);
     }
 }
 
@@ -416,6 +399,11 @@ window.onload = function () {
     connectToProxy();
     // 默认UI状态
     updateModeButtons('standby');
+    bindHoldButton(document.getElementById('btnForward'), () => setDrive(DPAD_SPEED, DPAD_SPEED));
+    bindHoldButton(document.getElementById('btnBackward'), () => setDrive(-DPAD_SPEED, -DPAD_SPEED));
+    bindHoldButton(document.getElementById('btnLeft'), () => setDrive(0, DPAD_SPEED));
+    bindHoldButton(document.getElementById('btnRight'), () => setDrive(DPAD_SPEED, 0));
+    bindHoldButton(document.getElementById('btnStop'), () => setDrive(0, 0));
     startCommsLoop();
 };
 
