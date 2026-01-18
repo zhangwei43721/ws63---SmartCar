@@ -50,7 +50,11 @@ const otaState = {
     data: null,
     total: 0,
     offset: 0,
-    chunkSize: 200,
+    chunkSize: 1024,
+    fallbackChunkSize: 200,
+    fallbackTried: false,
+    ackTimeoutMs: 1500,
+    maxRetries: 8,
     waitingForOffset: null,
     waitingForLen: 0,
     waitingForBase64: '',
@@ -455,7 +459,28 @@ function scheduleOtaRetry() {
     clearOtaAckTimer();
     otaState.ackTimer = setTimeout(() => {
         if (!otaState.active) return;
-        if (otaState.retries >= 5) {
+        const fastFail =
+            otaState.phase === 'data' &&
+            otaState.waitingForOffset === 0 &&
+            otaState.chunkSize > otaState.fallbackChunkSize &&
+            !otaState.fallbackTried;
+        const maxRetries = fastFail ? 2 : otaState.maxRetries;
+
+        if (otaState.retries >= maxRetries) {
+            if (!otaState.fallbackTried && otaState.chunkSize > otaState.fallbackChunkSize) {
+                otaState.fallbackTried = true;
+                otaState.chunkSize = otaState.fallbackChunkSize;
+                otaState.phase = 'start';
+                otaState.offset = 0;
+                otaState.waitingForOffset = null;
+                otaState.waitingForLen = 0;
+                otaState.waitingForBase64 = '';
+                otaState.retries = 0;
+                setOtaUi('降级分片重试', 0);
+                sendOtaStart(otaState.total);
+                scheduleOtaRetry();
+                return;
+            }
             otaFail('超时');
             return;
         }
@@ -468,7 +493,7 @@ function scheduleOtaRetry() {
             sendOtaEnd();
         }
         scheduleOtaRetry();
-    }, 1200);
+    }, otaState.ackTimeoutMs);
 }
 
 function otaFail(reason) {
@@ -604,6 +629,7 @@ async function startOtaFromSelectedFile() {
     otaState.data = u8;
     otaState.total = u8.length >>> 0;
     otaState.offset = 0;
+    otaState.fallbackTried = false;
     otaState.waitingForOffset = null;
     otaState.waitingForLen = 0;
     otaState.waitingForBase64 = '';

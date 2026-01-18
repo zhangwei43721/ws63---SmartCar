@@ -9,7 +9,7 @@
 #define UDP_STACK_SIZE 4096
 #define UDP_TASK_PRIORITY 24
 
-#define UDP_BUFFER_SIZE 256
+#define UDP_BUFFER_SIZE 2048
 #define UDP_BROADCAST_PORT 8889
 
 void udp_service_init(void);

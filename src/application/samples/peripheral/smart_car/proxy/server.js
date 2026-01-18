@@ -226,11 +226,7 @@ wss.on('connection', (ws) => {
 
             const msg = JSON.parse(dataStr);
             if (msg && typeof msg === 'object') {
-                if (msg.type === 'otaData') {
-                    console.log(`收到前端消息: otaData ip=${msg.deviceIP} offset=${msg.offset} b64len=${(msg.data || '').length}`);
-                } else {
-                    console.log('收到前端消息:', msg);
-                }
+                if (msg.type !== 'otaData') console.log('收到前端消息:', msg);
             }
 
             if (msg.type === 'control') {
