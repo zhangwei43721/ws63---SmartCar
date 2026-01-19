@@ -12,15 +12,20 @@ typedef struct {
     const char *line2;
 } ModeDisplayInfo;
 
+/* 
+ * 支持的字符:
+ * 模, 式, 停, 止, 循, 迹, 避, 障, 遥, 控, 连, 接, 中, 成, 功, 失, 败, 等, 待, 热, 点, 配, 置
+ */
+
 /**
  * @brief 模式显示信息查找表
  */
 static const ModeDisplayInfo g_mode_display[] = {
-    {CAR_STOP_STATUS, "Mode: Standby", "WiFi: Check...", "Press KEY1"},
-    {CAR_TRACE_STATUS, "Mode: Trace", "Infrared ON", "KEY1 -> Next"},
-    {CAR_OBSTACLE_AVOIDANCE_STATUS, "Mode: Obstacle", "Ultrasonic ON", "KEY1 -> Next"},
-    {CAR_WIFI_CONTROL_STATUS, "Mode: WiFi Ctrl", "Waiting cmd...", "KEY1 -> Stop"},
-    {CAR_BT_CONTROL_STATUS, "Mode: Bluetooth", "Current: Disabled", "KEY1 -> Stop"},
+    {CAR_STOP_STATUS, "模式: 停止", "等待...", ""},
+    {CAR_TRACE_STATUS, "模式: 循迹", "循迹中...", ""},
+    {CAR_OBSTACLE_AVOIDANCE_STATUS, "模式: 避障", "避障中...", ""},
+    {CAR_WIFI_CONTROL_STATUS, "模式: 遥控", "遥控中...", ""},
+    {CAR_BT_CONTROL_STATUS, "模式: 蓝牙", "未启用", ""},
 };
 
 /**
@@ -58,8 +63,8 @@ void ui_show_mode_page(CarStatus status)
     }
 
     const ModeDisplayInfo *info = NULL;
-    const char *line0 = "Mode: Unknown";
-    const char *line1 = "Resetting...";
+    const char *line0 = "模式: 未知";
+    const char *line1 = "重置中...";
     const char *line2 = "";
 
     // 查表法查找对应模式的显示信息
@@ -77,12 +82,9 @@ void ui_show_mode_page(CarStatus status)
     }
 
     ssd1306_Fill(Black);
-    ssd1306_SetCursor(0, 0);
-    ssd1306_DrawString((char *)line0, Font_7x10, White);
-    ssd1306_SetCursor(0, 16);
-    ssd1306_DrawString((char *)line1, Font_7x10, White);
-    ssd1306_SetCursor(0, 32);
-    ssd1306_DrawString((char *)line2, Font_7x10, White);
+    ssd1306_DrawString16(0, 0, line0, White);
+    ssd1306_DrawString16(0, 16, line1, White);
+    ssd1306_DrawString16(0, 32, line2, White);
     ssd1306_UpdateScreen();
 }
 
@@ -98,17 +100,24 @@ void ui_render_standby(const char *wifi_state, const char *ip_addr)
     if (!g_oled_ready) {
         return;
     }
-
-    if (wifi_state == NULL || ip_addr == NULL) {
-        return;
+    
+    // Convert English states to Chinese if possible
+    const char *state_str = wifi_state;
+    if (strstr(wifi_state, "Connecting")) {
+        state_str = "WiFi: 连接中";
+    } else if (strstr(wifi_state, "Connected")) {
+        state_str = "WiFi: 连接成功";
+    } else if (strstr(wifi_state, "Fail")) {
+        state_str = "WiFi: 连接失败";
+    } else if (strstr(wifi_state, "AP")) {
+        state_str = "热点模式";
     }
 
     ssd1306_Fill(Black);
-    ssd1306_SetCursor(0, 0);
-    ssd1306_DrawString("Mode: Standby", Font_7x10, White);
-    ssd1306_SetCursor(0, 16);
-    ssd1306_DrawString((char *)wifi_state, Font_7x10, White);
-    ssd1306_SetCursor(0, 32);
-    ssd1306_DrawString((char *)ip_addr, Font_7x10, White);
+    ssd1306_DrawString16(0, 0, "模式: 停止", White);
+    ssd1306_DrawString16(0, 16, state_str, White);
+    
+    // IP string is ASCII, but DrawString16 handles ASCII too
+    ssd1306_DrawString16(0, 32, ip_addr, White);
     ssd1306_UpdateScreen();
 }

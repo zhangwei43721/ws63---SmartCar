@@ -66,6 +66,7 @@ void ssd1306_UpdateScreen(void);
 
 char ssd1306_DrawChar(char ch, FontDef Font, SSD1306_COLOR color);
 char ssd1306_DrawString(char *str, FontDef Font, SSD1306_COLOR color);
+void ssd1306_DrawString16(uint8_t x, uint8_t y, const char *str, SSD1306_COLOR color);
 
 void ssd1306_DrawPixel(uint8_t x, uint8_t y, SSD1306_COLOR color);
 void ssd1306_DrawLine(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, SSD1306_COLOR color);
