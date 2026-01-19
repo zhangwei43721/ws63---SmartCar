@@ -1,11 +1,3 @@
-/**
- ****************************************************************************************************
- * @file        mode_remote.c
- * @brief       遥控模式实现 - 重构版
- * @note        使用通用模式框架，简化代码结构
- ****************************************************************************************************
- */
-
 #include "mode_remote.h"
 #include "mode_common.h"
 #include "robot_config.h"
@@ -13,6 +5,7 @@
 #include "../services/udp_service.h"
 #include "../../../drivers/l9110s/bsp_l9110s.h"
 #include "../../../drivers/sg90/bsp_sg90.h"
+#include <stdio.h>
 
 // 遥控命令超时时间
 static unsigned long long g_last_cmd_tick = 0;
@@ -33,14 +26,18 @@ static void apply_differential_control(int8_t motor1, int8_t motor2, int8_t serv
     robot_mgr_update_servo_angle((unsigned int)servo);
 }
 
-/**
- * @brief 遥控模式运行函数（通用框架回调）
- */
-static void remote_run_func(ModeContext *ctx)
+void mode_remote_enter(void)
 {
-    UNUSED(ctx);
+    printf("进入 WiFi 遥控模式...\r\n");
+    car_stop();
+    g_last_cmd_tick = osal_get_jiffies();
+}
 
+void mode_remote_tick(void)
+{
     int8_t motor1, motor2, servo;
+    
+    // 如果有新命令，更新控制并重置超时计时器
     if (udp_service_pop_cmd(&motor1, &motor2, &servo)) {
         apply_differential_control(motor1, motor2, servo);
         g_last_cmd_tick = osal_get_jiffies();
@@ -50,37 +47,14 @@ static void remote_run_func(ModeContext *ctx)
     unsigned long long now = osal_get_jiffies();
     if (now - g_last_cmd_tick > osal_msecs_to_jiffies(REMOTE_CMD_TIMEOUT_MS)) {
         l9110s_set_differential(0, 0); // 双电机停止
-        // 回中角可由 NV 配置调整；异常时函数内部会回退到默认宏
+        // 回中角可由 NV 配置调整
         unsigned int center = robot_mgr_get_servo_center_angle();
         sg90_set_angle(center);
         robot_mgr_update_servo_angle(center);
     }
 }
 
-/**
- * @brief 遥控模式退出函数（通用框架回调）
- */
-static void remote_exit_func(ModeContext *ctx)
+void mode_remote_exit(void)
 {
-    UNUSED(ctx);
     car_stop();
-}
-
-/**
- * @brief 遥控模式主运行函数
- */
-void mode_remote_run(void)
-{
-    printf("进入 WiFi 遥控模式...\r\n");
-    car_stop();
-    g_last_cmd_tick = osal_get_jiffies();
-    mode_run_loop(CAR_WIFI_CONTROL_STATUS, remote_run_func, remote_exit_func, TELEMETRY_REPORT_MS);
-}
-
-/**
- * @brief 遥控模式周期回调函数（空实现）
- */
-void mode_remote_tick(void)
-{
-    // 此模式下主要逻辑在 run 线程中，tick 可留空
 }

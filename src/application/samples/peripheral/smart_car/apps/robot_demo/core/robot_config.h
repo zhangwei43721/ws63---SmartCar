@@ -18,6 +18,10 @@ extern "C" {
 #define SERVO_RIGHT_ANGLE 0   // 舵机右转角度
 #define SERVO_MIDDLE_ANGLE 90 // 舵机中间角度
 
+#ifndef DISTANCE_BETWEEN_CAR_AND_OBSTACLE
+#define DISTANCE_BETWEEN_CAR_AND_OBSTACLE 20 // 避障距离阈值 (cm)
+#endif
+
 /* =============== 时间配置（毫秒） =============== */
 #define SERVO_MOVE_DELAY_MS 350   // 舵机转动等待时间
 #define SENSOR_STABILIZE_MS 50    // 传感器稳定等待时间

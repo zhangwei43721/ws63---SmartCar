@@ -1,52 +1,6 @@
-/**
- ****************************************************************************************************
- * @file        mode_common.c
- * @brief       模式运行通用框架实现
- ****************************************************************************************************
- */
-
 #include "mode_common.h"
-#include "../core/robot_mgr.h"
 #include "../services/net_service.h"
-#include "robot_config.h"
-#include "securec.h"
-
-/**
- * @brief 通用模式运行框架
- * @param expected_status 期望的模式状态
- * @param run_func 模式运行函数指针
- * @param exit_func 模式退出函数指针（可为NULL）
- * @param telemetry_interval_ms 遥测上报间隔（毫秒）
- */
-void mode_run_loop(int expected_status,
-                   ModeRunFunc run_func,
-                   ModeExitFunc exit_func,
-                   unsigned int telemetry_interval_ms)
-{
-    if (run_func == NULL) {
-        return;
-    }
-
-    ModeContext ctx = {0};
-    ctx.enter_time = osal_get_jiffies();
-    ctx.last_telemetry_time = ctx.enter_time;
-    ctx.is_running = true;
-
-    while (robot_mgr_get_status() == expected_status && ctx.is_running) {
-        run_func(&ctx);
-
-        unsigned long long now = osal_get_jiffies();
-        if (now - ctx.last_telemetry_time > osal_msecs_to_jiffies(telemetry_interval_ms)) {
-            ctx.last_telemetry_time = now;
-        }
-
-        osal_msleep(MAIN_LOOP_DELAY_MS);
-    }
-
-    if (exit_func != NULL) {
-        exit_func(&ctx);
-    }
-}
+#include <stdio.h>
 
 /**
  * @brief 发送遥测数据

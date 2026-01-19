@@ -1,10 +1,7 @@
 #include "udp_service.h"
 #include "../core/robot_mgr.h"
 #include "udp_net_common.h"
-
-#include "securec.h"
-
-#include "upg.h"
+#include "ota_service.h"
 
 #include "lwip/inet.h"
 #include "lwip/ip_addr.h"
@@ -25,55 +22,6 @@ typedef struct {
     int8_t ir_data;   // 红外传感器数据 (bit0=左, bit1=中, bit2=右)
     uint8_t checksum; // 校验和（累加和）
 } __attribute__((packed)) udp_packet_t;
-
-typedef enum {
-    // 空闲：未开始升级
-    OTA_STATUS_IDLE = 0,
-    // 已准备：已通过 uapi_upg_prepare() 预留/初始化升级写入环境
-    OTA_STATUS_PREPARED = 1,
-    // 接收中：正在写入升级包数据
-    OTA_STATUS_RECEIVING = 2,
-    // 升级中：数据写入完成，已触发设备侧升级
-    OTA_STATUS_UPGRADING = 3,
-    // 完成：设备端升级流程结束（这里主要用于上报 UI 状态）
-    OTA_STATUS_DONE = 4,
-    // 错误：任意阶段出现错误（last_err 记录 uapi_upg_* 返回码）
-    OTA_STATUS_ERROR = 5,
-} ota_status_t;
-
-typedef struct {
-    ota_status_t status;
-    // 升级包总长度（由 0x10 Start 包携带）
-    uint32_t total_size;
-    // 当前已成功写入的最大偏移（用于计算进度/应答）
-    uint32_t received_max;
-    // 0~100，按 received_max/total_size 计算
-    uint8_t percent;
-    errcode_t last_err;
-} ota_ctx_t;
-
-static ota_ctx_t g_ota = {
-    .status = OTA_STATUS_IDLE,
-    .total_size = 0,
-    .received_max = 0,
-    .percent = 0,
-    .last_err = ERRCODE_SUCC,
-};
-
-static errcode_t upg_backend_prepare(void *ctx, uint32_t total_size);
-static errcode_t upg_backend_write(void *ctx, uint32_t offset, const uint8_t *data, uint16_t len);
-static errcode_t upg_backend_finish(void *ctx);
-static errcode_t upg_backend_reset(void *ctx);
-
-static const udp_ota_backend_t g_upg_ota_backend = {
-    .prepare = upg_backend_prepare,
-    .write = upg_backend_write,
-    .finish = upg_backend_finish,
-    .reset = upg_backend_reset,
-};
-
-static const udp_ota_backend_t *g_ota_backend = &g_upg_ota_backend;
-static void *g_ota_backend_ctx = NULL;
 
 static void *udp_service_task(const char *arg);
 static void udp_service_broadcast_presence(void);
@@ -112,204 +60,6 @@ static RobotState g_last_sent_state = {0};
 static bool g_state_initialized = false;
 static unsigned long long g_last_state_send_time = 0;
 
-static void *upg_malloc_port(uint32_t size)
-{
-    return osal_kmalloc(size, OSAL_GFP_ATOMIC);
-}
-
-static void upg_free_port(void *ptr)
-{
-    osal_kfree(ptr);
-}
-
-static void upg_putc_port(const char c)
-{
-    printf("%c", c);
-}
-
-static void ota_upg_init_once(void)
-{
-    // 将 UPG 库所需的内存与串口输出适配到 OSAL
-    upg_func_t funcs = {
-        .malloc = upg_malloc_port,
-        .free = upg_free_port,
-        .serial_putc = upg_putc_port,
-    };
-
-    errcode_t ret = uapi_upg_init(&funcs);
-    if (ret != ERRCODE_SUCC && ret != ERRCODE_UPG_ALREADY_INIT) {
-        g_ota.last_err = ret;
-        g_ota.status = OTA_STATUS_ERROR;
-        return;
-    }
-}
-
-void udp_service_register_ota_backend(const udp_ota_backend_t *backend, void *ctx)
-{
-    UDP_LOCK();
-    if (backend == NULL) {
-        g_ota_backend = &g_upg_ota_backend;
-        g_ota_backend_ctx = NULL;
-    } else {
-        g_ota_backend = backend;
-        g_ota_backend_ctx = ctx;
-    }
-    UDP_UNLOCK();
-}
-
-static errcode_t upg_backend_prepare(void *ctx, uint32_t total_size)
-{
-    (void)ctx;
-
-    if (g_ota.status == OTA_STATUS_ERROR) {
-        // 如果上次是错误状态，但我们想重试，先强制重置为IDLE
-        g_ota.status = OTA_STATUS_IDLE;
-    }
-
-    ota_upg_init_once();
-    if (g_ota.status == OTA_STATUS_ERROR) {
-        return g_ota.last_err;
-    }
-
-    if (total_size <= 4) {
-        return ERRCODE_INVALID_PARAM;
-    }
-
-    uint32_t storage = uapi_upg_get_storage_size();
-    uint32_t pkg_len = total_size - 4; // 跳过文件魔术字 0xDFADBEFF
-    if (pkg_len == 0 || (storage != 0 && pkg_len > storage)) {
-        return ERRCODE_INVALID_PARAM;
-    }
-
-    (void)uapi_upg_reset_upgrade_flag();
-    upg_prepare_info_t info = {.package_len = pkg_len};
-    return uapi_upg_prepare(&info);
-}
-
-static errcode_t upg_backend_write(void *ctx, uint32_t offset, const uint8_t *data, uint16_t len)
-{
-    (void)ctx;
-    if (data == NULL || len == 0) {
-        return ERRCODE_INVALID_PARAM;
-    }
-    uint32_t write_offset = offset;
-    const uint8_t *write_data = data;
-    uint16_t write_len = len;
-    if (offset == 0) {
-        if (len < 4) {
-            return ERRCODE_INVALID_PARAM;
-        }
-        // 兼容带 0xDFADBEFF 头的产线包格式（需跳过4字节）和标准 UPG 包格式（不跳过）
-        if (data[0] == 0xDF && data[1] == 0xAD && data[2] == 0xBE && data[3] == 0xEF) {
-            write_offset = 0;
-            write_data = data + 4;
-            write_len = (uint16_t)(len - 4);
-        } else {
-            // 假设是标准 UPG 包，直接写入
-            write_offset = 0;
-            write_data = data;
-            write_len = len;
-        }
-    } else {
-        if (offset < 4) {
-            return ERRCODE_INVALID_PARAM;
-        }
-        write_offset = offset - 4;
-    }
-    return uapi_upg_write_package_sync(write_offset, write_data, write_len);
-}
-
-static errcode_t upg_backend_finish(void *ctx)
-{
-    (void)ctx;
-    return uapi_upg_request_upgrade(true);
-}
-
-static errcode_t upg_backend_reset(void *ctx)
-{
-    (void)ctx;
-    return uapi_upg_reset_upgrade_flag();
-}
-
-static uint32_t read_u32_be(const uint8_t *p)
-{
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
-}
-
-static uint16_t read_u16_be(const uint8_t *p)
-{
-    return (uint16_t)(((uint16_t)p[0] << 8) | (uint16_t)p[1]);
-}
-
-static void write_u32_be(uint8_t *p, uint32_t v)
-{
-    p[0] = (uint8_t)((v >> 24) & 0xFF);
-    p[1] = (uint8_t)((v >> 16) & 0xFF);
-    p[2] = (uint8_t)((v >> 8) & 0xFF);
-    p[3] = (uint8_t)(v & 0xFF);
-}
-
-static void write_u16_be(uint8_t *p, uint16_t v)
-{
-    p[0] = (uint8_t)((v >> 8) & 0xFF);
-    p[1] = (uint8_t)(v & 0xFF);
-}
-
-static int ota_send_response(const struct sockaddr_in *to, uint8_t resp_code, uint32_t offset)
-{
-    if (to == NULL)
-        return -1;
-
-    uint8_t *buf = g_tx_buffer;
-    size_t payload_len = 10;
-    size_t total_len = 9 + payload_len;
-    if (total_len > sizeof(g_tx_buffer))
-        return -1;
-
-    buf[0] = 0x14;
-    buf[1] = resp_code;
-    write_u32_be(&buf[2], offset);
-    write_u16_be(&buf[6], (uint16_t)payload_len);
-
-    // payload: [status][percent][received_max][total_size]
-    buf[8] = (uint8_t)g_ota.status;
-    buf[9] = g_ota.percent;
-    write_u32_be(&buf[10], g_ota.received_max);
-    write_u32_be(&buf[14], g_ota.total_size);
-
-    buf[total_len - 1] = udp_net_common_checksum8_add(buf, total_len - 1);
-    return udp_net_common_send_to_addr(buf, total_len, to);
-}
-
-static bool ota_parse_request(const uint8_t *data, size_t len, uint8_t *type, uint8_t *cmd, uint32_t *offset,
-                              const uint8_t **payload, uint16_t *payload_len)
-{
-    if (data == NULL || len < 9 || type == NULL || cmd == NULL || offset == NULL || payload == NULL ||
-        payload_len == NULL) {
-        return false;
-    }
-
-    uint8_t chk = udp_net_common_checksum8_add(data, len - 1);
-    if (chk != data[len - 1]) {
-        return false;
-    }
-
-    // OTA 协议帧:
-    // [0]=type(0x10/0x11/0x12/0x13), [1]=cmd(预留), [2..5]=offset, [6..7]=payload_len, [8..]=payload, [last]=checksum
-    *type = data[0];
-    *cmd = data[1];
-    *offset = read_u32_be(&data[2]);
-    uint16_t declared_len = read_u16_be(&data[6]);
-
-    if (len != (size_t)(9 + declared_len)) {
-        return false;
-    }
-
-    *payload_len = declared_len;
-    *payload = &data[8];
-    return true;
-}
-
 /**
  * @brief 初始化UDP服务互斥锁
  */
@@ -334,7 +84,7 @@ void udp_service_init(void)
 
     udp_service_mutex_init();
     udp_net_common_init();
-    ota_upg_init_once();
+    ota_service_init();
 
     osal_kthread_lock();
     g_udp_task_handle = osal_kthread_create((osal_kthread_handler)udp_service_task, NULL, "udp_task", UDP_STACK_SIZE);
@@ -559,6 +309,11 @@ static void *udp_service_task(const char *arg)
             lwip_recvfrom(sockfd, g_rx_buffer, sizeof(g_rx_buffer), 0, (struct sockaddr *)&from_addr, &from_len);
 
         if (n > 0) {
+            // 优先处理 OTA 数据包
+            if (ota_service_process_packet(g_rx_buffer, (size_t)n, &from_addr)) {
+                continue;
+            }
+
             uint8_t type = g_rx_buffer[0];
             if ((type == 0x01 || type == 0x03) && (size_t)n == sizeof(udp_packet_t)) {
                 udp_packet_t *pkt = (udp_packet_t *)g_rx_buffer;
@@ -575,114 +330,6 @@ static void *udp_service_task(const char *arg)
                             printf("udp_service: 无效的模式命令 cmd=%d\r\n", pkt->cmd);
                         }
                     }
-                }
-            } else if (type >= 0x10 && type <= 0x13) {
-                // OTA 协议:
-                // 0x10 Start: payload=total_size(u32 be)
-                // 0x11 Data : payload=数据块，offset 指示写入位置
-                // 0x12 End  : 提交并触发升级
-                // 0x13 Ping : 状态探测/保活
-                uint8_t cmd = 0;
-                uint32_t offset = 0;
-                const uint8_t *payload = NULL;
-                uint16_t payload_len = 0;
-                if (!ota_parse_request(g_rx_buffer, (size_t)n, &type, &cmd, &offset, &payload, &payload_len)) {
-                    continue;
-                }
-
-                if (type == 0x10) {
-                    uint8_t resp = 0;
-                    if (payload_len != 4) {
-                        resp = 1;
-                    } else {
-                        uint32_t total_size = read_u32_be(payload);
-                        const udp_ota_backend_t *backend = g_ota_backend;
-                        if (backend == NULL || backend->prepare == NULL) {
-                            resp = 3;
-                        } else {
-                            if (backend->reset != NULL) {
-                                (void)backend->reset(g_ota_backend_ctx);
-                            }
-                            errcode_t ret = backend->prepare(g_ota_backend_ctx, total_size);
-                            if (ret != ERRCODE_SUCC) {
-                                g_ota.status = OTA_STATUS_ERROR;
-                                g_ota.last_err = ret;
-                                resp = (ret == ERRCODE_INVALID_PARAM) ? 2 : 3;
-                            } else {
-                                g_ota.status = OTA_STATUS_PREPARED;
-                                g_ota.total_size = total_size;
-                                g_ota.received_max = 0;
-                                g_ota.percent = 0;
-                                g_ota.last_err = ERRCODE_SUCC;
-                                resp = 0;
-                            }
-                        }
-                    }
-                    (void)ota_send_response(&from_addr, resp, 0);
-                } else if (type == 0x11) {
-                    if (offset != g_ota.received_max) {
-                        if (offset < g_ota.received_max) {
-                            // 重复包：发送成功ACK，让前端停止重传旧包
-                            (void)ota_send_response(&from_addr, 0, offset);
-                        } else {
-                            // 丢包（Gap）：静默丢弃，不发ACK，触发前端超时重传当前包
-                            // printf("udp_service: OTA Gap dropped. Exp %u, Got %u\r\n", g_ota.received_max, offset);
-                        }
-                        continue;
-                    }
-
-                    uint8_t resp = 0;
-                    if (g_ota.status != OTA_STATUS_PREPARED && g_ota.status != OTA_STATUS_RECEIVING) {
-                        resp = 1;
-                    } else if ((uint32_t)payload_len == 0 || (g_ota.total_size != 0 && offset + payload_len > g_ota.total_size)) {
-                        resp = 2;
-                    } else {
-                        const udp_ota_backend_t *backend = g_ota_backend;
-                        errcode_t ret = (backend != NULL && backend->write != NULL) ?
-                            backend->write(g_ota_backend_ctx, offset, payload, payload_len) :
-                            ERRCODE_FAIL;
-                        if (ret != ERRCODE_SUCC) {
-                            g_ota.status = OTA_STATUS_ERROR;
-                            g_ota.last_err = ret;
-                            resp = (ret == ERRCODE_INVALID_PARAM) ? 4 : 3;
-                        } else {
-                            uint32_t end = offset + payload_len;
-                            if (end > g_ota.received_max) {
-                                g_ota.received_max = end;
-                            }
-                            if (g_ota.total_size != 0) {
-                                uint32_t percent = (g_ota.received_max * 100U) / g_ota.total_size;
-                                if (percent > 100) {
-                                    percent = 100;
-                                }
-                                g_ota.percent = (uint8_t)percent;
-                            }
-                            g_ota.status = OTA_STATUS_RECEIVING;
-                            resp = 0;
-                        }
-                    }
-                    (void)ota_send_response(&from_addr, resp, offset);
-                } else if (type == 0x12) {
-                    uint8_t resp = 0;
-                    if (g_ota.status != OTA_STATUS_RECEIVING) {
-                        resp = 1;
-                        (void)ota_send_response(&from_addr, resp, 0);
-                    } else {
-                        g_ota.status = OTA_STATUS_UPGRADING;
-                        g_ota.percent = 100;
-                        (void)ota_send_response(&from_addr, 0, g_ota.received_max);
-                        osal_msleep(50);
-                        const udp_ota_backend_t *backend = g_ota_backend;
-                        if (backend != NULL && backend->finish != NULL) {
-                            errcode_t ret = backend->finish(g_ota_backend_ctx);
-                            if (ret != ERRCODE_SUCC) {
-                                g_ota.status = OTA_STATUS_ERROR;
-                                g_ota.last_err = ret;
-                            }
-                        }
-                    }
-                } else if (type == 0x13) {
-                    (void)ota_send_response(&from_addr, 0, 0);
                 }
             }
         }

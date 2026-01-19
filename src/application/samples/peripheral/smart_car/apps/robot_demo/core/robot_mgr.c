@@ -6,13 +6,13 @@
 
 #include "../services/ui_service.h"
 #include "../services/udp_service.h"
+#include "../services/storage_service.h"
 
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../../drivers/l9110s/bsp_l9110s.h"
 #include "../../../drivers/sg90/bsp_sg90.h"
 #include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
 
-#include "nv.h"
 #include "securec.h"
 #include "soc_osal.h"
 
@@ -20,26 +20,7 @@
 #include <stdio.h>
 
 static CarStatus g_status = CAR_STOP_STATUS;
-
-// 机器人运行参数（保存到 NV 的轻量配置）
-// - magic/version: 结构有效性标识
-// - checksum: 对整个结构体做 16-bit 累加校验（校验时将 checksum 置 0）
-// - obstacle_threshold_cm: 避障阈值（cm）
-// - servo_center_angle: 舵机回中角度（0~180）
-typedef struct {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t checksum;
-    uint16_t obstacle_threshold_cm;
-    uint16_t servo_center_angle;
-    uint8_t reserved[16];
-} robot_nv_config_t;
-
-#define ROBOT_NV_CONFIG_KEY ((uint16_t)0x2000)
-#define ROBOT_NV_CONFIG_MAGIC ((uint32_t)0x524F4254)
-#define ROBOT_NV_CONFIG_VERSION ((uint16_t)1)
-
-static robot_nv_config_t g_nv_cfg = {0};
+static CarStatus g_last_status = CAR_STOP_STATUS;
 
 // =============== 互斥锁操作宏 ===============
 #define ROBOT_STATE_LOCK()                         \
@@ -68,62 +49,33 @@ static RobotState g_robot_state = {0};
 static osal_mutex g_state_mutex;
 static bool g_state_mutex_inited = false;
 
-// NV 配置校验：简单累加，足够检测大部分写入异常/脏数据
-static uint16_t nv_checksum16_add(const uint8_t *data, size_t len)
-{
-    uint32_t sum = 0;
-    for (size_t i = 0; i < len; i++) {
-        sum += data[i];
-    }
-    return (uint16_t)(sum & 0xFFFFu);
-}
-
-// 生成默认 NV 配置并计算校验
-static void nv_set_defaults(robot_nv_config_t *cfg)
-{
-    (void)memset_s(cfg, sizeof(*cfg), 0, sizeof(*cfg));
-    cfg->magic = ROBOT_NV_CONFIG_MAGIC;
-    cfg->version = ROBOT_NV_CONFIG_VERSION;
-    cfg->obstacle_threshold_cm = DISTANCE_BETWEEN_CAR_AND_OBSTACLE;
-    cfg->servo_center_angle = SERVO_MIDDLE_ANGLE;
-    cfg->checksum = 0;
-    cfg->checksum = nv_checksum16_add((const uint8_t *)cfg, sizeof(*cfg));
-}
-
-// 校验 magic/version 与 checksum，避免使用损坏配置
-static bool nv_validate(robot_nv_config_t *cfg)
-{
-    if (cfg->magic != ROBOT_NV_CONFIG_MAGIC || cfg->version != ROBOT_NV_CONFIG_VERSION) {
-        return false;
-    }
-    uint16_t saved = cfg->checksum;
-    cfg->checksum = 0;
-    uint16_t calc = nv_checksum16_add((const uint8_t *)cfg, sizeof(*cfg));
-    cfg->checksum = saved;
-    return saved == calc;
-}
-
-// 从 NV 读取配置；读取失败或校验失败则写入默认值
-static void nv_load_or_init(void)
-{
-    (void)uapi_nv_init();
-
-    uint16_t out_len = 0;
-    errcode_t ret = uapi_nv_read(ROBOT_NV_CONFIG_KEY, (uint16_t)sizeof(g_nv_cfg), &out_len, (uint8_t *)&g_nv_cfg);
-    if (ret != ERRCODE_SUCC || out_len != sizeof(g_nv_cfg) || !nv_validate(&g_nv_cfg)) {
-        nv_set_defaults(&g_nv_cfg);
-        (void)uapi_nv_write(ROBOT_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
-    }
-}
+// 模式操作接口定义
+static RobotModeOps g_mode_ops[] = {
+    // CAR_STOP_STATUS (0)
+    { NULL, NULL, NULL },
+    // CAR_TRACE_STATUS (1)
+    { mode_trace_enter, mode_trace_tick, mode_trace_exit },
+    // CAR_OBSTACLE_AVOIDANCE_STATUS (2)
+    { mode_obstacle_enter, mode_obstacle_tick, mode_obstacle_exit },
+    // CAR_WIFI_CONTROL_STATUS (3)
+    { mode_remote_enter, mode_remote_tick, mode_remote_exit }
+};
 
 /**
  * @brief 运行待机模式，显示 WiFi 连接状态和 IP 地址
+ * @note 待机模式由主 tick 循环直接处理，不通过 ops 接口（为了简化 UI 更新逻辑）
  */
-static void robot_mgr_run_standby(void)
+static void robot_mgr_run_standby_tick(void)
 {
-    car_stop();
+    static unsigned long long last_ui_update = 0;
+    unsigned long long now = osal_get_jiffies();
 
-    while (robot_mgr_get_status() == CAR_STOP_STATUS) {
+    // 只有在切换到待机时停止一次
+    if (g_last_status != CAR_STOP_STATUS) {
+        car_stop();
+    }
+
+    if (now - last_ui_update >= osal_msecs_to_jiffies(STANDBY_UPDATE_DELAY_MS)) {
         char ip_line[IP_BUFFER_SIZE] = {0};
         const char *ip = udp_service_get_ip();
 
@@ -133,10 +85,8 @@ static void robot_mgr_run_standby(void)
             (void)snprintf(ip_line, sizeof(ip_line), "IP: Pending");
 
         ui_render_standby(udp_service_is_connected() ? "WiFi: Connected" : "WiFi: Connecting", ip_line);
-        osal_msleep(STANDBY_UPDATE_DELAY_MS);
+        last_ui_update = now;
     }
-
-    car_stop();
 }
 
 /**
@@ -160,7 +110,7 @@ static void robot_mgr_state_mutex_init(void)
 void robot_mgr_init(void)
 {
     // 优先加载运行参数，供后续模式逻辑读取（避障阈值/舵机回中等）
-    nv_load_or_init();
+    storage_service_init();
 
     l9110s_init();
     hcsr04_init();
@@ -173,6 +123,7 @@ void robot_mgr_init(void)
     udp_service_init();
     robot_mgr_state_mutex_init();
     robot_mgr_set_status(CAR_STOP_STATUS);
+    g_last_status = CAR_STOP_STATUS;
 
     printf("RobotMgr: 初始化完成\r\n");
 }
@@ -192,34 +143,46 @@ CarStatus robot_mgr_get_status(void)
  */
 void robot_mgr_set_status(CarStatus status)
 {
-    g_status = status;
-    UPDATE_STATE_FIELD(mode, status);
-    ui_show_mode_page(status);
+    if (g_status != status) {
+        g_status = status;
+        UPDATE_STATE_FIELD(mode, status);
+        ui_show_mode_page(status);
+    }
 }
 
 /**
- * @brief 主循环处理函数，根据当前状态执行相应模式的运行逻辑
- * @note 应在主任务中循环调用此函数
+ * @brief 周期性调用函数，处理模式生命周期和状态机
  */
-void robot_mgr_process_loop(void)
+void robot_mgr_tick(void)
 {
-    CarStatus status = robot_mgr_get_status();
+    CarStatus current_status = g_status;
 
-    switch (status) {
-        case CAR_STOP_STATUS:
-            robot_mgr_run_standby();
-            break;
-        case CAR_TRACE_STATUS:
-            mode_trace_run();
-            break;
-        case CAR_OBSTACLE_AVOIDANCE_STATUS:
-            mode_obstacle_run();
-            break;
-        case CAR_WIFI_CONTROL_STATUS:
-            mode_remote_run();
-            break;
-        default:
-            break;
+    // 1. 处理状态切换
+    if (current_status != g_last_status) {
+        // 退出旧模式
+        if (g_last_status > CAR_STOP_STATUS && g_last_status < sizeof(g_mode_ops)/sizeof(g_mode_ops[0])) {
+            if (g_mode_ops[g_last_status].exit) {
+                g_mode_ops[g_last_status].exit();
+            }
+        }
+        
+        // 进入新模式
+        if (current_status > CAR_STOP_STATUS && current_status < sizeof(g_mode_ops)/sizeof(g_mode_ops[0])) {
+            if (g_mode_ops[current_status].enter) {
+                g_mode_ops[current_status].enter();
+            }
+        }
+        
+        g_last_status = current_status;
+    }
+
+    // 2. 执行当前模式逻辑
+    if (current_status == CAR_STOP_STATUS) {
+        robot_mgr_run_standby_tick();
+    } else if (current_status > CAR_STOP_STATUS && current_status < sizeof(g_mode_ops)/sizeof(g_mode_ops[0])) {
+        if (g_mode_ops[current_status].tick) {
+            g_mode_ops[current_status].tick();
+        }
     }
 }
 
@@ -273,17 +236,10 @@ void robot_mgr_get_state_copy(RobotState *out)
 
 unsigned int robot_mgr_get_obstacle_threshold_cm(void)
 {
-    unsigned int cm = (unsigned int)g_nv_cfg.obstacle_threshold_cm;
-    if (cm == 0) {
-        cm = DISTANCE_BETWEEN_CAR_AND_OBSTACLE;
-    }
-    return cm;
+    return (unsigned int)storage_service_get_obstacle_threshold();
 }
 
 unsigned int robot_mgr_get_servo_center_angle(void)
 {
-    unsigned int a = (unsigned int)g_nv_cfg.servo_center_angle;
-    if (a > 180)
-        a = SERVO_MIDDLE_ANGLE;
-    return a;
+    return (unsigned int)storage_service_get_servo_center();
 }

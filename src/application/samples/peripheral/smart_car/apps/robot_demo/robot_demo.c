@@ -149,7 +149,7 @@ static void *robot_demo_task(const char *arg)
 
     // 3. 主循环
     while (1) {
-        robot_mgr_process_loop();
+        robot_mgr_tick();
         uapi_watchdog_kick();
 
         // 短暂延时，让出 CPU 时间片，避免任务饿死其他线程

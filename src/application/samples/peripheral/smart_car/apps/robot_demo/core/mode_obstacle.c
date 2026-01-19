@@ -1,9 +1,7 @@
 /**
- ****************************************************************************************************
  * @file        mode_obstacle.c
- * @brief       避障模式实现 - 重构版
+ * @brief       避障模式实现
  * @note        使用通用模式框架，简化代码结构
- ****************************************************************************************************
  */
 
 #include "mode_obstacle.h"
@@ -16,6 +14,13 @@
 #include "../../../drivers/sg90/bsp_sg90.h"
 
 #include <stdio.h>
+
+// 定义转向常量
+// CAR_TURN_LEFT, CAR_TURN_RIGHT 已在 robot_common.h 中定义
+
+
+// 上次遥测时间
+static unsigned long long g_last_telemetry_time = 0;
 
 /**
  * @brief 设置舵机角度并等待到位，同时更新全局状态
@@ -56,11 +61,6 @@ static unsigned int scan_and_decide_direction(void)
     // 舵机回中
     set_servo_angle_wait(SERVO_MIDDLE_ANGLE);
 
-    // // 打印调试信息
-    // int l_val = (int)(left_dist * 100);
-    // int r_val = (int)(right_dist * 100);
-    // printf("扫描结果: 左=%d.%02d cm, 右=%d.%02d cm\r\n", l_val / 100, l_val % 100, r_val / 100, r_val % 100);
-
     return (left_dist > right_dist) ? CAR_TURN_LEFT : CAR_TURN_RIGHT;
 }
 
@@ -69,9 +69,15 @@ static unsigned int scan_and_decide_direction(void)
  */
 static void perform_obstacle_avoidance(float distance)
 {
-    // 避障阈值可由 NV 配置动态调整；异常时函数内部会回退到默认宏
+    // 避障阈值可由 NV 配置动态调整
     float threshold = (float)robot_mgr_get_obstacle_threshold_cm();
-    if (distance <= 0 || distance < threshold) {
+    
+    // 如果获取的阈值为0（异常），使用默认值
+    if (threshold <= 0) {
+        threshold = DISTANCE_BETWEEN_CAR_AND_OBSTACLE;
+    }
+
+    if (distance > 0 && distance < threshold) {
         // 停车并后退
         car_stop();
         osal_msleep(200);
@@ -97,49 +103,42 @@ static void perform_obstacle_avoidance(float distance)
 }
 
 /**
- * @brief 避障模式运行函数（通用框架回调）
+ * @brief 避障模式进入函数
  */
-static void obstacle_run_func(ModeContext *ctx)
+void mode_obstacle_enter(void)
+{
+    printf("进入避障模式...\r\n");
+    g_last_telemetry_time = 0;
+    set_servo_angle_wait(SERVO_MIDDLE_ANGLE);
+}
+
+/**
+ * @brief 避障模式周期回调函数
+ */
+void mode_obstacle_tick(void)
 {
     float distance = get_distance_update();
     perform_obstacle_avoidance(distance);
 
     // 定期上报遥测数据
     unsigned long long now = osal_get_jiffies();
-    if (now - ctx->last_telemetry_time > osal_msecs_to_jiffies(TELEMETRY_REPORT_MS)) {
+    if (now - g_last_telemetry_time > osal_msecs_to_jiffies(TELEMETRY_REPORT_MS)) {
         int dist_x100 = (int)(distance * 100.0f);
-        printf("[obstacle] dist=%d.%02dcm\r\n", dist_x100 / 100, dist_x100 % 100);
+        // printf("[obstacle] dist=%d.%02dcm\r\n", dist_x100 / 100, dist_x100 % 100);
 
         char data[64];
         snprintf(data, sizeof(data), "\"dist_x100\":%d", dist_x100);
         send_telemetry("obstacle", data);
+        g_last_telemetry_time = now;
     }
 }
 
 /**
- * @brief 避障模式退出函数（通用框架回调）
+ * @brief 避障模式退出函数
  */
-static void obstacle_exit_func(ModeContext *ctx)
+void mode_obstacle_exit(void)
 {
-    UNUSED(ctx);
     car_stop();
+    // 退出时舵机回中
     set_servo_angle_wait(SERVO_MIDDLE_ANGLE);
-}
-
-/**
- * @brief 避障模式主运行函数
- */
-void mode_obstacle_run(void)
-{
-    printf("进入避障模式...\r\n");
-    set_servo_angle_wait(SERVO_MIDDLE_ANGLE);
-    mode_run_loop(CAR_OBSTACLE_AVOIDANCE_STATUS, obstacle_run_func, obstacle_exit_func, TELEMETRY_REPORT_MS);
-}
-
-/**
- * @brief 避障模式周期回调函数（空实现）
- */
-void mode_obstacle_tick(void)
-{
-    // 此模式下主要逻辑在 run 线程中，tick 可留空
 }
