@@ -465,8 +465,8 @@ errcode_t uapi_upg_verify_file_head(const upg_package_header_t *pkg_header)
 
     errcode_t ret = upg_check_fota_image_id(key_area, fota_info);
     if (ret != ERRCODE_SUCC) {
-        /* image id 不正确就不用校验了，直接返回失败 */
-        upg_log_err("[UPG] upg verify: image ID error\r\n");
+        upg_log_err("[UPG] upg verify: image ID error, key=0x%x expect=0x%x, info=0x%x expect=0x%x\r\n",
+                    key_area->image_id, UPG_IMAGE_ID_KEY_AREA, fota_info->image_id, UPG_IMAGE_ID_FOTA_INFO_AREA);
         return ret;
     }
 

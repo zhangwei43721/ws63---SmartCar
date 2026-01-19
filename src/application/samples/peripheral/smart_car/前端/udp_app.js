@@ -50,17 +50,20 @@ const otaState = {
     data: null,
     total: 0,
     offset: 0,
-    chunkSize: 1024,
+    chunkSize: 1400,
     fallbackChunkSize: 200,
     fallbackTried: false,
-    ackTimeoutMs: 1500,
+    ackTimeoutMs: 600,
     maxRetries: 8,
     waitingForOffset: null,
     waitingForLen: 0,
-    waitingForBase64: '',
     retries: 0,
     ackTimer: null
 };
+
+function isFwpkg(u8) {
+    return !!(u8 && u8.length >= 4 && u8[0] === 0xDF && u8[1] === 0xAD && u8[2] === 0xBE && u8[3] === 0xEF);
+}
 
 function setDrive(m1, m2) {
     appState.motor1 = clamp(m1, -100, 100);
@@ -424,10 +427,16 @@ function setOtaButtonEnabled(enabled) {
     if (btn) btn.disabled = !enabled;
 }
 
-function base64FromU8(u8) {
-    let s = '';
-    for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
-    return btoa(s);
+function ipv4ToBytes(ip) {
+    const parts = String(ip || '').trim().split('.');
+    if (parts.length !== 4) return null;
+    const out = new Uint8Array(4);
+    for (let i = 0; i < 4; i++) {
+        const n = Number(parts[i]);
+        if (!Number.isFinite(n) || n < 0 || n > 255) return null;
+        out[i] = n & 0xFF;
+    }
+    return out;
 }
 
 function sendOtaStart(size) {
@@ -436,9 +445,26 @@ function sendOtaStart(size) {
     return true;
 }
 
-function sendOtaData(offset, base64Data) {
+function sendOtaData(offset, len) {
     if (!socket || socket.readyState !== WebSocket.OPEN || !appState.carIP) return false;
-    socket.send(JSON.stringify({ type: 'otaData', deviceIP: appState.carIP, offset: (offset >>> 0), data: base64Data }));
+    if (!otaState.data) return false;
+    const ipBytes = ipv4ToBytes(appState.carIP);
+    if (!ipBytes) return false;
+    const start = offset >>> 0;
+    const end = (start + (len >>> 0)) >>> 0;
+    const chunk = otaState.data.subarray(start, end);
+    const msg = new Uint8Array(9 + chunk.length);
+    msg[0] = 0xF0;
+    msg[1] = (start >>> 24) & 0xFF;
+    msg[2] = (start >>> 16) & 0xFF;
+    msg[3] = (start >>> 8) & 0xFF;
+    msg[4] = (start >>> 0) & 0xFF;
+    msg[5] = ipBytes[0];
+    msg[6] = ipBytes[1];
+    msg[7] = ipBytes[2];
+    msg[8] = ipBytes[3];
+    msg.set(chunk, 9);
+    socket.send(msg);
     return true;
 }
 
@@ -474,7 +500,6 @@ function scheduleOtaRetry() {
                 otaState.offset = 0;
                 otaState.waitingForOffset = null;
                 otaState.waitingForLen = 0;
-                otaState.waitingForBase64 = '';
                 otaState.retries = 0;
                 setOtaUi('降级分片重试', 0);
                 sendOtaStart(otaState.total);
@@ -488,7 +513,7 @@ function scheduleOtaRetry() {
         if (otaState.phase === 'start') {
             sendOtaStart(otaState.total);
         } else if (otaState.phase === 'data' && otaState.waitingForOffset !== null) {
-            sendOtaData(otaState.waitingForOffset, otaState.waitingForBase64);
+            sendOtaData(otaState.waitingForOffset, otaState.waitingForLen);
         } else if (otaState.phase === 'end') {
             sendOtaEnd();
         }
@@ -501,7 +526,6 @@ function otaFail(reason) {
     otaState.phase = 'idle';
     otaState.waitingForOffset = null;
     otaState.waitingForLen = 0;
-    otaState.waitingForBase64 = '';
     otaState.retries = 0;
     clearOtaAckTimer();
     setOtaButtonEnabled(true);
@@ -513,7 +537,6 @@ function otaFinish() {
     otaState.phase = 'idle';
     otaState.waitingForOffset = null;
     otaState.waitingForLen = 0;
-    otaState.waitingForBase64 = '';
     otaState.retries = 0;
     clearOtaAckTimer();
     setOtaButtonEnabled(true);
@@ -530,7 +553,6 @@ function otaSendNextChunk() {
         otaState.phase = 'end';
         otaState.waitingForOffset = null;
         otaState.waitingForLen = 0;
-        otaState.waitingForBase64 = '';
         otaState.retries = 0;
         sendOtaEnd();
         setOtaUi('提交', 100);
@@ -541,14 +563,12 @@ function otaSendNextChunk() {
     const start = otaState.offset;
     const end = Math.min(start + otaState.chunkSize, otaState.total);
     const chunk = otaState.data.subarray(start, end);
-    const b64 = base64FromU8(chunk);
 
     otaState.waitingForOffset = start;
     otaState.waitingForLen = chunk.length;
-    otaState.waitingForBase64 = b64;
     otaState.retries = 0;
 
-    sendOtaData(start, b64);
+    sendOtaData(start, chunk.length);
     const percent = Math.floor((end * 100) / otaState.total);
     setOtaUi(`上传中 ${percent}%`, percent);
     scheduleOtaRetry();
@@ -589,7 +609,6 @@ function handleOtaResponse(msg) {
         otaState.offset = otaState.waitingForOffset + otaState.waitingForLen;
         otaState.waitingForOffset = null;
         otaState.waitingForLen = 0;
-        otaState.waitingForBase64 = '';
         otaSendNextChunk();
         return;
     }
@@ -623,6 +642,10 @@ async function startOtaFromSelectedFile() {
     }
 
     const u8 = new Uint8Array(buf);
+    if (!isFwpkg(u8)) {
+        otaFail('请选择 .fwpkg');
+        return;
+    }
     otaState.active = true;
     otaState.phase = 'start';
     otaState.file = file;
@@ -632,7 +655,6 @@ async function startOtaFromSelectedFile() {
     otaState.fallbackTried = false;
     otaState.waitingForOffset = null;
     otaState.waitingForLen = 0;
-    otaState.waitingForBase64 = '';
     otaState.retries = 0;
 
     if (!sendOtaStart(otaState.total)) {

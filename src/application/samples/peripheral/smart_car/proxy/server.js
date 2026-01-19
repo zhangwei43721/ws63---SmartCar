@@ -49,7 +49,7 @@ function parseOtaPacket(msg) {
 // lastNotected: 上次通知前端的时间戳（用于防止重复通知）
 const devices = new Map();
 
-// 监听 UDP 广播
+// 处理来自设备的UDP消息
 udpClient.on('message', (msg, rinfo) => {
     if (msg.length >= 7) {
         const type = msg[0];
@@ -216,6 +216,14 @@ wss.on('connection', (ws) => {
             // 确保数据是字符串格式
             let dataStr = data;
             if (Buffer.isBuffer(data)) {
+                if (data.length >= 9 && data.readUInt8(0) === 0xF0) {
+                    const offset = data.readUInt32BE(1) >>> 0;
+                    const ip = `${data[5]}.${data[6]}.${data[7]}.${data[8]}`;
+                    const payload = data.subarray(9);
+                    const buf = buildOtaPacket(0x11, 0x00, offset, payload);
+                    udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, ip);
+                    return;
+                }
                 dataStr = data.toString('utf8');
             }
 

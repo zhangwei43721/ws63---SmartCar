@@ -76,6 +76,8 @@
         "ssd1306.h": "c",
         "bsp_l9110s.h": "c",
         "net_service.h": "c",
-        "udp_service.h": "c"
+        "udp_service.h": "c",
+        "upg.h": "c",
+        "upg_definitions_porting.h": "c"
     }
 }
