@@ -52,14 +52,13 @@ static bool g_state_mutex_inited = false;
 // 模式操作接口定义
 static RobotModeOps g_mode_ops[] = {
     // CAR_STOP_STATUS (0)
-    { NULL, NULL, NULL },
+    {NULL, NULL, NULL},
     // CAR_TRACE_STATUS (1)
-    { mode_trace_enter, mode_trace_tick, mode_trace_exit },
+    {mode_trace_enter, mode_trace_tick, mode_trace_exit},
     // CAR_OBSTACLE_AVOIDANCE_STATUS (2)
-    { mode_obstacle_enter, mode_obstacle_tick, mode_obstacle_exit },
+    {mode_obstacle_enter, mode_obstacle_tick, mode_obstacle_exit},
     // CAR_WIFI_CONTROL_STATUS (3)
-    { mode_remote_enter, mode_remote_tick, mode_remote_exit }
-};
+    {mode_remote_enter, mode_remote_tick, mode_remote_exit}};
 
 /**
  * @brief 运行待机模式，显示 WiFi 连接状态和 IP 地址
@@ -160,26 +159,26 @@ void robot_mgr_tick(void)
     // 1. 处理状态切换
     if (current_status != g_last_status) {
         // 退出旧模式
-        if (g_last_status > CAR_STOP_STATUS && g_last_status < sizeof(g_mode_ops)/sizeof(g_mode_ops[0])) {
+        if (g_last_status > CAR_STOP_STATUS && g_last_status < sizeof(g_mode_ops) / sizeof(g_mode_ops[0])) {
             if (g_mode_ops[g_last_status].exit) {
                 g_mode_ops[g_last_status].exit();
             }
         }
-        
+
         // 进入新模式
-        if (current_status > CAR_STOP_STATUS && current_status < sizeof(g_mode_ops)/sizeof(g_mode_ops[0])) {
+        if (current_status > CAR_STOP_STATUS && current_status < sizeof(g_mode_ops) / sizeof(g_mode_ops[0])) {
             if (g_mode_ops[current_status].enter) {
                 g_mode_ops[current_status].enter();
             }
         }
-        
+
         g_last_status = current_status;
     }
 
     // 2. 执行当前模式逻辑
     if (current_status == CAR_STOP_STATUS) {
         robot_mgr_run_standby_tick();
-    } else if (current_status > CAR_STOP_STATUS && current_status < sizeof(g_mode_ops)/sizeof(g_mode_ops[0])) {
+    } else if (current_status > CAR_STOP_STATUS && current_status < sizeof(g_mode_ops) / sizeof(g_mode_ops[0])) {
         if (g_mode_ops[current_status].tick) {
             g_mode_ops[current_status].tick();
         }

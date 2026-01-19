@@ -36,7 +36,7 @@ void mode_remote_enter(void)
 void mode_remote_tick(void)
 {
     int8_t motor1, motor2, servo;
-    
+
     // 如果有新命令，更新控制并重置超时计时器
     if (udp_service_pop_cmd(&motor1, &motor2, &servo)) {
         apply_differential_control(motor1, motor2, servo);

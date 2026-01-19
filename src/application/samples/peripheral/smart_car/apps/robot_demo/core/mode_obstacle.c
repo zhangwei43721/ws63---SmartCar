@@ -15,10 +15,6 @@
 
 #include <stdio.h>
 
-// 定义转向常量
-// CAR_TURN_LEFT, CAR_TURN_RIGHT 已在 robot_common.h 中定义
-
-
 // 上次遥测时间
 static unsigned long long g_last_telemetry_time = 0;
 
@@ -71,8 +67,8 @@ static void perform_obstacle_avoidance(float distance)
 {
     // 避障阈值可由 NV 配置动态调整
     float threshold = (float)robot_mgr_get_obstacle_threshold_cm();
-    
-    // 如果获取的阈值为0（异常），使用默认值
+
+    // 如果获取的阈值为0（异常），使用默认避障阈值
     if (threshold <= 0) {
         threshold = DISTANCE_BETWEEN_CAR_AND_OBSTACLE;
     }
@@ -96,10 +92,8 @@ static void perform_obstacle_avoidance(float distance)
 
         osal_msleep(TURN_MOVE_MS);
         car_stop();
-    } else {
-        // 路径通畅，继续直行
-        car_forward();
-    }
+    } else
+        car_forward(); // 路径通畅，继续直行
 }
 
 /**

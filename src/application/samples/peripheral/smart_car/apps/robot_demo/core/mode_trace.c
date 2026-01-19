@@ -16,9 +16,9 @@ void mode_trace_enter(void)
     g_last_telemetry_time = 0;
 }
 
-/*  
+/*
  * 循迹模式主循环
-*/
+ */
 void mode_trace_tick(void)
 {
     unsigned int left = tcrt5000_get_left();

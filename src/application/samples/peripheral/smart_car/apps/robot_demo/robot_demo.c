@@ -29,6 +29,7 @@
 #include "gpio.h"
 #include "hal_gpio.h"
 #include "app_init.h"
+#include "core/robot_config.h"
 #include "core/robot_mgr.h"
 
 /* 任务配置 */

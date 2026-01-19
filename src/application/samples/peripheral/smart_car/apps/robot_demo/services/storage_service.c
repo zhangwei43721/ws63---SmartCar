@@ -26,15 +26,15 @@ static robot_nv_config_t g_nv_cfg = {0};
 static osal_mutex g_storage_mutex;
 static bool g_storage_mutex_inited = false;
 
-#define STORAGE_LOCK()                           \
-    do {                                         \
-        if (g_storage_mutex_inited)              \
+#define STORAGE_LOCK()                               \
+    do {                                             \
+        if (g_storage_mutex_inited)                  \
             (void)osal_mutex_lock(&g_storage_mutex); \
     } while (0)
 
-#define STORAGE_UNLOCK()                     \
-    do {                                     \
-        if (g_storage_mutex_inited)          \
+#define STORAGE_UNLOCK()                         \
+    do {                                         \
+        if (g_storage_mutex_inited)              \
             osal_mutex_unlock(&g_storage_mutex); \
     } while (0)
 
@@ -84,7 +84,7 @@ static void storage_mutex_init(void)
 void storage_service_init(void)
 {
     storage_mutex_init();
-    
+
     (void)uapi_nv_init();
 
     STORAGE_LOCK();
@@ -119,14 +119,14 @@ errcode_t storage_service_save_params(const robot_params_t *params)
     STORAGE_LOCK();
     g_nv_cfg.obstacle_threshold_cm = params->obstacle_threshold_cm;
     g_nv_cfg.servo_center_angle = params->servo_center_angle;
-    
+
     // 重新计算校验和
     g_nv_cfg.checksum = 0;
     g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
-    
+
     errcode_t ret = uapi_nv_write(ROBOT_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
     STORAGE_UNLOCK();
-    
+
     return ret;
 }
 
@@ -135,7 +135,8 @@ uint16_t storage_service_get_obstacle_threshold(void)
     uint16_t val;
     STORAGE_LOCK();
     val = g_nv_cfg.obstacle_threshold_cm;
-    if (val == 0) val = DISTANCE_BETWEEN_CAR_AND_OBSTACLE;
+    if (val == 0)
+        val = DISTANCE_BETWEEN_CAR_AND_OBSTACLE;
     STORAGE_UNLOCK();
     return val;
 }
@@ -145,7 +146,8 @@ uint16_t storage_service_get_servo_center(void)
     uint16_t val;
     STORAGE_LOCK();
     val = g_nv_cfg.servo_center_angle;
-    if (val > 180) val = SERVO_MIDDLE_ANGLE;
+    if (val > 180)
+        val = SERVO_MIDDLE_ANGLE;
     STORAGE_UNLOCK();
     return val;
 }

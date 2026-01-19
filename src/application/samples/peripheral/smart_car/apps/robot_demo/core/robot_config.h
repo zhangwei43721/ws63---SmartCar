@@ -9,9 +9,9 @@
 #ifndef ROBOT_CONFIG_H
 #define ROBOT_CONFIG_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/* =============== 任务配置 =============== */
+#define CAR_CONTROL_DEMO_TASK_STACK_SIZE (1024 * 10)
+#define CAR_CONTROL_DEMO_TASK_PRIORITY 25
 
 /* =============== 舵机配置 =============== */
 #define SERVO_LEFT_ANGLE 180  // 舵机左转角度
@@ -23,11 +23,12 @@ extern "C" {
 #endif
 
 /* =============== 时间配置（毫秒） =============== */
-#define SERVO_MOVE_DELAY_MS 350   // 舵机转动等待时间
-#define SENSOR_STABILIZE_MS 50    // 传感器稳定等待时间
-#define BACKWARD_MOVE_MS 400      // 后退时间
-#define TURN_MOVE_MS 400          // 转向时间
-#define REMOTE_CMD_TIMEOUT_MS 500 // 遥控命令超时时间
+#define SERVO_MOVE_DELAY_MS 350        // 舵机转动等待时间
+#define SENSOR_STABILIZE_MS 50         // 传感器稳定等待时间
+#define BACKWARD_MOVE_MS 400           // 后退时间
+#define TURN_MOVE_MS 400               // 转向时间
+#define REMOTE_CMD_TIMEOUT_MS 500      // 遥控命令超时时间
+#define KEY_INTERRUPT_PROTECT_TIME 200 // 按键中断防抖时间
 
 #define TELEMETRY_REPORT_MS 500     // 遥测数据上报间隔
 #define MAIN_LOOP_DELAY_MS 20       // 主循环延时
@@ -44,9 +45,5 @@ extern "C" {
 #define IP_BUFFER_SIZE 32       // IP 地址缓冲区大小
 #define JSON_BUFFER_SIZE 256    // JSON 数据缓冲区大小
 #define MODE_BUFFER_SIZE 32     // 模式字符串缓冲区大小
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* ROBOT_CONFIG_H */

@@ -58,14 +58,14 @@ static void *g_ota_backend_ctx = NULL;
 static osal_mutex g_ota_mutex;
 static bool g_ota_mutex_inited = false;
 
-#define OTA_LOCK()                           \
-    do {                                     \
-        if (g_ota_mutex_inited)              \
+#define OTA_LOCK()                               \
+    do {                                         \
+        if (g_ota_mutex_inited)                  \
             (void)osal_mutex_lock(&g_ota_mutex); \
     } while (0)
 
-#define OTA_UNLOCK()                     \
-    do {                                 \
+#define OTA_UNLOCK()                         \
+    do {                                     \
         if (g_ota_mutex_inited)              \
             osal_mutex_unlock(&g_ota_mutex); \
     } while (0)
@@ -226,8 +226,13 @@ static int ota_send_response(const struct sockaddr_in *to, uint8_t resp_code, ui
     return udp_net_common_send_to_addr(buf, total_len, to);
 }
 
-static bool ota_parse_request(const uint8_t *data, size_t len, uint8_t *type, uint8_t *cmd, uint32_t *offset,
-                              const uint8_t **payload, uint16_t *payload_len)
+static bool ota_parse_request(const uint8_t *data,
+                              size_t len,
+                              uint8_t *type,
+                              uint8_t *cmd,
+                              uint32_t *offset,
+                              const uint8_t **payload,
+                              uint16_t *payload_len)
 {
     if (data == NULL || len < 9 || type == NULL || cmd == NULL || offset == NULL || payload == NULL ||
         payload_len == NULL) {
@@ -264,7 +269,7 @@ void ota_service_init(void)
         g_ota_mutex_inited = true;
     else
         printf("ota_service: 互斥锁初始化失败\r\n");
-        
+
     ota_upg_init_once();
 }
 
@@ -296,10 +301,10 @@ bool ota_service_process_packet(const uint8_t *data, size_t len, const struct so
     uint32_t offset = 0;
     const uint8_t *payload = NULL;
     uint16_t payload_len = 0;
-    
+
     if (!ota_parse_request(data, len, &type, &cmd, &offset, &payload, &payload_len)) {
         // 解析失败，但类型匹配，可能包损坏，视为已处理（防止被误判为其他包）或忽略
-        return true; 
+        return true;
     }
 
     OTA_LOCK(); // 加锁保护 OTA 状态
