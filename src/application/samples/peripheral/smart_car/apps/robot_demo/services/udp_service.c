@@ -1,5 +1,6 @@
 #include "udp_service.h"
 #include "../core/robot_mgr.h"
+#include "../core/mode_trace.h"
 #include "udp_net_common.h"
 #include "ota_service.h"
 
@@ -315,13 +316,15 @@ static void *udp_service_task(const char *arg)
             }
 
             uint8_t type = g_rx_buffer[0];
-            if ((type == 0x01 || type == 0x03) && (size_t)n == sizeof(udp_packet_t)) {
+
+            if ((type == 0x01 || type == 0x03 || type == 0x04) && (size_t)n == sizeof(udp_packet_t)) {
                 udp_packet_t *pkt = (udp_packet_t *)g_rx_buffer;
                 uint8_t checksum = udp_net_common_checksum8_add((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
                 if (checksum == pkt->checksum) {
                     if (pkt->type == 0x01) {
                         udp_service_push_cmd(pkt->motor1, pkt->motor2, pkt->servo);
-                        printf("udp_service: 收到控制命令 m1=%d m2=%d s=%d\r\n", pkt->motor1, pkt->motor2, pkt->servo);
+                        // 降低控制命令的打印频率，或者注释掉，避免刷屏
+                        // printf("udp_service: 收到控制命令 m1=%d m2=%d s=%d\r\n", pkt->motor1, pkt->motor2, pkt->servo);
                     } else if (pkt->type == 0x03) {
                         if (pkt->cmd >= 0 && pkt->cmd <= 4) {
                             printf("udp_service: 切换模式 cmd=%d (CarStatus)\r\n", pkt->cmd);
@@ -329,6 +332,13 @@ static void *udp_service_task(const char *arg)
                         } else {
                             printf("udp_service: 无效的模式命令 cmd=%d\r\n", pkt->cmd);
                         }
+                    } else if (pkt->type == 0x04) {
+                        // PID 参数设置命令
+                        // cmd: 参数类型 (1=Kp, 2=Ki, 3=Kd, 4=Speed)
+                        // motor1: 高8位, motor2: 低8位 (组成 int16_t)
+                        int16_t val = (int16_t)(((uint8_t)pkt->motor1 << 8) | (uint8_t)pkt->motor2);
+                        printf("udp_service: 设置PID type=%d val=%d\r\n", pkt->cmd, val);
+                        mode_trace_set_pid(pkt->cmd, val);
                     }
                 }
             }

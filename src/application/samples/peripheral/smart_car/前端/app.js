@@ -92,6 +92,42 @@ function bindHoldButton(el, onPress) {
     el.addEventListener('pointerleave', release);
 }
 
+// --- PID 调试功能 ---
+function updatePidVal(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.innerText = val;
+}
+
+function sendPid(type) {
+    console.log(`[Frontend] sendPid called with type: ${type}`);
+    if (!appState.carIP) {
+        console.warn('[Frontend] sendPid aborted: No carIP set');
+        alert('请先连接小车！');
+        return;
+    }
+    
+    let val = 0;
+    // float 类型需要 / 100 还原为实际 float (后端会除以100，这里前端直接发整数)
+    if (type === 1) val = parseFloat(document.getElementById('pidKp').value);
+    else if (type === 2) val = parseFloat(document.getElementById('pidKi').value);
+    else if (type === 3) val = parseFloat(document.getElementById('pidKd').value);
+    else if (type === 4) val = parseInt(document.getElementById('pidSpeed').value);
+    
+    console.log(`[Frontend] Sending PID: type=${type}, val=${val}, IP=${appState.carIP}`);
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'setPid',
+            deviceIP: appState.carIP,
+            paramType: type,
+            value: val
+        }));
+        console.log('[Frontend] PID command sent to proxy');
+    } else {
+        console.error('[Frontend] Socket not ready');
+    }
+}
+
 // --- 核心函数 ---
 
 /**
@@ -319,6 +355,16 @@ function updateModeButtons(mode) {
             btn.classList.remove('active');
         }
     });
+
+    // PID 面板仅在循迹模式下显示
+    const pidPanel = document.getElementById('pidPanel');
+    if (pidPanel) {
+        if (mode === 'tracking') {
+            pidPanel.style.display = 'block';
+        } else {
+            pidPanel.style.display = 'none';
+        }
+    }
 
     const dpad = document.getElementById('dpad');
     if (mode === 'remote') {

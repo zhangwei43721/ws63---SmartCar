@@ -237,10 +237,50 @@ wss.on('connection', (ws) => {
                 if (msg.type !== 'otaData') console.log('收到前端消息:', msg);
             }
 
+function sendPidParam(ip, type, value) {
+    // type: 1=Kp, 2=Ki, 3=Kd, 4=Speed
+    // value: float * 100 for PID, int for Speed
+    
+    let valToSend = value;
+    if (type <= 3) {
+        valToSend = Math.round(value * 100);
+    }
+    
+    const buf = Buffer.alloc(7);
+    buf.writeUInt8(0x04, 0);   // type: PID设置
+    buf.writeUInt8(type, 1);   // cmd: 参数类型
+    
+    // 将值拆分为高低8位 (Big Endian)
+    buf.writeUInt8((valToSend >> 8) & 0xFF, 2); // motor1: high byte
+    buf.writeUInt8(valToSend & 0xFF, 3);        // motor2: low byte
+    
+    buf.writeInt8(0, 4);       // servo: unused
+    buf.writeUInt8(0, 5);      // ir_data: unused
+    
+    // 计算校验和
+    let sum = 0;
+    for (let i = 0; i < 6; i++) {
+        sum += buf.readUInt8(i);
+    }
+    buf.writeUInt8(sum & 0xFF, 6);
+    
+    udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, ip, (error) => {
+        if (error) {
+            console.error(`发送PID参数到 ${ip} 失败:`, error);
+        } else {
+            console.log(`PID参数已发送 ${ip}: type=${type} val=${valToSend}`);
+        }
+    });
+}
+
+// ...
+
             if (msg.type === 'control') {
                 sendControl(msg.deviceIP, msg.motor1, msg.motor2, msg.servo);
             } else if (msg.type === 'modeChange') {
                 sendModeChange(msg.deviceIP, msg.mode);
+            } else if (msg.type === 'setPid') {
+                sendPidParam(msg.deviceIP, msg.paramType, msg.value);
             } else if (msg.type === 'otaStart') {
                 const payload = Buffer.alloc(4);
                 payload.writeUInt32BE((msg.size >>> 0), 0);
