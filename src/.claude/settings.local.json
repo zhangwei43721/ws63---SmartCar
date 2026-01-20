@@ -7,7 +7,10 @@
       "Bash(ipconfig:*)",
       "Bash(copy:*)",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: 更新代理服务器地址配置\n\n- 将 proxyUrl 从 localhost 改为 192.168.3.150:8081\nEOF\n\\)\")",
+      "Bash(git push:*)"
     ]
   },
   "outputStyle": "default"

@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>智能小车控制台</title>
+  <title>智能小车UDP控制台</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 
@@ -14,11 +14,12 @@
     <div class="brand">
       <div class="logo-icon">🚗</div>
       <div class="title">
-        SmartCar <span class="badge">K12</span>
+        SmartCar <span class="badge">UDP</span>
       </div>
     </div>
     <div class="header-right">
       <div class="status-indicator" id="statusConn" title="连接状态"></div>
+      <div class="btn-icon" onclick="toggleOtaModal()" title="固件升级">⬆️</div>
       <div class="btn-icon" onclick="toggleConfig()">⚙️</div>
     </div>
   </header>
@@ -28,7 +29,7 @@
     <div class="car-wrapper">
       <!-- 车辆模型容器 -->
       <div class="car-model">
-        <!-- 1. 舵机云台与超声波 (位于最前端) -->
+        <!-- 1. 舵机云台与超声波 -->
         <div class="servo-assembly" id="servoHead">
           <div class="ultrasonic-sensor">
             <div class="eye left"></div>
@@ -38,7 +39,7 @@
           <div class="radar-beam" id="radarBeam"></div>
         </div>
 
-        <!-- 2. 动力轮 (前轮驱动布局) -->
+        <!-- 2. 动力轮 -->
         <div class="wheel left" id="wheelL">
           <div class="tire-tread"></div>
         </div>
@@ -51,7 +52,7 @@
           <!-- 装饰性芯片图案 -->
           <div class="mcu-deco">HI3863</div>
 
-          <!-- 循迹传感器模块 (车头底部) -->
+          <!-- 循迹传感器模块 -->
           <div class="sensor-bar">
             <div class="ir-led" id="irL"></div>
             <div class="ir-led" id="irM"></div>
@@ -89,40 +90,70 @@
       <button class="mode-btn" onclick="changeMode('avoid')">避障</button>
     </div>
 
-    <!-- 摇杆区域 -->
-    <div class="joystick-container disabled" id="joystick-zone">
-      <div class="joystick-placeholder">
-        <span>虚拟摇杆区域</span>
-        <small>仅遥控模式可用</small>
-      </div>
+    <div class="dpad disabled" id="dpad">
+      <button class="dpad-btn up" id="btnForward">前进</button>
+      <button class="dpad-btn left" id="btnLeft">左转</button>
+      <button class="dpad-btn stop" id="btnStop">停止</button>
+      <button class="dpad-btn right" id="btnRight">右转</button>
+      <button class="dpad-btn down" id="btnBackward">后退</button>
     </div>
+
   </section>
 
   <!-- 设置弹窗 -->
   <div class="modal-backdrop" id="configModal">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>连接配置</h3>
+        <h3>UDP连接配置</h3>
         <span class="close-btn" onclick="toggleConfig()">×</span>
       </div>
       <div class="modal-body">
         <div class="form-group">
           <label>小车 IP 地址</label>
-          <input type="text" id="cfgIP" placeholder="192.168.x.x" />
+          <input type="text" id="cfgIP" placeholder="自动发现" readonly />
         </div>
         <div class="form-group">
-          <label>端口 (Port)</label>
-          <input type="number" id="cfgPort" placeholder="8080" />
+          <label>控制端口</label>
+          <input type="number" id="cfgPort" value="8888" readonly />
+        </div>
+        <div class="form-group">
+          <label>广播端口</label>
+          <input type="number" id="cfgBCast" value="8889" readonly />
+        </div>
+        <div class="form-group">
+          <label>连接状态</label>
+          <div id="discoveryStatus">正在搜索设备...</div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn-save" onclick="saveConfig()">保存并重连</button>
+        <button class="btn-save" onclick="connectToProxy()">重新连接</button>
       </div>
     </div>
   </div>
 
-  <!-- 库文件与逻辑 -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+  <!-- OTA 升级弹窗 -->
+  <div class="modal-backdrop" id="otaModal">
+    <div class="modal-card ota-modal">
+      <div class="modal-header">
+        <h3>固件升级 (OTA)</h3>
+        <span class="close-btn" onclick="toggleOtaModal()">×</span>
+      </div>
+      <div class="modal-body">
+        <div class="ota-panel">
+          <div class="ota-row">
+            <input type="file" id="otaFile" accept=".fwpkg" />
+            <button class="ota-btn" id="btnOtaStart">开始升级</button>
+          </div>
+          <div class="ota-hint">建议选择 ws63-liteos-app_all.fwpkg</div>
+          <div class="ota-progress">
+            <div class="ota-progress-bar" id="otaProgressBar"></div>
+          </div>
+          <div class="ota-meta" id="otaStatusText">OTA: --</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="./app.js"></script>
 </body>
 
