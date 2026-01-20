@@ -13,9 +13,9 @@
 #define TRACE_LOST_TIMEOUT_MS   300 // 丢失黑线后继续行驶的超时时间(ms)
 
 // PID 参数
-static float g_kp = 25.0f; // 初始Kp (需要根据电机响应调整)
+static float g_kp = 16.0f; // 初始Kp
 static float g_ki = 0.0f;
-static float g_kd = 10.0f;
+static float g_kd = 0.0f;
 static int g_base_speed = TRACE_SPEED_FORWARD;
 
 static float g_last_error = 0;
@@ -40,18 +40,11 @@ void mode_trace_enter(void)
 // type: 1=Kp, 2=Ki, 3=Kd, 4=Speed
 void mode_trace_set_pid(int type, int value)
 {
-    // 前端发来的是 x100 后的值 (例如前端2 -> 后端200 -> 这里200)
-    // 用户希望能把前端滑块(0-100) 映射到 Kp(0-20) 的范围，以提高调节精度
-    // 原逻辑: g_kp = value / 100.0f  => 滑块100 -> Kp 100
-    // 新逻辑: g_kp = value / 500.0f  => 滑块100 -> Kp 20 (即滑块1 -> Kp 0.2)
-    // 这样当滑块在 10 的时候，实际 Kp = 2.0
-    
-    if (type == 1) g_kp = (float)value / 500.0f;
-    else if (type == 2) g_ki = (float)value / 100.0f;
-    else if (type == 3) g_kd = (float)value / 100.0f;
+    if (type == 1) g_kp = (float)value / 1000.0f;
+    else if (type == 2) g_ki = (float)value / 10000.0f;
+    else if (type == 3) g_kd = (float)value / 500.0f;
     else if (type == 4) g_base_speed = value;
-    
-    printf("PID Set: Kp=%.2f Ki=%.2f Kd=%.2f Speed=%d\r\n", g_kp, g_ki, g_kd, g_base_speed);
+    printf("PID Set: Kp=%.2f Ki=%.3f Kd=%.2f Speed=%d\r\n", g_kp, g_ki, g_kd, g_base_speed);
     
     // 重置积分，避免突变
     g_integral = 0;
@@ -152,25 +145,26 @@ void mode_trace_tick(void)
         
         // 1. 动态速度调整 (Dynamic Speed)
         // 当误差较大(拐弯)时，降低基础速度，给车更多时间纠正，防止冲出跑道
+        // 注意：速度不能过低，否则电机可能带不动
         int current_base_speed = g_base_speed;
-        if (error >= 2 || error <= -2) {
+        if (error >= 2 || error <= -2) 
             current_base_speed = (int)(g_base_speed * 0.6f); // 降速至 60%
-        } else if (error >= 1 || error <= -1) {
-            current_base_speed = (int)(g_base_speed * 0.8f); // 稍微降速
-        }
+         else if (error >= 1 || error <= -1) 
+            current_base_speed = (int)(g_base_speed * 0.9f); // 90% (轻微减速)
         
-        // 2. 死区补偿 (Deadband Compensation)
-        // 如果 PID 输出太小(例如 < 10)，电机可能带不动差速。
-        // 强制给一个最小的转向力
-        if (pid_output > 0.1f && pid_output < 5.0f) pid_output = 5.0f;
-        if (pid_output < -0.1f && pid_output > -5.0f) pid_output = -5.0f;
-
-        // 应用 PID 到电机速度 (差速控制)
-        // pid_output > 0 -> Error > 0 -> 需要右转 -> 左轮快，右轮慢
-        // 左轮 = Base + PID, 右轮 = Base - PID
         
-        int left_speed = current_base_speed + (int)pid_output;
-        int right_speed = current_base_speed - (int)pid_output;
+        // 确保最小速度，防止电机停转 (根据经验 l9110s 至少需要 20-30 PWM)
+        if (current_base_speed < 20) current_base_speed = 20;
+        
+        // 使用四舍五入而不是截断，以保留 0.5 级别的微调效果
+        int pid_out_int = (int)(pid_output > 0 ? (pid_output + 0.5f) : (pid_output - 0.5f));
+        
+        // 如果 Kp 很小(如 0.5) 且误差很小(1)，pid_output=0.5 -> round -> 1.
+        // 这样 Kp=0.5 就有了效果 (diff=1). 
+        // 之前的 (int)0.5 = 0, 所以无效.
+        
+        int left_speed = current_base_speed + pid_out_int;
+        int right_speed = current_base_speed - pid_out_int;
         
         // 速度限幅 (-100 ~ 100)
         if (left_speed > 100) left_speed = 100;
@@ -184,7 +178,7 @@ void mode_trace_tick(void)
         // 未检测到黑线
         // 记忆功能：如果刚丢失信号不久，继续直行一段距离
         if (now - g_last_seen_tick < osal_msecs_to_jiffies(TRACE_LOST_TIMEOUT_MS)) {
-            // 丢失信号时，保持上一次的转向趋势可能比直行更好？
+            // 丢失信号时，保持上一次的转向相反的趋势可能比直行更好？
             // 暂时保持直行，或者可以尝试用 g_last_error 来决定转向
             // 这里简单处理为直行，避免过度转向
             l9110s_set_differential(g_base_speed, g_base_speed);
