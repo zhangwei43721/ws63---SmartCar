@@ -41,22 +41,12 @@ void mode_trace_enter(void)
 void mode_trace_set_pid(int type, int value)
 {
     // 前端发来的是 x100 后的值 (例如前端2 -> 后端200 -> 这里200)
-    // 除以 100.0f 还原回 2.0
-    // 如果用户觉得 2.0 还是太大，我们需要提高精度，或者改变除数
-    // 但为了保持兼容，建议用户在前端设置更小的值？前端slider最小是0，step是1。
-    // 如果用户设为1，kp=0.01。
-    // 之前用户说 kp=2 才稳定。说明 kp=2.0 左右是合适的。
-    // 但用户说 kp=2 "比较抖"，"太极限了"。
-    // 可能意味着 kp=2 时震荡，kp<2 (即kp=1, val=100 -> kp=1.0) 也许反应不够快？
-    // 或者用户想要 1.5？
+    // 用户希望能把前端滑块(0-100) 映射到 Kp(0-20) 的范围，以提高调节精度
+    // 原逻辑: g_kp = value / 100.0f  => 滑块100 -> Kp 100
+    // 新逻辑: g_kp = value / 500.0f  => 滑块100 -> Kp 20 (即滑块1 -> Kp 0.2)
+    // 这样当滑块在 10 的时候，实际 Kp = 2.0
     
-    // 这里我们把除数改为 100.0f (保持不变)，但在前端或后端做手脚？
-    // 不，直接修改这里的解析逻辑更直接。
-    // 如果我们想支持更精细的调节，可以约定 value 是 x1000 ? 不行，后端写死了 x100。
-    
-    // 让我们保持这里的逻辑，去优化积分项。
-    
-    if (type == 1) g_kp = (float)value / 100.0f;
+    if (type == 1) g_kp = (float)value / 500.0f;
     else if (type == 2) g_ki = (float)value / 100.0f;
     else if (type == 3) g_kd = (float)value / 100.0f;
     else if (type == 4) g_base_speed = value;
@@ -158,12 +148,29 @@ void mode_trace_tick(void)
         float pid_output = p_term + i_term + d_term;
         g_last_error = error;
         
+        // --- 优化策略 ---
+        
+        // 1. 动态速度调整 (Dynamic Speed)
+        // 当误差较大(拐弯)时，降低基础速度，给车更多时间纠正，防止冲出跑道
+        int current_base_speed = g_base_speed;
+        if (error >= 2 || error <= -2) {
+            current_base_speed = (int)(g_base_speed * 0.6f); // 降速至 60%
+        } else if (error >= 1 || error <= -1) {
+            current_base_speed = (int)(g_base_speed * 0.8f); // 稍微降速
+        }
+        
+        // 2. 死区补偿 (Deadband Compensation)
+        // 如果 PID 输出太小(例如 < 10)，电机可能带不动差速。
+        // 强制给一个最小的转向力
+        if (pid_output > 0.1f && pid_output < 5.0f) pid_output = 5.0f;
+        if (pid_output < -0.1f && pid_output > -5.0f) pid_output = -5.0f;
+
         // 应用 PID 到电机速度 (差速控制)
         // pid_output > 0 -> Error > 0 -> 需要右转 -> 左轮快，右轮慢
         // 左轮 = Base + PID, 右轮 = Base - PID
         
-        int left_speed = g_base_speed + (int)pid_output;
-        int right_speed = g_base_speed - (int)pid_output;
+        int left_speed = current_base_speed + (int)pid_output;
+        int right_speed = current_base_speed - (int)pid_output;
         
         // 速度限幅 (-100 ~ 100)
         if (left_speed > 100) left_speed = 100;
