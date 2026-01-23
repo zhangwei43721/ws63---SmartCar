@@ -74,12 +74,12 @@
 #define BTH_GAP_BLE_ADV_HANDLE_DEFAULT 0x01
 
 /* ==================== 全局变量 ==================== */
-static uint8_t g_server_id = BSP_BT_SPP_SERVER_ID;
-static uint16_t g_conn_hdl = 0;
-static uint16_t g_char_handle = 0;    /* 特征值句柄 - 用于接收数据 */
-static uint16_t g_cccd_handle = 0;    /* CCCD句柄 - 用于检测通知开启 */
-static bool g_notify_enabled = false; /* 手机是否订阅了通知 */
-static uint8_t g_device_name[NAME_MAX_LENGTH] = {'W', 'S', '6', '3', '_', 'U', 'A', 'R', 'T'};
+static uint8_t g_server_id = BSP_BT_SPP_SERVER_ID; /* BLE SPP 服务器 ID */
+static uint16_t g_conn_hdl = 0;                    /* 连接句柄 */
+static uint16_t g_char_handle = 0;                 /* 特征值句柄 - 用于接收数据 */
+static uint16_t g_cccd_handle = 0;                 /* CCCD句柄 - 用于检测通知开启 */
+static bool g_notify_enabled = false;              /* 手机是否订阅了通知 */
+static uint8_t g_device_name[NAME_MAX_LENGTH] = {'W', 'S', '6', '3', '_', 'U', 'A', 'R', 'T'}; /* 蓝牙设备名称 */
 
 /* 蓝牙设备地址 */
 static bd_addr_t g_bt_spp_addr = {
@@ -88,34 +88,37 @@ static bd_addr_t g_bt_spp_addr = {
 };
 
 /* 连接的远程设备地址 */
-static bd_addr_t g_remote_addr = {0};
-static bool g_remote_addr_valid = false;
+static bd_addr_t g_remote_addr = {0};    /* 远程设备蓝牙地址 */
+static bool g_remote_addr_valid = false; /* 远程地址是否有效 */
 
 /* 回调函数 */
-static bsp_bt_spp_data_handler_t g_data_handler = NULL;
-static bsp_bt_spp_event_handler_t g_event_handler = NULL;
-static bsp_bt_spp_status_t g_bt_spp_status = BSP_BT_SPP_STATUS_IDLE;
+static bsp_bt_spp_data_handler_t g_data_handler = NULL;              /* 数据接收回调函数 */
+static bsp_bt_spp_event_handler_t g_event_handler = NULL;            /* 事件回调函数 */
+static bsp_bt_spp_status_t g_bt_spp_status = BSP_BT_SPP_STATUS_IDLE; /* 当前连接状态 */
 
 /* server app uuid */
-static char g_app_uuid[] = {0x0, 0x0};
+static char g_app_uuid[] = {0x0, 0x0}; /* 应用 UUID（由协议栈填充） */
 
 /* ==================== 辅助结构定义 ==================== */
+// BLE 广播标志结构
 typedef struct {
-    uint8_t length;
-    uint8_t adv_data_type;
-    uint8_t flags;
+    uint8_t length;        // 数据长度
+    uint8_t adv_data_type; // 广播数据类型
+    uint8_t flags;         // 标志位
 } ble_adv_flag;
 
+// BLE 外观结构
 typedef struct {
-    uint8_t length;
-    uint8_t adv_data_type;
-    uint8_t catogory_id[2];
+    uint8_t length;         // 数据长度
+    uint8_t adv_data_type;  // 广播数据类型
+    uint8_t catogory_id[2]; // 类别 ID
 } ble_appearance_st;
 
+// BLE 发送功率等级结构
 typedef struct {
-    uint8_t length;
-    uint8_t adv_data_type;
-    uint8_t tx_power_value;
+    uint8_t length;         // 数据长度
+    uint8_t adv_data_type;  // 广播数据类型
+    uint8_t tx_power_value; // 发送功率值
 } ble_tx_power_level_st;
 
 /* ==================== 工具函数 ==================== */

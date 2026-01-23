@@ -3,12 +3,15 @@
 
 #include <stdint.h>
 
+/**
+ * @brief 小车运行模式枚举
+ */
 typedef enum {
-    CAR_STOP_STATUS = 0,
-    CAR_TRACE_STATUS,
-    CAR_OBSTACLE_AVOIDANCE_STATUS,
-    CAR_WIFI_CONTROL_STATUS,
-    CAR_BT_CONTROL_STATUS
+    CAR_STOP_STATUS = 0,           /* 停止模式：小车停止运动 */
+    CAR_TRACE_STATUS,              /* 循迹模式：根据红外传感器进行黑线跟踪 */
+    CAR_OBSTACLE_AVOIDANCE_STATUS, /* 避障模式：根据超声波传感器自动避障 */
+    CAR_WIFI_CONTROL_STATUS,       /* WiFi遥控模式：通过UDP/WiFi接收控制命令 */
+    CAR_BT_CONTROL_STATUS          /* 蓝牙遥控模式（未实现）：通过BLE蓝牙接收控制命令 */
 } CarStatus;
 
 // 转向方向常量

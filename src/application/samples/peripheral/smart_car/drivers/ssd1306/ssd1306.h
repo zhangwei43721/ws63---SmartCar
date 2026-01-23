@@ -36,26 +36,28 @@
 
 // Enumeration for screen colors
 typedef enum {
-    Black = 0x00, // Black color, no pixel
-    White = 0x01  // Pixel is set. Color depends on OLED
+    Black = 0x00, /* 黑色：清除像素（不点亮） */
+    White = 0x01  /* 白色：设置像素（点亮），实际显示颜色取决于OLED类型 */
 } SSD1306_COLOR;
 
 typedef enum {
-    SSD1306_OK = 0x00,
-    SSD1306_ERR = 0x01 // Generic error.
+    SSD1306_OK = 0x00,  /* 成功：操作正常完成 */
+    SSD1306_ERR = 0x01  /* 失败：通用错误 */
 } SSD1306_Error_t;
 
 // Struct to store transformations
 typedef struct {
-    uint16_t CurrentX;
-    uint16_t CurrentY;
-    uint8_t Inverted;
-    uint8_t Initialized;
-    uint8_t DisplayOn;
+    uint16_t CurrentX;    /* 当前光标 X 坐标（像素） */
+    uint16_t CurrentY;    /* 当前光标 Y 坐标（像素） */
+    uint8_t Inverted;     /* 显示反转状态：0=正常，1=反色 */
+    uint8_t Initialized;  /* 初始化状态：0=未初始化，1=已初始化 */
+    uint8_t DisplayOn;    /* 显示开关状态：0=关闭，1=开启 */
 } SSD1306_t;
+
+/* 顶点坐标结构体，用于绘制多边形 */
 typedef struct {
-    uint8_t x;
-    uint8_t y;
+    uint8_t x; /* X 坐标（像素） */
+    uint8_t y; /* Y 坐标（像素） */
 } SSD1306_VERTEX;
 
 // Procedure definitions

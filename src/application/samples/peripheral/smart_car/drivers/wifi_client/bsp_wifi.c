@@ -33,8 +33,8 @@
 #define DHCP_BOUND_STATUS_MAX_GET_TIMES 20
 #define WIFI_STA_IP_MAX_GET_TIMES 5
 
-static wifi_event_stru g_wifi_event_cb = {0};
-static bsp_wifi_status_t g_wifi_status = BSP_WIFI_STATUS_IDLE;
+static wifi_event_stru g_wifi_event_cb = {0};                  /* WiFi 事件回调结构体 */
+static bsp_wifi_status_t g_wifi_status = BSP_WIFI_STATUS_IDLE; /* WiFi 当前连接状态 */
 
 /**
  * @brief WiFi连接状态变化回调

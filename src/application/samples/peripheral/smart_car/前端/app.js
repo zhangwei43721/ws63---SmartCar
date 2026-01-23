@@ -6,7 +6,7 @@
 // --- 配置管理 ---
 const config = {
     // 代理服务器地址（WebSocket）
-    proxyUrl: 'ws://192.168.3.150:8081',
+    proxyUrl: 'ws://192.168.111.122:8081',
     discoveryInterval: 2000
 };
 
@@ -105,14 +105,14 @@ function sendPid(type) {
         alert('请先连接小车！');
         return;
     }
-    
+
     let val = 0;
     // float 类型需要 / 100 还原为实际 float (后端会除以100，这里前端直接发整数)
     if (type === 1) val = parseFloat(document.getElementById('pidKp').value);
     else if (type === 2) val = parseFloat(document.getElementById('pidKi').value);
     else if (type === 3) val = parseFloat(document.getElementById('pidKd').value);
     else if (type === 4) val = parseInt(document.getElementById('pidSpeed').value);
-    
+
     console.log(`[Frontend] Sending PID: type=${type}, val=${val}, IP=${appState.carIP}`);
 
     if (socket && socket.readyState === WebSocket.OPEN) {

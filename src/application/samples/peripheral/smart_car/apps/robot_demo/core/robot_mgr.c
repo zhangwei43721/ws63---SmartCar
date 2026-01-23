@@ -19,8 +19,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-static CarStatus g_status = CAR_STOP_STATUS;
-static CarStatus g_last_status = CAR_STOP_STATUS;
+static CarStatus g_status = CAR_STOP_STATUS;      /* 当前小车运行模式 */
+static CarStatus g_last_status = CAR_STOP_STATUS; /* 上次小车运行模式（用于检测模式切换） */
 
 // =============== 互斥锁操作宏 ===============
 #define ROBOT_STATE_LOCK()                         \
@@ -42,14 +42,14 @@ static CarStatus g_last_status = CAR_STOP_STATUS;
         ROBOT_STATE_UNLOCK();            \
     } while (0)
 
-// 全局机器人状态，供 HTTP 服务读取
+/* 全局机器人状态，供 HTTP 服务读取 */
 static RobotState g_robot_state = {0};
 
-// 互斥锁保护状态访问
+/* 互斥锁保护状态访问 */
 static osal_mutex g_state_mutex;
 static bool g_state_mutex_inited = false;
 
-// 模式操作接口定义
+/* 模式操作接口定义（按 CarStatus 枚举值索引） */
 static RobotModeOps g_mode_ops[] = {
     // CAR_STOP_STATUS (0)
     {NULL, NULL, NULL},

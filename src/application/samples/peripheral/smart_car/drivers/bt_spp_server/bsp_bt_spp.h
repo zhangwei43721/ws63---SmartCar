@@ -26,17 +26,17 @@
 
 /* 蓝牙SPP连接状态 */
 typedef enum {
-    BSP_BT_SPP_STATUS_IDLE = 0,     /* 空闲 */
-    BSP_BT_SPP_STATUS_CONNECTING,   /* 连接中 */
-    BSP_BT_SPP_STATUS_CONNECTED,    /* 已连接 */
-    BSP_BT_SPP_STATUS_DISCONNECTED, /* 已断开 */
+    BSP_BT_SPP_STATUS_IDLE = 0,     /* 空闲：未连接状态 */
+    BSP_BT_SPP_STATUS_CONNECTING,   /* 连接中：正在等待客户端连接 */
+    BSP_BT_SPP_STATUS_CONNECTED,    /* 已连接：客户端已连接，可进行数据传输 */
+    BSP_BT_SPP_STATUS_DISCONNECTED, /* 已断开：连接已断开 */
 } bsp_bt_spp_status_t;
 
 /* 蓝牙SPP事件类型 */
 typedef enum {
-    BSP_BT_SPP_EVENT_CONNECTED = 0, /* 已连接 */
-    BSP_BT_SPP_EVENT_DISCONNECTED,  /* 已断开 */
-    BSP_BT_SPP_EVENT_DATA_RECEIVED, /* 接收到数据 */
+    BSP_BT_SPP_EVENT_CONNECTED = 0, /* 已连接：客户端成功建立连接 */
+    BSP_BT_SPP_EVENT_DISCONNECTED,  /* 已断开：客户端断开连接 */
+    BSP_BT_SPP_EVENT_DATA_RECEIVED, /* 接收到数据：收到客户端发送的数据 */
 } bsp_bt_spp_event_t;
 
 /* 蓝牙SPP数据接收回调函数类型 */

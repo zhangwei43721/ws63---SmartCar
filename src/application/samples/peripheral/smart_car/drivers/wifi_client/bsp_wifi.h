@@ -19,17 +19,17 @@
 
 #include <stdint.h>
 
-// WiFi配置（可在代码中修改）
-#define BSP_WIFI_SSID "BS-8"
-#define BSP_WIFI_PASSWORD "BS88888888"
+// WiFi配置
+#define BSP_WIFI_SSID "BSHZ-2.4G"
+#define BSP_WIFI_PASSWORD "BS666888"
 
 // WiFi连接状态
 typedef enum {
-    BSP_WIFI_STATUS_IDLE = 0,     // 空闲
-    BSP_WIFI_STATUS_CONNECTING,   // 连接中
-    BSP_WIFI_STATUS_CONNECTED,    // 已连接
-    BSP_WIFI_STATUS_GOT_IP,       // 已获取IP
-    BSP_WIFI_STATUS_DISCONNECTED, // 已断开
+    BSP_WIFI_STATUS_IDLE = 0,     /* 空闲：未开始连接 */
+    BSP_WIFI_STATUS_CONNECTING,   /* 连接中：正在尝试连接AP */
+    BSP_WIFI_STATUS_CONNECTED,    /* 已连接：已关联到AP，但未获取IP */
+    BSP_WIFI_STATUS_GOT_IP,       /* 已获取IP：连接成功，可进行网络通信 */
+    BSP_WIFI_STATUS_DISCONNECTED, /* 已断开：连接中断或断开 */
 } bsp_wifi_status_t;
 
 /**

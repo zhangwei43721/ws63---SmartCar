@@ -9,10 +9,10 @@
 
 // OTA 后端接口定义
 typedef struct {
-    errcode_t (*prepare)(void *ctx, uint32_t total_size);
-    errcode_t (*write)(void *ctx, uint32_t offset, const uint8_t *data, uint16_t len);
-    errcode_t (*finish)(void *ctx);
-    errcode_t (*reset)(void *ctx);
+    errcode_t (*prepare)(void *ctx, uint32_t total_size); // 准备升级环境，预留存储空间
+    errcode_t (*write)(void *ctx, uint32_t offset, const uint8_t *data, uint16_t len); // 写入升级数据
+    errcode_t (*finish)(void *ctx); // 完成升级，触发设备重启
+    errcode_t (*reset)(void *ctx);  // 重置升级状态
 } ota_backend_t;
 
 /**

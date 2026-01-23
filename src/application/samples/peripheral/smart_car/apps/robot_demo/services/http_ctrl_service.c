@@ -19,15 +19,15 @@
 
 static void *http_ctrl_task(const char *arg);
 
-static osal_task *g_http_task_handle = NULL;
-static bool g_http_started = false;
+static osal_task *g_http_task_handle = NULL; /* HTTP 服务任务句柄 */
+static bool g_http_started = false;          /* HTTP 服务是否已启动 */
 
 /**
  * @brief 模式名称到状态枚举的映射结构
  */
 typedef struct {
-    const char *name;
-    CarStatus status;
+    const char *name; // 模式名称字符串（用于 URL 参数解析）
+    CarStatus status; // 对应的小车状态枚举值
 } ModeMapping;
 
 /**

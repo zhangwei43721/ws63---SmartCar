@@ -1,55 +1,100 @@
+/**
+ * 智能小车 WebSocket-UDP 代理服务器
+ *
+ * 功能说明：
+ * 1. 监听 WebSocket 连接，接收前端控制命令
+ * 2. 转发控制命令到智能小车（UDP 协议）
+ * 3. 监听智能小车的 UDP 广播和状态数据
+ * 4. 将设备状态和 OTA 进度转发给前端
+ * 5. 管理设备的在线状态和超时检测
+ *
+ * 通信协议：
+ * - WebSocket: 前端 <-> 代理（JSON 格式）
+ * - UDP: 代理 <-> 智能小车（二进制协议）
+ */
+
 const WebSocket = require('ws');
 const dgram = require('dgram');
 
+/**
+ * 代理服务器配置
+ */
 const CONFIG = {
-    WS_PORT: 8081,
-    UDP_CONTROL_PORT: 8888,
-    UDP_BROADCAST_PORT: 8889,
-    DEVICE_TIMEOUT: 20000  // 设备超时时间 20秒
+    WS_PORT: 8081,              // WebSocket 服务端口
+    UDP_CONTROL_PORT: 8888,     // UDP 控制端口（发送到设备）
+    UDP_BROADCAST_PORT: 8889,    // UDP 广播端口（监听设备消息）
+    DEVICE_TIMEOUT: 20000       // 设备超时时间 20 秒
 };
 
-const wss = new WebSocket.Server({ port: CONFIG.WS_PORT });
-const udpClient = dgram.createSocket('udp4');
-udpClient.bind(CONFIG.UDP_BROADCAST_PORT);
-
+/**
+ * 8 位累加校验和计算
+ * @param {Buffer} buf - 数据缓冲区
+ * @returns {number} 8 位校验和
+ */
 function checksum8(buf) {
     let sum = 0;
     for (let i = 0; i < buf.length; i++) sum = (sum + buf[i]) & 0xFF;
     return sum & 0xFF;
 }
 
+/**
+ * 构建 OTA 升级数据包
+ * @param {number} type - 包类型 (0x10=Start, 0x11=Data, 0x12=End, 0x13=Ping)
+ * @param {number} cmd - 命令字节
+ * @param {number} offset - 数据偏移量
+ * @param {Buffer} payloadBuf - 负载数据
+ * @returns {Buffer} 完整的 OTA 数据包
+ */
 function buildOtaPacket(type, cmd, offset, payloadBuf) {
     const payload = payloadBuf || Buffer.alloc(0);
     const headerLen = 8;
     const totalLen = headerLen + payload.length + 1;
     const buf = Buffer.alloc(totalLen);
-    buf.writeUInt8(type & 0xFF, 0);
-    buf.writeUInt8(cmd & 0xFF, 1);
-    buf.writeUInt32BE(offset >>> 0, 2);
-    buf.writeUInt16BE(payload.length & 0xFFFF, 6);
-    payload.copy(buf, 8);
-    buf.writeUInt8(checksum8(buf.subarray(0, totalLen - 1)), totalLen - 1);
+
+    buf.writeUInt8(type & 0xFF, 0);                      // [0] type
+    buf.writeUInt8(cmd & 0xFF, 1);                        // [1] cmd
+    buf.writeUInt32BE(offset >>> 0, 2);                  // [2-5] offset (大端序)
+    buf.writeUInt16BE(payload.length & 0xFFFF, 6);       // [6-7] payload_len (大端序)
+    payload.copy(buf, 8);                                // [8...] payload
+    buf.writeUInt8(checksum8(buf.subarray(0, totalLen - 1)), totalLen - 1);  // [last] checksum
+
     return buf;
 }
 
+/**
+ * 解析 OTA 应答数据包
+ * @param {Buffer} msg - 接收到的数据包
+ * @returns {Object|null} 解析结果 {type, cmd, offset, length, payload} 或 null
+ */
 function parseOtaPacket(msg) {
     if (!Buffer.isBuffer(msg) || msg.length < 9) return null;
+
     const chk = checksum8(msg.subarray(0, msg.length - 1));
     if (chk !== msg[msg.length - 1]) return null;
+
     const type = msg.readUInt8(0);
     const cmd = msg.readUInt8(1);
     const offset = msg.readUInt32BE(2);
     const length = msg.readUInt16BE(6);
+
     if (msg.length !== 9 + length) return null;
+
     const payload = msg.subarray(8, 8 + length);
     return { type, cmd, offset, length, payload };
 }
 
-// 设备管理: ip -> { lastSeen, status, discovered, lastNotified }
-// lastNotected: 上次通知前端的时间戳（用于防止重复通知）
+/**
+ * 设备管理: ip -> { lastSeen, status, discovered, lastNotified }
+ * - lastSeen: 上次收到消息的时间戳
+ * - status: 设备状态 {mode, servo, distance, ir}
+ * - discovered: 是否已被发现
+ * - lastNotified: 上次通知前端的时间戳
+ */
 const devices = new Map();
 
-// 处理来自设备的UDP消息
+/**
+ * 处理来自设备的 UDP 消息
+ */
 udpClient.on('message', (msg, rinfo) => {
     if (msg.length >= 7) {
         const type = msg[0];
@@ -57,37 +102,38 @@ udpClient.on('message', (msg, rinfo) => {
         const existing = devices.get(rinfo.address);
 
         if (type === 0x14) {
+            // OTA 应答包
             const pkt = parseOtaPacket(msg);
             if (!pkt) return;
 
             let status = null;
             if (pkt.length >= 10) {
                 status = {
-                    otaStatus: pkt.payload.readUInt8(0),
-                    progress: pkt.payload.readUInt8(1),
-                    received: pkt.payload.readUInt32BE(2),
-                    total: pkt.payload.readUInt32BE(6),
+                    otaStatus: pkt.payload.readUInt8(0),      // OTA 状态
+                    progress: pkt.payload.readUInt8(1),        // 进度 0-100
+                    received: pkt.payload.readUInt32BE(2),    // 已接收字节数
+                    total: pkt.payload.readUInt32BE(6)        // 总字节数
                 };
             }
 
             broadcastToClients({
                 type: 'otaResponse',
                 ip: rinfo.address,
-                code: pkt.cmd,
-                offset: pkt.offset,
+                code: pkt.cmd,       // 应答码 (0=成功)
+                offset: pkt.offset,   // 已接收偏移量
                 status
             });
             return;
         }
 
+        // 计算普通包的校验和
         const checksum = (msg[0] + msg[1] + msg[2] + msg[3] + msg[4] + msg[5]) & 0xFF;
         if (checksum === msg[6]) {
             const now = Date.now();
             const existing = devices.get(rinfo.address);
 
             if (type === 0xFF) {
-                // 存在广播
-                // 检查是否为新设备或已超时重新连接的设备
+                // 设备存在广播 (type=0xFF)
                 const wasTimedOut = !existing || (now - existing.lastSeen > CONFIG.DEVICE_TIMEOUT);
                 const shouldNotify = wasTimedOut || !existing || !existing.discovered;
 
@@ -98,7 +144,7 @@ udpClient.on('message', (msg, rinfo) => {
                     lastNotified: shouldNotify ? now : (existing?.lastNotified || now)
                 });
 
-                // 新设备或重新连接的设备需要通知
+                // 新设备或重新连接的设备需要通知前端
                 if (shouldNotify) {
                     console.log(`设备发现: ${rinfo.address}${wasTimedOut && existing ? ' (重新连接)' : ''}`);
                     broadcastToClients({
@@ -108,15 +154,14 @@ udpClient.on('message', (msg, rinfo) => {
                 }
             }
             else if (type === 0x02) {
-                // 传感器状态数据
+                // 传感器状态数据包 (type=0x02)
                 // 字节布局: [type, cmd, motor1(servo), motor2(dist*10), servo(0), ir_data, checksum]
-                const mode = msg[1];
-                const servo = msg[2];  // 舵机角度 (存于 motor1 字段)
+                const mode = msg[1];           // 模式编号
+                const servo = msg[2];         // 舵机角度 (存于 motor1 字段)
                 const distance = msg[3] / 10;  // 距离 (存于 motor2 字段，放大10倍)
-                const ir_data = msg[5];  // 红外数据 (存于 ir_data 字节，索引5)
-                const ir = [(ir_data >> 0) & 1, (ir_data >> 1) & 1, (ir_data >> 2) & 1];
+                const ir_data = msg[5];        // 红外数据
+                const ir = [(ir_data >> 0) & 1, (ir_data >> 1) & 1, (ir_data >> 2) & 1];  // [左, 中, 右]
 
-                // 检查是否为重新连接的设备
                 const wasTimedOut = !existing || (now - existing.lastSeen > CONFIG.DEVICE_TIMEOUT);
                 const shouldNotify = wasTimedOut || !existing || !existing.discovered;
 
@@ -127,7 +172,7 @@ udpClient.on('message', (msg, rinfo) => {
                     lastNotified: shouldNotify ? now : (existing?.lastNotified || now)
                 });
 
-                // 如果是新设备或重新连接，先发送设备发现通知
+                // 新设备或重新连接，先发送设备发现通知
                 if (shouldNotify) {
                     console.log(`设备发现(状态包): ${rinfo.address}${wasTimedOut && existing ? ' (重新连接)' : ''}`);
                     broadcastToClients({
@@ -143,12 +188,10 @@ udpClient.on('message', (msg, rinfo) => {
                     status: { mode, servo, distance, ir }
                 });
 
-                // 调试日志
                 console.log(`状态更新 ${rinfo.address}: mode=${mode}, servo=${servo}, dist=${distance}, ir=[${ir}]`);
             }
             else if (type === 0xFE) {
-                // 心跳包
-                // 检查是否为重新连接的设备
+                // 心跳包 (type=0xFE)
                 const wasTimedOut = !existing || (now - existing.lastSeen > CONFIG.DEVICE_TIMEOUT);
                 const shouldNotify = wasTimedOut || !existing || !existing.discovered;
 
@@ -160,7 +203,6 @@ udpClient.on('message', (msg, rinfo) => {
                         lastNotified: shouldNotify ? now : (existing?.lastNotified || now)
                     });
 
-                    // 如果是重新连接，发送通知
                     if (shouldNotify) {
                         console.log(`设备发现(心跳): ${rinfo.address}${wasTimedOut ? ' (重新连接)' : ''}`);
                         broadcastToClients({
@@ -171,7 +213,7 @@ udpClient.on('message', (msg, rinfo) => {
                         console.log(`设备心跳: ${rinfo.address}`);
                     }
                 } else {
-                    // 心跳包也视为首次发现
+                    // 首次通过心跳发现设备
                     devices.set(rinfo.address, {
                         lastSeen: now,
                         discovered: true,
@@ -189,7 +231,9 @@ udpClient.on('message', (msg, rinfo) => {
     }
 });
 
-// WebSocket 连接
+/**
+ * WebSocket 连接处理
+ */
 wss.on('connection', (ws) => {
     console.log(`新的 WebSocket 连接: ${ws._socket.remoteAddress}`);
 
@@ -211,10 +255,14 @@ wss.on('connection', (ws) => {
         }
     }
 
+    /**
+     * 处理前端 WebSocket 消息
+     */
     ws.on('message', (data) => {
         try {
-            // 确保数据是字符串格式
             let dataStr = data;
+
+            // 处理 OTA 二进制数据包 (type=0xF0)
             if (Buffer.isBuffer(data)) {
                 if (data.length >= 9 && data.readUInt8(0) === 0xF0) {
                     const offset = data.readUInt32BE(1) >>> 0;
@@ -237,44 +285,46 @@ wss.on('connection', (ws) => {
                 if (msg.type !== 'otaData') console.log('收到前端消息:', msg);
             }
 
-function sendPidParam(ip, type, value) {
-    // type: 1=Kp, 2=Ki, 3=Kd, 4=Speed
-    // value: float * 100 for PID, int for Speed
-    
-    let valToSend = value;
-    if (type <= 3) {
-        valToSend = Math.round(value * 100);
-    }
-    
-    const buf = Buffer.alloc(7);
-    buf.writeUInt8(0x04, 0);   // type: PID设置
-    buf.writeUInt8(type, 1);   // cmd: 参数类型
-    
-    // 将值拆分为高低8位 (Big Endian)
-    buf.writeUInt8((valToSend >> 8) & 0xFF, 2); // motor1: high byte
-    buf.writeUInt8(valToSend & 0xFF, 3);        // motor2: low byte
-    
-    buf.writeInt8(0, 4);       // servo: unused
-    buf.writeUInt8(0, 5);      // ir_data: unused
-    
-    // 计算校验和
-    let sum = 0;
-    for (let i = 0; i < 6; i++) {
-        sum += buf.readUInt8(i);
-    }
-    buf.writeUInt8(sum & 0xFF, 6);
-    
-    udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, ip, (error) => {
-        if (error) {
-            console.error(`发送PID参数到 ${ip} 失败:`, error);
-        } else {
-            console.log(`PID参数已发送 ${ip}: type=${type} val=${valToSend}`);
-        }
-    });
-}
+            /**
+             * 发送 PID 参数到设备
+             * @param {string} ip - 设备 IP 地址
+             * @param {number} type - 参数类型 (1=Kp, 2=Ki, 3=Kd, 4=Speed)
+             * @param {number} value - 参数值 (PID 参数乘以 100，Speed 参数为整型)
+             */
+            function sendPidParam(ip, type, value) {
+                let valToSend = value;
+                if (type <= 3) {
+                    valToSend = Math.round(value * 100);  // PID 参数需要乘以 100
+                }
 
-// ...
+                const buf = Buffer.alloc(7);
+                buf.writeUInt8(0x04, 0);   // type: PID 设置
+                buf.writeUInt8(type, 1);   // cmd: 参数类型
 
+                // 将值拆分为高低 8 位 (大端序)
+                buf.writeUInt8((valToSend >> 8) & 0xFF, 2);  // motor1: 高字节
+                buf.writeUInt8(valToSend & 0xFF, 3);         // motor2: 低字节
+
+                buf.writeInt8(0, 4);       // servo: 未使用
+                buf.writeUInt8(0, 5);      // ir_data: 未使用
+
+                // 计算校验和
+                let sum = 0;
+                for (let i = 0; i < 6; i++) {
+                    sum += buf.readUInt8(i);
+                }
+                buf.writeUInt8(sum & 0xFF, 6);
+
+                udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, ip, (error) => {
+                    if (error) {
+                        console.error(`发送PID参数到 ${ip} 失败:`, error);
+                    } else {
+                        console.log(`PID参数已发送 ${ip}: type=${type} val=${valToSend}`);
+                    }
+                });
+            }
+
+            // 处理不同类型的消息
             if (msg.type === 'control') {
                 sendControl(msg.deviceIP, msg.motor1, msg.motor2, msg.servo);
             } else if (msg.type === 'modeChange') {
@@ -282,18 +332,22 @@ function sendPidParam(ip, type, value) {
             } else if (msg.type === 'setPid') {
                 sendPidParam(msg.deviceIP, msg.paramType, msg.value);
             } else if (msg.type === 'otaStart') {
+                // 开始 OTA 升级
                 const payload = Buffer.alloc(4);
                 payload.writeUInt32BE((msg.size >>> 0), 0);
                 const buf = buildOtaPacket(0x10, 0x00, 0, payload);
                 udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, msg.deviceIP);
             } else if (msg.type === 'otaData') {
+                // OTA 数据传输
                 const dataBuf = Buffer.from(msg.data || '', 'base64');
                 const buf = buildOtaPacket(0x11, 0x00, (msg.offset >>> 0), dataBuf);
                 udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, msg.deviceIP);
             } else if (msg.type === 'otaEnd') {
+                // OTA 结束
                 const buf = buildOtaPacket(0x12, 0x00, 0, Buffer.alloc(0));
                 udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, msg.deviceIP);
             } else if (msg.type === 'otaQuery') {
+                // OTA 查询进度
                 const buf = buildOtaPacket(0x13, 0x00, 0, Buffer.alloc(0));
                 udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, msg.deviceIP);
             }
@@ -307,16 +361,23 @@ function sendPidParam(ip, type, value) {
     });
 });
 
+/**
+ * 发送控制命令到设备
+ * @param {string} ip - 设备 IP 地址
+ * @param {number} m1 - 左电机值 (-100~100)
+ * @param {number} m2 - 右电机值 (-100~100)
+ * @param {number} servo - 舵机角度 (0~180)
+ */
 function sendControl(ip, m1, m2, servo) {
     const buf = Buffer.alloc(7);
     buf.writeUInt8(0x01, 0);   // type: 控制
     buf.writeUInt8(0x00, 1);   // cmd
-    buf.writeInt8(m1, 2);      // motor1
-    buf.writeInt8(m2, 3);      // motor2
-    buf.writeInt8(servo, 4);   // servo
-    buf.writeUInt8(0, 5);      // ir_data (不使用，用 UInt8)
+    buf.writeInt8(m1, 2);        // motor1
+    buf.writeInt8(m2, 3);        // motor2
+    buf.writeInt8(servo, 4);     // servo
+    buf.writeUInt8(0, 5);       // ir_data (未使用)
 
-    // 计算校验和：前6个字节累加和的低8位
+    // 计算校验和：前 6 个字节累加和的低 8 位
     let sum = 0;
     for (let i = 0; i < 6; i++) {
         sum += buf.readUInt8(i);
@@ -330,6 +391,11 @@ function sendControl(ip, m1, m2, servo) {
     });
 }
 
+/**
+ * 发送模式切换命令到设备
+ * @param {string} ip - 设备 IP 地址
+ * @param {string} mode - 模式名称 ('standby', 'tracking', 'avoid', 'remote')
+ */
 function sendModeChange(ip, mode) {
     // 映射到 CarStatus 枚举值：STOP=0, TRACE=1, AVOID=2, WIFI=3
     const cmdMap = { 'standby': 0, 'tracking': 1, 'avoid': 2, 'remote': 3 };
@@ -345,14 +411,12 @@ function sendModeChange(ip, mode) {
     buf.writeInt8(0, 4);
     buf.writeUInt8(0, 5);
 
-    // 计算校验和：前6个字节累加和的低8位
+    // 计算校验和
     let sum = 0;
     for (let i = 0; i < 6; i++) {
         sum += buf.readUInt8(i);
     }
     buf.writeUInt8(sum & 0xFF, 6);
-
-    console.log('UDP 包内容:', Array.from(buf));
 
     udpClient.send(buf, CONFIG.UDP_CONTROL_PORT, ip, (error) => {
         if (error) {
@@ -363,6 +427,10 @@ function sendModeChange(ip, mode) {
     });
 }
 
+/**
+ * 广播消息到所有 WebSocket 客户端
+ * @param {Object} data - 要广播的数据对象
+ */
 function broadcastToClients(data) {
     wss.clients.forEach(c => {
         if (c.readyState === WebSocket.OPEN) {
@@ -371,18 +439,21 @@ function broadcastToClients(data) {
     });
 }
 
-// 清理超时设备（每5秒检查一次）
+/**
+ * 清理超时设备（每 5 秒检查一次）
+ */
 setInterval(() => {
     const now = Date.now();
     const timeoutList = [];
 
+    // 找出所有超时设备
     for (const [ip, device] of devices) {
         if (now - device.lastSeen > CONFIG.DEVICE_TIMEOUT) {
             timeoutList.push(ip);
         }
     }
 
-    // 清理并通知
+    // 清理并通知前端
     for (const ip of timeoutList) {
         devices.delete(ip);
         console.log(`设备超时断开: ${ip}`);
@@ -411,6 +482,7 @@ wss.on('error', (error) => {
     console.error('WebSocket 服务器错误:', error);
 });
 
+// 启动日志
 console.log('代理服务器启动:');
 console.log(`  WebSocket: ws://localhost:${CONFIG.WS_PORT}`);
 console.log(`  UDP 监听: ${CONFIG.UDP_BROADCAST_PORT}`);

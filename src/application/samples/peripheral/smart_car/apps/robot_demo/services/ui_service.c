@@ -1,18 +1,18 @@
 #include "ui_service.h"
 
-static bool g_oled_ready = false;
+static bool g_oled_ready = false; /* OLED 是否已初始化并可用 */
 
 /**
  * @brief 模式显示信息结构体
  */
 typedef struct {
-    CarStatus status;
-    const char *line0;
-    const char *line1;
-    const char *line2;
+    CarStatus status;  // 小车状态
+    const char *line0; // 第 0 行显示文本（顶部）
+    const char *line1; // 第 1 行显示文本（中部）
+    const char *line2; // 第 2 行显示文本（底部）
 } ModeDisplayInfo;
 
-/* 
+/*
  * 支持的字符:
  * 模, 式, 停, 止, 循, 迹, 避, 障, 遥, 控, 连, 接, 中, 成, 功, 失, 败, 等, 待, 热, 点, 配, 置
  */
@@ -100,7 +100,7 @@ void ui_render_standby(const char *wifi_state, const char *ip_addr)
     if (!g_oled_ready) {
         return;
     }
-    
+
     // Convert English states to Chinese if possible
     const char *state_str = wifi_state;
     if (strstr(wifi_state, "Connecting")) {
@@ -116,7 +116,7 @@ void ui_render_standby(const char *wifi_state, const char *ip_addr)
     ssd1306_Fill(Black);
     ssd1306_DrawString16(0, 0, "模式: 停止", White);
     ssd1306_DrawString16(0, 16, state_str, White);
-    
+
     // IP string is ASCII, but DrawString16 handles ASCII too
     ssd1306_DrawString16(0, 32, ip_addr, White);
     ssd1306_UpdateScreen();

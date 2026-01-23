@@ -6,9 +6,9 @@
 
 // 模式接口定义
 typedef struct {
-    void (*enter)(void);
-    void (*tick)(void);
-    void (*exit)(void);
+    void (*enter)(void); // 进入模式时调用（初始化）
+    void (*tick)(void);  // 模式周期性调用（主循环）
+    void (*exit)(void);  // 退出模式时调用（清理）
 } RobotModeOps;
 
 void robot_mgr_init(void);

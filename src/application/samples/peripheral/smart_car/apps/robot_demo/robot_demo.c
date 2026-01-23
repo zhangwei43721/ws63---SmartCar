@@ -49,6 +49,8 @@ static void mode_switch_isr(pin_t pin, uintptr_t param)
 {
     UNUSED(pin);
     UNUSED(param);
+    printf("[ISR] 按键被触发!\r\n"); // 调试：确认中断被触发
+
     unsigned long long current_tick = 0;
     unsigned long long tick_interval = 0;
     unsigned long protect_ticks;
@@ -105,10 +107,18 @@ static void mode_switch_isr(pin_t pin, uintptr_t param)
  */
 static void mode_switch_init(void)
 {
+    printf("[DEBUG] 初始化按键 GPIO %d...\r\n", ROBOT_MODE_SWITCH_GPIO);
+
     // 参考按键示例：配置为 GPIO 功能，上拉输入
     uapi_pin_set_mode(ROBOT_MODE_SWITCH_GPIO, HAL_PIO_FUNC_GPIO);
     uapi_gpio_set_dir(ROBOT_MODE_SWITCH_GPIO, GPIO_DIRECTION_INPUT);
+
+    // 测试：读取 GPIO 初始值
+    int gpio_val = uapi_gpio_get_val(ROBOT_MODE_SWITCH_GPIO);
+    printf("[DEBUG] GPIO %d 初始值: %d (1=释放, 0=按下)\r\n", ROBOT_MODE_SWITCH_GPIO, gpio_val);
+
     uapi_pin_set_pull(ROBOT_MODE_SWITCH_GPIO, PIN_PULL_TYPE_UP);
+    printf("[DEBUG] 按键 GPIO 初始化完成\r\n");
 }
 
 /**
@@ -116,10 +126,14 @@ static void mode_switch_init(void)
  */
 static void interrupt_monitor(void)
 {
+    printf("[DEBUG] 注册按键中断...\r\n");
+
     // 注册下降沿中断 (按下触发)
     errcode_t ret = uapi_gpio_register_isr_func(ROBOT_MODE_SWITCH_GPIO, GPIO_INTERRUPT_FALLING_EDGE, mode_switch_isr);
     if (ret != ERRCODE_SUCC) {
         printf("注册模式切换中断失败, ret=%d\r\n", ret);
+    } else {
+        printf("[DEBUG] 按键中断注册成功!\r\n");
     }
 }
 

@@ -27,11 +27,11 @@ typedef struct {
 static void *udp_service_task(const char *arg);
 static void udp_service_broadcast_presence(void);
 
-static osal_task *g_udp_task_handle = NULL;
-static bool g_udp_task_started = false;
+static osal_task *g_udp_task_handle = NULL; /* UDP 服务任务句柄 */
+static bool g_udp_task_started = false;     /* UDP 任务是否已启动 */
 
-static osal_mutex g_mutex;
-static bool g_mutex_inited = false;
+static osal_mutex g_mutex;          /* 保护内部状态的互斥锁 */
+static bool g_mutex_inited = false; /* 互斥锁是否已初始化 */
 
 // =============== 互斥锁操作宏 ===============
 #define UDP_LOCK()                           \
@@ -46,20 +46,20 @@ static bool g_mutex_inited = false;
             osal_mutex_unlock(&g_mutex); \
     } while (0)
 
-static bool g_ip_printed = false; // 标记是否已打印IP
+static bool g_ip_printed = false; /* 标记是否已打印IP */
 
-static uint8_t g_rx_buffer[UDP_BUFFER_SIZE];
-static uint8_t g_tx_buffer[UDP_BUFFER_SIZE];
+static uint8_t g_rx_buffer[UDP_BUFFER_SIZE]; /* UDP 接收缓冲区 */
+static uint8_t g_tx_buffer[UDP_BUFFER_SIZE]; /* UDP 发送缓冲区 */
 
-static int8_t g_latest_motor1 = 0;
-static int8_t g_latest_motor2 = 0;
-static int8_t g_latest_servo = 0;
-static bool g_has_latest = false;
+static int8_t g_latest_motor1 = 0; /* 最新接收的左电机值 */
+static int8_t g_latest_motor2 = 0; /* 最新接收的右电机值 */
+static int8_t g_latest_servo = 0;  /* 最新接收的舵机值 */
+static bool g_has_latest = false;  /* 是否有最新的控制命令 */
 
 // 上次发送的状态，用于检测变化
-static RobotState g_last_sent_state = {0};
-static bool g_state_initialized = false;
-static unsigned long long g_last_state_send_time = 0;
+static RobotState g_last_sent_state = {0};            /* 上次发送的状态副本 */
+static bool g_state_initialized = false;              /* 状态是否已初始化 */
+static unsigned long long g_last_state_send_time = 0; /* 上次发送状态的时间 */
 
 /**
  * @brief 初始化UDP服务互斥锁
@@ -324,7 +324,8 @@ static void *udp_service_task(const char *arg)
                     if (pkt->type == 0x01) {
                         udp_service_push_cmd(pkt->motor1, pkt->motor2, pkt->servo);
                         // 降低控制命令的打印频率，或者注释掉，避免刷屏
-                        // printf("udp_service: 收到控制命令 m1=%d m2=%d s=%d\r\n", pkt->motor1, pkt->motor2, pkt->servo);
+                        // printf("udp_service: 收到控制命令 m1=%d m2=%d s=%d\r\n", pkt->motor1, pkt->motor2,
+                        // pkt->servo);
                     } else if (pkt->type == 0x03) {
                         if (pkt->cmd >= 0 && pkt->cmd <= 4) {
                             printf("udp_service: 切换模式 cmd=%d (CarStatus)\r\n", pkt->cmd);

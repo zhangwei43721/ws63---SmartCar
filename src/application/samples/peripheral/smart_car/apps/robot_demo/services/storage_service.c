@@ -10,21 +10,21 @@
 // - magic/version: 结构有效性标识
 // - checksum: 对整个结构体做 16-bit 累加校验（校验时将 checksum 置 0）
 typedef struct {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t checksum;
-    uint16_t obstacle_threshold_cm;
-    uint16_t servo_center_angle;
-    uint8_t reserved[16];
+    uint32_t magic;                 // 魔术字，用于验证配置有效性 (0x524F4254 = "ROBT")
+    uint16_t version;               // 配置版本号
+    uint16_t checksum;              // 16 位校验和（整个结构体累加，计算时此字段置 0）
+    uint16_t obstacle_threshold_cm; // 避障距离阈值（厘米）
+    uint16_t servo_center_angle;    // 舵机中心角度（度，0~180）
+    uint8_t reserved[16];           // 保留字段，用于未来扩展
 } robot_nv_config_t;
 
 #define ROBOT_NV_CONFIG_KEY ((uint16_t)0x2000)
 #define ROBOT_NV_CONFIG_MAGIC ((uint32_t)0x524F4254) // "ROBT"
 #define ROBOT_NV_CONFIG_VERSION ((uint16_t)1)
 
-static robot_nv_config_t g_nv_cfg = {0};
-static osal_mutex g_storage_mutex;
-static bool g_storage_mutex_inited = false;
+static robot_nv_config_t g_nv_cfg = {0};    /* NV 存储的配置数据 */
+static osal_mutex g_storage_mutex;          /* 保护 NV 存储访问的互斥锁 */
+static bool g_storage_mutex_inited = false; /* 互斥锁是否已初始化 */
 
 #define STORAGE_LOCK()                               \
     do {                                             \
@@ -38,7 +38,12 @@ static bool g_storage_mutex_inited = false;
             osal_mutex_unlock(&g_storage_mutex); \
     } while (0)
 
-// NV 配置校验：简单累加
+/**
+ * @brief NV 配置校验和计算（16 位累加）
+ * @param data 数据指针
+ * @param len 数据长度
+ * @return 16 位校验和
+ */
 static uint16_t nv_checksum16_add(const uint8_t *data, size_t len)
 {
     uint32_t sum = 0;
@@ -48,7 +53,10 @@ static uint16_t nv_checksum16_add(const uint8_t *data, size_t len)
     return (uint16_t)(sum & 0xFFFFu);
 }
 
-// 生成默认 NV 配置并计算校验
+/**
+ * @brief 生成默认 NV 配置并计算校验
+ * @param cfg 配置结构体指针
+ */
 static void nv_set_defaults(robot_nv_config_t *cfg)
 {
     (void)memset_s(cfg, sizeof(*cfg), 0, sizeof(*cfg));
@@ -60,7 +68,11 @@ static void nv_set_defaults(robot_nv_config_t *cfg)
     cfg->checksum = nv_checksum16_add((const uint8_t *)cfg, sizeof(*cfg));
 }
 
-// 校验 magic/version 与 checksum
+/**
+ * @brief 校验 NV 配置的有效性
+ * @param cfg 配置结构体指针
+ * @return true 配置有效，false 配置无效
+ */
 static bool nv_validate(robot_nv_config_t *cfg)
 {
     if (cfg->magic != ROBOT_NV_CONFIG_MAGIC || cfg->version != ROBOT_NV_CONFIG_VERSION) {
@@ -73,6 +85,9 @@ static bool nv_validate(robot_nv_config_t *cfg)
     return saved == calc;
 }
 
+/**
+ * @brief 初始化存储服务互斥锁
+ */
 static void storage_mutex_init(void)
 {
     if (g_storage_mutex_inited)
@@ -81,6 +96,10 @@ static void storage_mutex_init(void)
         g_storage_mutex_inited = true;
 }
 
+/**
+ * @brief 初始化存储服务
+ * @note 从 NV 存储加载配置，如果无效则使用默认值
+ */
 void storage_service_init(void)
 {
     storage_mutex_init();
@@ -100,6 +119,10 @@ void storage_service_init(void)
     STORAGE_UNLOCK();
 }
 
+/**
+ * @brief 获取存储的参数
+ * @param out_params 输出参数结构体指针
+ */
 void storage_service_get_params(robot_params_t *out_params)
 {
     if (out_params == NULL)
@@ -111,6 +134,11 @@ void storage_service_get_params(robot_params_t *out_params)
     STORAGE_UNLOCK();
 }
 
+/**
+ * @brief 保存参数到 NV 存储
+ * @param params 参数结构体指针
+ * @return ERRCODE_SUCC 成功，其他错误码表示失败
+ */
 errcode_t storage_service_save_params(const robot_params_t *params)
 {
     if (params == NULL)
@@ -130,6 +158,10 @@ errcode_t storage_service_save_params(const robot_params_t *params)
     return ret;
 }
 
+/**
+ * @brief 获取避障距离阈值
+ * @return 避障距离阈值（厘米）
+ */
 uint16_t storage_service_get_obstacle_threshold(void)
 {
     uint16_t val;
@@ -141,6 +173,10 @@ uint16_t storage_service_get_obstacle_threshold(void)
     return val;
 }
 
+/**
+ * @brief 获取舵机中心角度
+ * @return 舵机中心角度（度，0~180）
+ */
 uint16_t storage_service_get_servo_center(void)
 {
     uint16_t val;

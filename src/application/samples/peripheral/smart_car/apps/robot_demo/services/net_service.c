@@ -20,11 +20,11 @@ static void net_service_wifi_ensure_connected(void);
 static int net_service_read_frame(int sockfd, uint8_t frame_out[4]);
 static void net_service_handle_frame(const uint8_t frame[4]);
 
-static osal_task *g_tcp_task_handle = NULL;
-static bool g_tcp_task_started = false;
+static osal_task *g_tcp_task_handle = NULL; /* TCP 服务任务句柄 */
+static bool g_tcp_task_started = false;     /* TCP 任务是否已启动 */
 
-static osal_mutex g_mutex;
-static bool g_mutex_inited = false;
+static osal_mutex g_mutex;          /* 保护内部状态的互斥锁 */
+static bool g_mutex_inited = false; /* 互斥锁是否已初始化 */
 
 // =============== 互斥锁操作宏 ===============
 #define NET_LOCK()                           \
@@ -39,22 +39,22 @@ static bool g_mutex_inited = false;
             osal_mutex_unlock(&g_mutex); \
     } while (0)
 
-static bool g_wifi_inited = false;
-static bool g_wifi_connected = false;
-static bool g_wifi_has_ip = false;
-static char g_ip[IP_BUFFER_SIZE] = "0.0.0.0";
-static unsigned int g_wifi_last_retry = 0;
+static bool g_wifi_inited = false;            /* WiFi 是否已初始化 */
+static bool g_wifi_connected = false;         /* WiFi 是否已连接 */
+static bool g_wifi_has_ip = false;            /* WiFi 是否已获取IP */
+static char g_ip[IP_BUFFER_SIZE] = "0.0.0.0"; /* 本机IP地址字符串 */
+static unsigned int g_wifi_last_retry = 0;    /* 上次WiFi重连时间（滴答数） */
 
-static bool g_tcp_connected = false;
-static int g_tcp_socket_fd = -1;
+static bool g_tcp_connected = false; /* TCP 是否已连接 */
+static int g_tcp_socket_fd = -1;     /* TCP 套接字文件描述符 */
 
-static uint8_t g_rx_buffer[4];
-static size_t g_rx_filled = 0;
+static uint8_t g_rx_buffer[4]; /* 接收缓冲区（固定4字节帧） */
+static size_t g_rx_filled = 0; /* 接收缓冲区已填充字节数 */
 
-static int8_t g_latest_motor = 0;
-static int8_t g_latest_servo1 = 0;
-static int8_t g_latest_servo2 = 0;
-static bool g_has_latest = false;
+static int8_t g_latest_motor = 0;  /* 最新接收的电机值 */
+static int8_t g_latest_servo1 = 0; /* 最新接收的舵机1值 */
+static int8_t g_latest_servo2 = 0; /* 最新接收的舵机2值 */
+static bool g_has_latest = false;  /* 是否有最新的控制命令 */
 
 /**
  * @brief 初始化网络服务互斥锁

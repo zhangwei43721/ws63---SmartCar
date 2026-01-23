@@ -9,8 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 
-static osal_mutex g_net_mutex;
-static bool g_net_mutex_inited = false;
+static osal_mutex g_net_mutex;          /* 保护网络状态的互斥锁 */
+static bool g_net_mutex_inited = false; /* 互斥锁是否已初始化 */
 
 #define NET_LOCK()                               \
     do {                                         \
@@ -24,15 +24,22 @@ static bool g_net_mutex_inited = false;
             osal_mutex_unlock(&g_net_mutex); \
     } while (0)
 
-static bool g_wifi_inited = false;
-bool g_udp_net_wifi_connected = false;
-bool g_udp_net_wifi_has_ip = false;
-char g_udp_net_ip[IP_BUFFER_SIZE] = "0.0.0.0";
-static unsigned int g_wifi_last_retry = 0;
+static bool g_wifi_inited = false;             /* WiFi 是否已初始化 */
+bool g_udp_net_wifi_connected = false;         /* WiFi 是否已连接（导出供其他模块使用） */
+bool g_udp_net_wifi_has_ip = false;            /* WiFi 是否已获取IP（导出供其他模块使用） */
+char g_udp_net_ip[IP_BUFFER_SIZE] = "0.0.0.0"; /* 本机IP地址字符串（导出供其他模块使用） */
+static unsigned int g_wifi_last_retry = 0;     /* 上次WiFi重连时间（滴答数） */
 
-int g_udp_net_socket_fd = -1;
-bool g_udp_net_bound = false;
+int g_udp_net_socket_fd = -1; /* UDP 套接字文件描述符（导出供其他模块使用） */
+bool g_udp_net_bound = false; /* UDP 套接字是否已绑定（导出供其他模块使用） */
 
+/**
+ * @brief UDP 校验和计算（累加法）
+ * @param data 数据指针
+ * @param len 数据长度
+ * @return 8 位校验和（累加结果取低 8 位）
+ * @note 简单累加校验，适合检测明显的传输错误
+ */
 uint8_t udp_net_common_checksum8_add(const uint8_t *data, size_t len)
 {
     uint8_t sum = 0;
@@ -45,6 +52,14 @@ uint8_t udp_net_common_checksum8_add(const uint8_t *data, size_t len)
     return sum;
 }
 
+/**
+ * @brief 发送 UDP 广播数据包
+ * @param buf 数据缓冲区
+ * @param len 数据长度
+ * @param port 目标端口
+ * @return 发送的字节数，-1 表示失败
+ * @note 向 255.255.255.255:port 发送广播数据
+ */
 int udp_net_common_send_broadcast(const void *buf, size_t len, uint16_t port)
 {
     if (buf == NULL || len == 0)
@@ -85,6 +100,10 @@ int udp_net_common_send_to_addr(const void *buf, size_t len, const struct sockad
     return (int)lwip_sendto(fd, buf, len, 0, (const struct sockaddr *)addr, sizeof(*addr));
 }
 
+/**
+ * @brief 初始化 UDP 网络模块
+ * @note 初始化互斥锁，如果已经初始化过则跳过
+ */
 void udp_net_common_init(void)
 {
     if (g_net_mutex_inited)
@@ -94,6 +113,14 @@ void udp_net_common_init(void)
         g_net_mutex_inited = true;
 }
 
+/**
+ * @brief 创建并绑定 UDP 套接字
+ * @param port 监听端口
+ * @param recv_timeout_ms 接收超时时间（毫秒）
+ * @param enable_broadcast 是否启用广播
+ * @return 套接字文件描述符，-1 表示失败
+ * @note 创建 UDP 套接字，绑定到指定端口，设置接收超时和广播选项
+ */
 int udp_net_common_open_and_bind(uint16_t port, unsigned int recv_timeout_ms, bool enable_broadcast)
 {
     int sockfd = lwip_socket(AF_INET, SOCK_DGRAM, 0);
@@ -132,6 +159,11 @@ int udp_net_common_open_and_bind(uint16_t port, unsigned int recv_timeout_ms, bo
     return sockfd;
 }
 
+/**
+ * @brief 确保 WiFi 已连接，并自动重连
+ * @note 定期检查 WiFi 连接状态，如果断开则尝试重连
+ *       连接成功后会更新 g_udp_net_ip 全局变量
+ */
 void udp_net_common_wifi_ensure_connected(void)
 {
     unsigned long long now_jiffies = osal_get_jiffies();
