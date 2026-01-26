@@ -1,7 +1,6 @@
 /**
  * @file        mode_obstacle.c
  * @brief       避障模式实现
- * @note        使用通用模式框架，简化代码结构
  */
 
 #include "mode_obstacle.h"
@@ -15,85 +14,15 @@
 #include <stdio.h>
 
 /**
- * @brief 设置舵机角度并等待到位，同时更新全局状态
- */
-static void set_servo_angle_wait(int angle)
-{
-    sg90_set_angle(angle);
-    robot_mgr_update_servo_angle(angle);
-    osal_msleep(SERVO_DELAY);
-}
-
-/**
- * @brief 获取并更新距离信息
- */
-static float get_distance_update(void)
-{
-    float dist = hcsr04_get_distance();
-    robot_mgr_update_distance(dist);
-    return dist;
-}
-
-/**
- * @brief 停车扫描判断方向
- * @return CAR_TURN_LEFT (左侧宽敞) 或 CAR_TURN_RIGHT (右侧宽敞)
- */
-static unsigned int scan_and_decide_direction(void)
-{
-    // 扫描左侧
-    set_servo_angle_wait(SERVO_LEFT);
-    osal_msleep(SENSOR_DELAY);
-    float left_dist = get_distance_update();
-
-    // 扫描右侧
-    set_servo_angle_wait(SERVO_RIGHT);
-    osal_msleep(SENSOR_DELAY);
-    float right_dist = get_distance_update();
-
-    // 舵机回中
-    set_servo_angle_wait(SERVO_CENTER);
-
-    return (left_dist > right_dist) ? CAR_TURN_LEFT : CAR_TURN_RIGHT;
-}
-
-/**
- * @brief 根据距离执行避障动作
- */
-static void perform_obstacle_avoidance(float distance)
-{
-    // 避障阈值（宏定义于 robot_config.h）
-    float threshold = (float)OBSTACLE_DISTANCE;
-
-    if (distance > 0 && distance < threshold) {
-        // 停车并后退
-        car_stop();
-        osal_msleep(200);
-        car_backward();
-        osal_msleep(BACKWARD_TIME);
-        car_stop();
-
-        // 扫描环境决定转向
-        unsigned int direction = scan_and_decide_direction();
-
-        // 执行转向
-        if (direction == CAR_TURN_LEFT)
-            car_left();
-        else
-            car_right();
-
-        osal_msleep(TURN_TIME);
-        car_stop();
-    } else
-        car_forward(); // 路径通畅，继续直行
-}
-
-/**
  * @brief 避障模式进入函数
  */
 void mode_obstacle_enter(void)
 {
     printf("进入避障模式...\r\n");
-    set_servo_angle_wait(SERVO_CENTER);
+    // 舵机回中
+    sg90_set_angle(SERVO_CENTER);
+    robot_mgr_update_servo_angle(SERVO_CENTER);
+    osal_msleep(SERVO_DELAY);
 }
 
 /**
@@ -101,8 +30,50 @@ void mode_obstacle_enter(void)
  */
 void mode_obstacle_tick(void)
 {
-    float distance = get_distance_update();
-    perform_obstacle_avoidance(distance);
+    // 获取距离并更新状态
+    float distance = hcsr04_get_distance();
+    robot_mgr_update_distance(distance);
+
+    // 避障阈值
+    float threshold = (float)OBSTACLE_DISTANCE;
+
+    if (distance > 0 && distance < threshold) {
+        // 有障碍物：停车并后退
+        CAR_STOP();
+        osal_msleep(200);
+        CAR_BACKWARD();
+        osal_msleep(BACKWARD_TIME);
+        CAR_STOP();
+
+        // 扫描左侧
+        sg90_set_angle(SERVO_LEFT);
+        robot_mgr_update_servo_angle(SERVO_LEFT);
+        osal_msleep(SERVO_DELAY);
+        float left_dist = hcsr04_get_distance();
+
+        // 扫描右侧
+        sg90_set_angle(SERVO_RIGHT);
+        robot_mgr_update_servo_angle(SERVO_RIGHT);
+        osal_msleep(SENSOR_DELAY);
+        float right_dist = hcsr04_get_distance();
+
+        // 舵机回中
+        sg90_set_angle(SERVO_CENTER);
+        robot_mgr_update_servo_angle(SERVO_CENTER);
+        osal_msleep(SERVO_DELAY);
+
+        // 选择宽敞的一侧转向
+        if (left_dist > right_dist)
+            CAR_LEFT();   // 左侧宽敞，左转
+        else
+            CAR_RIGHT();  // 右侧宽敞，右转
+
+        osal_msleep(TURN_TIME);
+        CAR_STOP();
+    } else {
+        // 路径通畅，继续直行
+        CAR_FORWARD();
+    }
 }
 
 /**
@@ -110,7 +81,9 @@ void mode_obstacle_tick(void)
  */
 void mode_obstacle_exit(void)
 {
-    car_stop();
+    CAR_STOP();
     // 退出时舵机回中
-    set_servo_angle_wait(SERVO_CENTER);
+    sg90_set_angle(SERVO_CENTER);
+    robot_mgr_update_servo_angle(SERVO_CENTER);
+    osal_msleep(SERVO_DELAY);
 }

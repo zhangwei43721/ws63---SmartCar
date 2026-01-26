@@ -13,17 +13,9 @@
 static osal_mutex g_net_mutex;          /* 保护网络状态的互斥锁 */
 static bool g_net_mutex_inited = false; /* 互斥锁是否已初始化 */
 
-#define NET_LOCK()                               \
-    do {                                         \
-        if (g_net_mutex_inited)                  \
-            (void)osal_mutex_lock(&g_net_mutex); \
-    } while (0)
-
-#define NET_UNLOCK()                         \
-    do {                                     \
-        if (g_net_mutex_inited)              \
-            osal_mutex_unlock(&g_net_mutex); \
-    } while (0)
+// 使用 robot_config.h 中的通用锁宏
+#define NET_LOCK()    MUTEX_LOCK(g_net_mutex, g_net_mutex_inited)
+#define NET_UNLOCK()  MUTEX_UNLOCK(g_net_mutex, g_net_mutex_inited)
 
 static bool g_wifi_inited = false;             /* WiFi 是否已初始化 */
 bool g_udp_net_wifi_connected = false;         /* WiFi 是否已连接（导出供其他模块使用） */

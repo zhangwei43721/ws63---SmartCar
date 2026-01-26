@@ -36,17 +36,9 @@ static robot_nv_config_t g_nv_cfg = {0};    /* NV 存储的配置数据 */
 static osal_mutex g_storage_mutex;          /* 保护 NV 存储访问的互斥锁 */
 static bool g_storage_mutex_inited = false; /* 互斥锁是否已初始化 */
 
-#define STORAGE_LOCK()                               \
-    do {                                             \
-        if (g_storage_mutex_inited)                  \
-            (void)osal_mutex_lock(&g_storage_mutex); \
-    } while (0)
-
-#define STORAGE_UNLOCK()                         \
-    do {                                         \
-        if (g_storage_mutex_inited)              \
-            osal_mutex_unlock(&g_storage_mutex); \
-    } while (0)
+// 使用 robot_config.h 中的通用锁宏
+#define STORAGE_LOCK()    MUTEX_LOCK(g_storage_mutex, g_storage_mutex_inited)
+#define STORAGE_UNLOCK()  MUTEX_UNLOCK(g_storage_mutex, g_storage_mutex_inited)
 
 /**
  * @brief NV 配置校验和计算（16 位累加）

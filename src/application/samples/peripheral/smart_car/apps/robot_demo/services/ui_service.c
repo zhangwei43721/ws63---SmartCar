@@ -6,7 +6,6 @@ static bool g_oled_ready = false; /* OLED 是否已初始化并可用 */
  * @brief 模式显示信息结构体
  */
 typedef struct {
-    CarStatus status;  // 小车状态
     const char *line0; // 第 0 行显示文本（顶部）
     const char *line1; // 第 1 行显示文本（中部）
     const char *line2; // 第 2 行显示文本（底部）
@@ -18,14 +17,19 @@ typedef struct {
  */
 
 /**
- * @brief 模式显示信息查找表
+ * @brief 模式显示信息查找表（按 CarStatus 枚举值索引）
  */
 static const ModeDisplayInfo g_mode_display[] = {
-    {CAR_STOP_STATUS, "模式: 停止", "等待...", ""},
-    {CAR_TRACE_STATUS, "模式: 循迹", "循迹中...", ""},
-    {CAR_OBSTACLE_AVOIDANCE_STATUS, "模式: 避障", "避障中...", ""},
-    {CAR_WIFI_CONTROL_STATUS, "模式: 遥控", "遥控中...", ""},
-    {CAR_BT_CONTROL_STATUS, "模式: 蓝牙", "未启用", ""},
+    // CAR_STOP_STATUS (0)
+    {"模式: 停止", "等待...", ""},
+    // CAR_TRACE_STATUS (1)
+    {"模式: 循迹", "循迹中...", ""},
+    // CAR_OBSTACLE_AVOIDANCE_STATUS (2)
+    {"模式: 避障", "避障中...", ""},
+    // CAR_WIFI_CONTROL_STATUS (3)
+    {"模式: 遥控", "遥控中...", ""},
+    // CAR_BT_CONTROL_STATUS (4)
+    {"模式: 蓝牙", "未启用", ""},
 };
 
 /**
@@ -58,34 +62,17 @@ void ui_service_init(void)
 void ui_show_mode_page(CarStatus status)
 {
     ui_service_init();
-    if (!g_oled_ready) {
+    if (!g_oled_ready)
         return;
+
+    // 直接使用枚举值作为索引（更简单，不需要循环查找）
+    if (status >= 0 && status < (int)(sizeof(g_mode_display) / sizeof(g_mode_display[0]))) {
+        ssd1306_Fill(Black);
+        ssd1306_DrawString16(0, 0, g_mode_display[status].line0, White);
+        ssd1306_DrawString16(0, 16, g_mode_display[status].line1, White);
+        ssd1306_DrawString16(0, 32, g_mode_display[status].line2, White);
+        ssd1306_UpdateScreen();
     }
-
-    const ModeDisplayInfo *info = NULL;
-    const char *line0 = "模式: 未知";
-    const char *line1 = "重置中...";
-    const char *line2 = "";
-
-    // 查表法查找对应模式的显示信息
-    for (size_t i = 0; i < sizeof(g_mode_display) / sizeof(g_mode_display[0]); i++) {
-        if (g_mode_display[i].status == status) {
-            info = &g_mode_display[i];
-            break;
-        }
-    }
-
-    if (info != NULL) {
-        line0 = info->line0;
-        line1 = info->line1;
-        line2 = info->line2;
-    }
-
-    ssd1306_Fill(Black);
-    ssd1306_DrawString16(0, 0, line0, White);
-    ssd1306_DrawString16(0, 16, line1, White);
-    ssd1306_DrawString16(0, 32, line2, White);
-    ssd1306_UpdateScreen();
 }
 
 /**
@@ -97,9 +84,8 @@ void ui_render_standby(const char *wifi_state, const char *ip_addr)
 {
     ui_service_init();
 
-    if (!g_oled_ready) {
+    if (!g_oled_ready)
         return;
-    }
 
     // Convert English states to Chinese if possible
     const char *state_str = wifi_state;

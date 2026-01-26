@@ -40,30 +40,13 @@ static void mode_switch_isr(pin_t pin, uintptr_t param)
     button_time_tick = current_tick;
 
     CarStatus current_status = robot_mgr_get_status();
-    CarStatus next_status = CAR_STOP_STATUS;
 
-    switch (current_status) {
-        case CAR_STOP_STATUS:
-            next_status = CAR_TRACE_STATUS;
-            printf("模式切换：停止\r\n");
-            break;
-        case CAR_TRACE_STATUS:
-            next_status = CAR_OBSTACLE_AVOIDANCE_STATUS;
-            printf("模式切换：循迹\r\n");
-            break;
-        case CAR_OBSTACLE_AVOIDANCE_STATUS:
-            next_status = CAR_WIFI_CONTROL_STATUS;
-            printf("模式切换：避障\r\n");
-            break;
-        case CAR_WIFI_CONTROL_STATUS:
-            printf("模式切换：远控\r\n");
-            next_status = CAR_STOP_STATUS;
-            break;
-        default:
-            next_status = CAR_STOP_STATUS;
-            printf("模式切换：停止\r\n");
-            break;
-    }
+    // 模式循环切换：停止 -> 循迹 -> 避障 -> 遥控 -> 停止
+    CarStatus next_status = (CarStatus)((current_status + 1) % 4);
+
+    // 打印切换信息
+    const char *mode_names[] = {"停止", "循迹", "避障", "遥控"};
+    printf("模式切换：%s -> %s\r\n", mode_names[current_status], mode_names[next_status]);
 
     robot_mgr_set_status(next_status);
 }
@@ -111,9 +94,8 @@ static void robot_demo_entry(void)
     osal_kthread_lock();
     task_handle = osal_kthread_create((osal_kthread_handler)robot_demo_task, NULL, "robot_demo_task", TASK_STACK_SIZE);
 
-    if (task_handle != NULL) {
+    if (task_handle != NULL)
         osal_kthread_set_priority(task_handle, TASK_PRIO);
-    }
     printf("智能小车演示入口已创建\r\n");
     osal_kthread_unlock();
 }

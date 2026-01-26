@@ -84,59 +84,37 @@ void mode_trace_tick(void)
     robot_mgr_update_ir_status(left, middle, right);
 
     // 计算误差 Error
-    // 假设：左偏为负，右偏为正
-    // 传感器状态组合 -> 误差值
-    // 0 1 0 (中) -> Error = 0
-    // 1 0 0 (左) -> Error = -2 (大幅度左偏，需要右转) -- 等等，如果传感器在车头，左传感器压线说明车头偏右？
-    // 通常定义：Error = 目标位置 - 当前位置。或者 Error = 线路位置 - 车中心位置。
-    // 如果左传感器(L)压线，说明线在车的左边，车偏右了，需要向左转。
-    // 如果右传感器(R)压线，说明线在车的右边，车偏左了，需要向右转。
+    // 使用查找表：左偏为负，右偏为正
+    // 误差值越大，表示偏离越严重，需要更强的转向
+    typedef struct {
+        uint8_t left;
+        uint8_t middle;
+        uint8_t right;
+        float error;
+    } error_map_t;
 
-    // 重新定义 Error: Error > 0 表示需要右转 (线在右边)，Error < 0 表示需要左转 (线在左边)
-    // R压线 -> 线在右 -> Error = 1
-    // L压线 -> 线在左 -> Error = -1
+    static const error_map_t error_table[] = {
+        // 左传感器 中传感器 右传感器 误差值
+        {1, 1, 0, -1.0f},  // 左+中: 轻微左偏
+        {0, 1, 1,  1.0f},  // 右+中: 轻微右偏
+        {1, 0, 0, -2.0f},  // 仅左: 严重左偏
+        {0, 0, 1,  2.0f},  // 仅右: 严重右偏
+        {0, 1, 0,  0.0f},  // 仅中: 居中
+        {1, 1, 1,  0.0f},  // 全检测: 居中
+    };
 
-    float error = 0;
-    int detected = 0;
-
-    if (middle == TRACE_DETECT_BLACK) {
-        error = 0;
-        detected = 1;
+    // 查找对应的误差值
+    float error = 0.0f;
+    for (int i = 0; i < 6; i++) {
+        if (error_table[i].left == left &&
+            error_table[i].middle == middle &&
+            error_table[i].right == right) {
+            error = error_table[i].error;
+            break;
+        }
     }
 
-    if (left == TRACE_DETECT_BLACK) {
-        error -= 1.0f; // 左边有线，叠加负误差
-        detected = 1;
-    }
-
-    if (right == TRACE_DETECT_BLACK) {
-        error += 1.0f; // 右边有线，叠加正误差
-        detected = 1;
-    }
-
-    // 特殊情况修正：如果只有左边压线，误差应该更大，比如 -2
-    // 如果只有右边压线，误差 2
-    // 如果左+中，误差 -1
-    // 如果右+中，误差 1
-    // 上面的叠加逻辑其实已经涵盖了部分：
-    // L=1, M=1, R=0 -> error = -1 + 0 = -1
-    // L=0, M=1, R=1 -> error = 0 + 1 = 1
-    // L=1, M=0, R=0 -> error = -1. 但此时偏离更大，应该比L+M更激进。
-
-    // 优化误差计算
-    if (middle == TRACE_DETECT_BLACK && left == !TRACE_DETECT_BLACK && right == !TRACE_DETECT_BLACK) {
-        error = 0;
-    } else if (left == TRACE_DETECT_BLACK && middle == TRACE_DETECT_BLACK) {
-        error = -1;
-    } else if (right == TRACE_DETECT_BLACK && middle == TRACE_DETECT_BLACK) {
-        error = 1;
-    } else if (left == TRACE_DETECT_BLACK) {
-        error = -2;
-    } else if (right == TRACE_DETECT_BLACK) {
-        error = 2;
-    }
-
-    if (detected) {
+    if (left == TRACE_DETECT_BLACK || middle == TRACE_DETECT_BLACK || right == TRACE_DETECT_BLACK) {
         g_last_seen_tick = now;
 
         // PID 计算

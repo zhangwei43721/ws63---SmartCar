@@ -38,4 +38,17 @@
 #define BUF_IP 32       // IP 地址缓冲区
 #define BUF_MODE 32     // 模式字符串缓冲区
 
+// 通用互斥锁操作宏
+#define MUTEX_LOCK(mutex, inited) \
+    do { \
+        if (inited) \
+            (void)osal_mutex_lock(&(mutex)); \
+    } while (0)
+
+#define MUTEX_UNLOCK(mutex, inited) \
+    do { \
+        if (inited) \
+            osal_mutex_unlock(&(mutex)); \
+    } while (0)
+
 #endif /* ROBOT_CONFIG_H */

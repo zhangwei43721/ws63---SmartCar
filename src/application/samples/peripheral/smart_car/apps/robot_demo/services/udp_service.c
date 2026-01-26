@@ -33,18 +33,9 @@ static bool g_udp_task_started = false;     /* UDP 任务是否已启动 */
 static osal_mutex g_mutex;          /* 保护内部状态的互斥锁 */
 static bool g_mutex_inited = false; /* 互斥锁是否已初始化 */
 
-// =============== 互斥锁操作宏 ===============
-#define UDP_LOCK()                           \
-    do {                                     \
-        if (g_mutex_inited)                  \
-            (void)osal_mutex_lock(&g_mutex); \
-    } while (0)
-
-#define UDP_UNLOCK()                     \
-    do {                                 \
-        if (g_mutex_inited)              \
-            osal_mutex_unlock(&g_mutex); \
-    } while (0)
+// 使用 robot_config.h 中的通用锁宏
+#define UDP_LOCK()    MUTEX_LOCK(g_mutex, g_mutex_inited)
+#define UDP_UNLOCK()  MUTEX_UNLOCK(g_mutex, g_mutex_inited)
 
 static bool g_ip_printed = false; /* 标记是否已打印IP */
 

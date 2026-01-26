@@ -40,35 +40,12 @@
  */
 void l9110s_init(void);
 
-/**
- * @brief 小车前进
- * @return 无
- */
-void car_forward(void);
-
-/**
- * @brief 小车后退
- * @return 无
- */
-void car_backward(void);
-
-/**
- * @brief 小车左转
- * @return 无
- */
-void car_left(void);
-
-/**
- * @brief 小车右转
- * @return 无
- */
-void car_right(void);
-
-/**
- * @brief 小车停止
- * @return 无
- */
-void car_stop(void);
+// 电机控制宏（小朋友更容易理解）
+#define CAR_FORWARD()  l9110s_set_differential(100, 100)
+#define CAR_BACKWARD() l9110s_set_differential(-100, -100)
+#define CAR_LEFT()     l9110s_set_differential(0, 100)
+#define CAR_RIGHT()    l9110s_set_differential(100, 0)
+#define CAR_STOP()     l9110s_set_differential(0, 0)
 
 /**
  * @brief 设置左轮电机速度和方向

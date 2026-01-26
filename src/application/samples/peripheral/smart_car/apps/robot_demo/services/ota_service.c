@@ -56,17 +56,9 @@ static void *g_ota_backend_ctx = NULL;                          /* OTA 后端上
 static osal_mutex g_ota_mutex;          /* 保护 OTA 状态的互斥锁 */
 static bool g_ota_mutex_inited = false; /* 互斥锁是否已初始化 */
 
-#define OTA_LOCK()                               \
-    do {                                         \
-        if (g_ota_mutex_inited)                  \
-            (void)osal_mutex_lock(&g_ota_mutex); \
-    } while (0)
-
-#define OTA_UNLOCK()                         \
-    do {                                     \
-        if (g_ota_mutex_inited)              \
-            osal_mutex_unlock(&g_ota_mutex); \
-    } while (0)
+// 使用 robot_config.h 中的通用锁宏
+#define OTA_LOCK()    MUTEX_LOCK(g_ota_mutex, g_ota_mutex_inited)
+#define OTA_UNLOCK()  MUTEX_UNLOCK(g_ota_mutex, g_ota_mutex_inited)
 
 /**
  * @brief OTA 升级内存分配适配函数
