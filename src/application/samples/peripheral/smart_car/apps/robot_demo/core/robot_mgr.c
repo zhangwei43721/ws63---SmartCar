@@ -52,7 +52,7 @@ static void robot_mgr_run_standby_tick(void)
 
     // 只有在切换到待机时停止一次
     if (g_last_status != CAR_STOP_STATUS) {
-        car_stop();
+        CAR_STOP();
     }
 
     if (now - last_ui_update >= osal_msecs_to_jiffies(STANDBY_DELAY)) {

@@ -191,5 +191,5 @@ void mode_trace_tick(void)
 
 void mode_trace_exit(void)
 {
-    car_stop();
+    CAR_STOP();
 }

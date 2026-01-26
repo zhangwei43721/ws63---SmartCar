@@ -40,7 +40,7 @@
  */
 void l9110s_init(void);
 
-// 电机控制宏（小朋友更容易理解）
+// 电机控制宏
 #define CAR_FORWARD()  l9110s_set_differential(100, 100)
 #define CAR_BACKWARD() l9110s_set_differential(-100, -100)
 #define CAR_LEFT()     l9110s_set_differential(0, 100)

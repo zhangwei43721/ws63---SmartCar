@@ -45,27 +45,27 @@ static void *l9110s_task(const char *arg)
     while (1) {
         // // 前进
         // printf("Car moving forward\n");
-        // car_forward();
+        // CAR_FORWARD();
         // osal_msleep(L9110S_DELAY_MS);
 
         // // 后退
         // printf("Car moving backward\n");
-        // car_backward();
+        // CAR_BACKWARD();
         // osal_msleep(L9110S_DELAY_MS);
 
         // // 左转
         // printf("Car turning left\n");
-        // car_left();
+        // CAR_LEFT();
         // osal_msleep(L9110S_DELAY_MS);
 
         // // 右转
         // printf("Car turning right\n");
-        // car_right();
+        // CAR_RIGHT();
         // osal_msleep(L9110S_DELAY_MS);
 
         // 停止
         printf("Car stopping\n");
-        car_stop();
+        CAR_STOP();
         osal_msleep(L9110S_DELAY_MS);
     }
 

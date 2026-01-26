@@ -28,7 +28,7 @@ static void apply_differential_control(int8_t motor1, int8_t motor2, int8_t serv
 void mode_remote_enter(void)
 {
     printf("进入 WiFi 遥控模式...\r\n");
-    car_stop();
+    CAR_STOP();
     g_last_cmd_tick = osal_get_jiffies();
 }
 
@@ -55,5 +55,5 @@ void mode_remote_tick(void)
 
 void mode_remote_exit(void)
 {
-    car_stop();
+    CAR_STOP();
 }
