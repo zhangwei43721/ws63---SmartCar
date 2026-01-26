@@ -22,34 +22,15 @@
 static CarStatus g_status = CAR_STOP_STATUS;      /* 当前小车运行模式 */
 static CarStatus g_last_status = CAR_STOP_STATUS; /* 上次小车运行模式（用于检测模式切换） */
 
-// =============== 互斥锁操作宏 ===============
-#define ROBOT_STATE_LOCK()                         \
-    do {                                           \
-        if (g_state_mutex_inited)                  \
-            (void)osal_mutex_lock(&g_state_mutex); \
-    } while (0)
-
-#define ROBOT_STATE_UNLOCK()                   \
-    do {                                       \
-        if (g_state_mutex_inited)              \
-            osal_mutex_unlock(&g_state_mutex); \
-    } while (0)
-
-#define UPDATE_STATE_FIELD(field, value) \
-    do {                                 \
-        ROBOT_STATE_LOCK();              \
-        g_robot_state.field = value;     \
-        ROBOT_STATE_UNLOCK();            \
-    } while (0)
-
-/* 全局机器人状态，供 HTTP 服务读取 */
+// 全局机器人状态（包含舵机角度、距离、传感器值等）
 static RobotState g_robot_state = {0};
 
-/* 互斥锁保护状态访问 */
+// 互斥锁：保护 机器人状态，防止多个线程同时读写
 static osal_mutex g_state_mutex;
+// 互斥锁是否已初始化的标志（初始化成功后设为 true）
 static bool g_state_mutex_inited = false;
 
-/* 模式操作接口定义（按 CarStatus 枚举值索引） */
+// 模式操作接口定义（按 CarStatus 枚举值索引）
 static RobotModeOps g_mode_ops[] = {
     // CAR_STOP_STATUS (0)
     {NULL, NULL, NULL},
@@ -142,7 +123,12 @@ void robot_mgr_set_status(CarStatus status)
 {
     if (g_status != status) {
         g_status = status;
-        UPDATE_STATE_FIELD(mode, status);
+        // 加锁保护状态更新
+        if (g_state_mutex_inited) {
+            osal_mutex_lock(&g_state_mutex);
+            g_robot_state.mode = status;
+            osal_mutex_unlock(&g_state_mutex);
+        }
         ui_show_mode_page(status);
     }
 }
@@ -152,22 +138,20 @@ void robot_mgr_set_status(CarStatus status)
  */
 void robot_mgr_tick(void)
 {
-    CarStatus current_status = g_status;
+    CarStatus current_status = g_status; // 当前状态
 
     // 1. 处理状态切换
     if (current_status != g_last_status) {
         // 退出旧模式
         if (g_last_status > CAR_STOP_STATUS && g_last_status < sizeof(g_mode_ops) / sizeof(g_mode_ops[0])) {
-            if (g_mode_ops[g_last_status].exit) {
+            if (g_mode_ops[g_last_status].exit)
                 g_mode_ops[g_last_status].exit();
-            }
         }
 
         // 进入新模式
         if (current_status > CAR_STOP_STATUS && current_status < sizeof(g_mode_ops) / sizeof(g_mode_ops[0])) {
-            if (g_mode_ops[current_status].enter) {
+            if (g_mode_ops[current_status].enter)
                 g_mode_ops[current_status].enter();
-            }
         }
 
         g_last_status = current_status;
@@ -177,9 +161,8 @@ void robot_mgr_tick(void)
     if (current_status == CAR_STOP_STATUS) {
         robot_mgr_run_standby_tick();
     } else if (current_status > CAR_STOP_STATUS && current_status < sizeof(g_mode_ops) / sizeof(g_mode_ops[0])) {
-        if (g_mode_ops[current_status].tick) {
+        if (g_mode_ops[current_status].tick)
             g_mode_ops[current_status].tick();
-        }
     }
 }
 
@@ -189,7 +172,12 @@ void robot_mgr_tick(void)
  */
 void robot_mgr_update_servo_angle(unsigned int angle)
 {
-    UPDATE_STATE_FIELD(servo_angle, angle);
+    // 加锁保护状态更新
+    if (g_state_mutex_inited) {
+        osal_mutex_lock(&g_state_mutex);
+        g_robot_state.servo_angle = angle;
+        osal_mutex_unlock(&g_state_mutex);
+    }
 }
 
 /**
@@ -198,7 +186,12 @@ void robot_mgr_update_servo_angle(unsigned int angle)
  */
 void robot_mgr_update_distance(float distance)
 {
-    UPDATE_STATE_FIELD(distance, distance);
+    // 加锁保护状态更新
+    if (g_state_mutex_inited) {
+        osal_mutex_lock(&g_state_mutex);
+        g_robot_state.distance = distance;
+        osal_mutex_unlock(&g_state_mutex);
+    }
 }
 
 /**
@@ -209,11 +202,14 @@ void robot_mgr_update_distance(float distance)
  */
 void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right)
 {
-    ROBOT_STATE_LOCK();
-    g_robot_state.ir_left = left;
-    g_robot_state.ir_middle = middle;
-    g_robot_state.ir_right = right;
-    ROBOT_STATE_UNLOCK();
+    // 加锁保护状态更新
+    if (g_state_mutex_inited) {
+        osal_mutex_lock(&g_state_mutex);
+        g_robot_state.ir_left = left;
+        g_robot_state.ir_middle = middle;
+        g_robot_state.ir_right = right;
+        osal_mutex_unlock(&g_state_mutex);
+    }
 }
 
 /**
@@ -226,7 +222,10 @@ void robot_mgr_get_state_copy(RobotState *out)
     if (out == NULL)
         return;
 
-    ROBOT_STATE_LOCK();
-    *out = g_robot_state;
-    ROBOT_STATE_UNLOCK();
+    // 加锁保护状态读取
+    if (g_state_mutex_inited) {
+        osal_mutex_lock(&g_state_mutex);
+        *out = g_robot_state;
+        osal_mutex_unlock(&g_state_mutex);
+    }
 }

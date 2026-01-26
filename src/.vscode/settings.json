@@ -78,6 +78,8 @@
         "net_service.h": "c",
         "udp_service.h": "c",
         "upg.h": "c",
-        "upg_definitions_porting.h": "c"
+        "upg_definitions_porting.h": "c",
+        "robot_config.h": "c",
+        "robot_mgr.h": "c"
     }
 }

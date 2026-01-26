@@ -26,7 +26,6 @@
 #define BACKWARD_TIME 400  // 后退时间
 #define TURN_TIME 400      // 转向时间
 #define REMOTE_TIMEOUT 500 // 遥控命令超时
-#define KEY_DEBOUNCE 200   // 按键防抖
 #define LOOP_DELAY 20      // 主循环延时
 #define STANDBY_DELAY 500  // 待机更新间隔
 
