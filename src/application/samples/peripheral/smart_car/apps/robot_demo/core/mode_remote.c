@@ -1,5 +1,4 @@
 #include "mode_remote.h"
-#include "mode_common.h"
 #include "robot_config.h"
 #include "robot_mgr.h"
 #include "../services/udp_service.h"
@@ -45,10 +44,10 @@ void mode_remote_tick(void)
 
     // 命令超时自动停车
     unsigned long long now = osal_get_jiffies();
-    if (now - g_last_cmd_tick > osal_msecs_to_jiffies(REMOTE_CMD_TIMEOUT_MS)) {
+    if (now - g_last_cmd_tick > osal_msecs_to_jiffies(REMOTE_TIMEOUT)) {
         l9110s_set_differential(0, 0); // 双电机停止
         // 回中角可由 NV 配置调整
-        unsigned int center = robot_mgr_get_servo_center_angle();
+        unsigned int center = SERVO_CENTER;
         sg90_set_angle(center);
         robot_mgr_update_servo_angle(center);
     }

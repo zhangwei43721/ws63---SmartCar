@@ -1,7 +1,7 @@
 #include "mode_trace.h"
-#include "mode_common.h"
 #include "robot_config.h"
 #include "robot_mgr.h"
+#include "../services/storage_service.h"
 
 #include "../../../drivers/l9110s/bsp_l9110s.h"
 #include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
@@ -21,19 +21,28 @@ static int g_base_speed = TRACE_SPEED_FORWARD; /* 基础前进速度 */
 static float g_last_error = 0; /* 上次误差值（用于微分计算） */
 static float g_integral = 0;   /* 误差积分值（用于积分计算） */
 
-static unsigned long long g_last_telemetry_time = 0; /* 上次遥测数据发送时间 */
-static unsigned long long g_last_seen_tick = 0;      /* 上次检测到黑线的时间 */
+static unsigned long long g_last_seen_tick = 0; /* 上次检测到黑线的时间 */
 
 void mode_trace_enter(void)
 {
     printf("进入循迹模式...\r\n");
-    g_last_telemetry_time = 0;
     // 进入模式时初始化时间戳，防止误判
     g_last_seen_tick = osal_get_jiffies();
 
     // 重置 PID 状态
     g_last_error = 0;
     g_integral = 0;
+
+    // 从 NV 加载 PID 参数
+    float kp, ki, kd;
+    int16_t speed;
+    storage_service_get_pid_params(&kp, &ki, &kd, &speed);
+    g_kp = kp;
+    g_ki = ki;
+    g_kd = kd;
+    g_base_speed = speed;
+    printf("PID 从 NV 加载: Kp=%.2f Ki=%.3f Kd=%.2f Speed=%d\r\n",
+           g_kp, g_ki, g_kd, g_base_speed);
 }
 
 // 设置 PID 参数
@@ -49,6 +58,9 @@ void mode_trace_set_pid(int type, int value)
     else if (type == 4)
         g_base_speed = value;
     printf("PID Set: Kp=%.2f Ki=%.3f Kd=%.2f Speed=%d\r\n", g_kp, g_ki, g_kd, g_base_speed);
+
+    // 保存到 NV
+    storage_service_save_pid_params(g_kp, g_ki, g_kd, (int16_t)g_base_speed);
 
     // 重置积分，避免突变
     g_integral = 0;
@@ -196,15 +208,6 @@ void mode_trace_tick(void)
             // 超时仍未找到，停车
             l9110s_set_differential(0, 0);
         }
-    }
-
-    // 定期上报遥测数据 (包含 PID 调试信息)
-    if (now - g_last_telemetry_time > osal_msecs_to_jiffies(TELEMETRY_REPORT_MS)) {
-        char data[128];
-        snprintf(data, sizeof(data), "\"left\":%u,\"mid\":%u,\"right\":%u,\"err\":%d,\"kp\":%d,\"kd\":%d", left, middle,
-                 right, (int)(error * 10), (int)(g_kp * 100), (int)(g_kd * 100));
-        send_telemetry("trace", data);
-        g_last_telemetry_time = now;
     }
 }
 

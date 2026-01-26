@@ -26,8 +26,4 @@ void robot_mgr_update_distance(float distance);
 void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right);
 void robot_mgr_get_state_copy(RobotState *out);
 
-// 获取参数接口
-unsigned int robot_mgr_get_obstacle_threshold_cm(void);
-unsigned int robot_mgr_get_servo_center_angle(void);
-
 #endif

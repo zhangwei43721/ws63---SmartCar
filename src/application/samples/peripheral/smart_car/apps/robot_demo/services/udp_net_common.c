@@ -1,5 +1,6 @@
 #include "udp_net_common.h"
 #include "../../../drivers/wifi_client/bsp_wifi.h"
+#include "storage_service.h"
 
 #include "securec.h"
 
@@ -27,7 +28,7 @@ static bool g_net_mutex_inited = false; /* 互斥锁是否已初始化 */
 static bool g_wifi_inited = false;             /* WiFi 是否已初始化 */
 bool g_udp_net_wifi_connected = false;         /* WiFi 是否已连接（导出供其他模块使用） */
 bool g_udp_net_wifi_has_ip = false;            /* WiFi 是否已获取IP（导出供其他模块使用） */
-char g_udp_net_ip[IP_BUFFER_SIZE] = "0.0.0.0"; /* 本机IP地址字符串（导出供其他模块使用） */
+char g_udp_net_ip[BUF_IP] = "0.0.0.0"; /* 本机IP地址字符串（导出供其他模块使用） */
 static unsigned int g_wifi_last_retry = 0;     /* 上次WiFi重连时间（滴答数） */
 
 int g_udp_net_socket_fd = -1; /* UDP 套接字文件描述符（导出供其他模块使用） */
@@ -160,6 +161,25 @@ int udp_net_common_open_and_bind(uint16_t port, unsigned int recv_timeout_ms, bo
 }
 
 /**
+ * @brief 从 NV 存储 WiFi 配置并连接
+ * @return 0 成功，-1 失败
+ */
+static int wifi_connect_from_nv(void)
+{
+    char ssid[32];
+    char password[64];
+
+    storage_service_get_wifi_config(ssid, password);
+
+    // 如果 NV 中的 SSID 为空，使用默认配置
+    if (strlen(ssid) == 0) {
+        return bsp_wifi_connect_ap(BSP_WIFI_SSID, BSP_WIFI_PASSWORD);
+    }
+
+    return bsp_wifi_connect_ap(ssid, password);
+}
+
+/**
  * @brief 确保 WiFi 已连接，并自动重连
  * @note 定期检查 WiFi 连接状态，如果断开则尝试重连
  *       连接成功后会更新 g_udp_net_ip 全局变量
@@ -180,7 +200,7 @@ void udp_net_common_wifi_ensure_connected(void)
     if (!g_udp_net_wifi_connected) {
         if (g_wifi_last_retry == 0 || (now - g_wifi_last_retry >= 5000)) {
             g_wifi_last_retry = now;
-            if (bsp_wifi_connect_default() == 0)
+            if (wifi_connect_from_nv() == 0)
                 g_udp_net_wifi_connected = true;
         }
     }

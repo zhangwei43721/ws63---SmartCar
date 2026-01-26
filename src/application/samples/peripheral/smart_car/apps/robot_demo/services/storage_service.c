@@ -5,22 +5,32 @@
 #include "soc_osal.h"
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 // 内部存储结构（包含校验头）
 // - magic/version: 结构有效性标识
 // - checksum: 对整个结构体做 16-bit 累加校验（校验时将 checksum 置 0）
 typedef struct {
-    uint32_t magic;                 // 魔术字，用于验证配置有效性 (0x524F4254 = "ROBT")
-    uint16_t version;               // 配置版本号
-    uint16_t checksum;              // 16 位校验和（整个结构体累加，计算时此字段置 0）
-    uint16_t obstacle_threshold_cm; // 避障距离阈值（厘米）
-    uint16_t servo_center_angle;    // 舵机中心角度（度，0~180）
-    uint8_t reserved[16];           // 保留字段，用于未来扩展
+    uint32_t magic;          // 魔术字，用于验证配置有效性 (0x524F4254 = "ROBT")
+    uint16_t version;        // 配置版本号
+    uint16_t checksum;       // 16 位校验和（整个结构体累加，计算时此字段置 0）
+
+    // PID 参数 (使用整数存储，避免 float 二进制兼容问题)
+    int32_t pid_kp_x1000;    // Kp * 1000
+    int32_t pid_ki_x10000;   // Ki * 10000
+    int32_t pid_kd_x500;     // Kd * 500
+    int16_t pid_base_speed;  // 基础速度
+
+    // WiFi 配置
+    char wifi_ssid[32];      // WiFi SSID
+    char wifi_password[64];  // WiFi 密码
+
+    uint8_t reserved[8];     // 保留字段，用于未来扩展
 } robot_nv_config_t;
 
 #define ROBOT_NV_CONFIG_KEY ((uint16_t)0x2000)
 #define ROBOT_NV_CONFIG_MAGIC ((uint32_t)0x524F4254) // "ROBT"
-#define ROBOT_NV_CONFIG_VERSION ((uint16_t)1)
+#define ROBOT_NV_CONFIG_VERSION ((uint16_t)2)
 
 static robot_nv_config_t g_nv_cfg = {0};    /* NV 存储的配置数据 */
 static osal_mutex g_storage_mutex;          /* 保护 NV 存储访问的互斥锁 */
@@ -62,8 +72,17 @@ static void nv_set_defaults(robot_nv_config_t *cfg)
     (void)memset_s(cfg, sizeof(*cfg), 0, sizeof(*cfg));
     cfg->magic = ROBOT_NV_CONFIG_MAGIC;
     cfg->version = ROBOT_NV_CONFIG_VERSION;
-    cfg->obstacle_threshold_cm = DISTANCE_BETWEEN_CAR_AND_OBSTACLE;
-    cfg->servo_center_angle = SERVO_MIDDLE_ANGLE;
+
+    // PID 默认值
+    cfg->pid_kp_x1000 = 16000;       // Kp = 16.0
+    cfg->pid_ki_x10000 = 0;          // Ki = 0.0
+    cfg->pid_kd_x500 = 0;            // Kd = 0.0
+    cfg->pid_base_speed = 40;
+
+    // WiFi 默认值
+    strncpy(cfg->wifi_ssid, "BSHZ-2.4G", 31);
+    strncpy(cfg->wifi_password, "BS666888", 63);
+
     cfg->checksum = 0;
     cfg->checksum = nv_checksum16_add((const uint8_t *)cfg, sizeof(*cfg));
 }
@@ -120,33 +139,31 @@ void storage_service_init(void)
 }
 
 /**
- * @brief 获取存储的参数
- * @param out_params 输出参数结构体指针
+ * @brief 获取 PID 参数
  */
-void storage_service_get_params(robot_params_t *out_params)
+void storage_service_get_pid_params(float *kp, float *ki, float *kd, int16_t *speed)
 {
-    if (out_params == NULL)
+    if (kp == NULL || ki == NULL || kd == NULL || speed == NULL)
         return;
 
     STORAGE_LOCK();
-    out_params->obstacle_threshold_cm = g_nv_cfg.obstacle_threshold_cm;
-    out_params->servo_center_angle = g_nv_cfg.servo_center_angle;
+    *kp = (float)g_nv_cfg.pid_kp_x1000 / 1000.0f;
+    *ki = (float)g_nv_cfg.pid_ki_x10000 / 10000.0f;
+    *kd = (float)g_nv_cfg.pid_kd_x500 / 500.0f;
+    *speed = g_nv_cfg.pid_base_speed;
     STORAGE_UNLOCK();
 }
 
 /**
- * @brief 保存参数到 NV 存储
- * @param params 参数结构体指针
- * @return ERRCODE_SUCC 成功，其他错误码表示失败
+ * @brief 保存 PID 参数到 NV
  */
-errcode_t storage_service_save_params(const robot_params_t *params)
+errcode_t storage_service_save_pid_params(float kp, float ki, float kd, int16_t speed)
 {
-    if (params == NULL)
-        return ERRCODE_INVALID_PARAM;
-
     STORAGE_LOCK();
-    g_nv_cfg.obstacle_threshold_cm = params->obstacle_threshold_cm;
-    g_nv_cfg.servo_center_angle = params->servo_center_angle;
+    g_nv_cfg.pid_kp_x1000 = (int32_t)(kp * 1000.0f);
+    g_nv_cfg.pid_ki_x10000 = (int32_t)(ki * 10000.0f);
+    g_nv_cfg.pid_kd_x500 = (int32_t)(kd * 500.0f);
+    g_nv_cfg.pid_base_speed = speed;
 
     // 重新计算校验和
     g_nv_cfg.checksum = 0;
@@ -159,31 +176,41 @@ errcode_t storage_service_save_params(const robot_params_t *params)
 }
 
 /**
- * @brief 获取避障距离阈值
- * @return 避障距离阈值（厘米）
+ * @brief 获取 WiFi 配置
  */
-uint16_t storage_service_get_obstacle_threshold(void)
+void storage_service_get_wifi_config(char *ssid, char *password)
 {
-    uint16_t val;
+    if (ssid == NULL || password == NULL)
+        return;
+
     STORAGE_LOCK();
-    val = g_nv_cfg.obstacle_threshold_cm;
-    if (val == 0)
-        val = DISTANCE_BETWEEN_CAR_AND_OBSTACLE;
+    strncpy(ssid, g_nv_cfg.wifi_ssid, 31);
+    ssid[31] = '\0';
+    strncpy(password, g_nv_cfg.wifi_password, 63);
+    password[63] = '\0';
     STORAGE_UNLOCK();
-    return val;
 }
 
 /**
- * @brief 获取舵机中心角度
- * @return 舵机中心角度（度，0~180）
+ * @brief 保存 WiFi 配置到 NV
  */
-uint16_t storage_service_get_servo_center(void)
+errcode_t storage_service_save_wifi_config(const char *ssid, const char *password)
 {
-    uint16_t val;
+    if (ssid == NULL || password == NULL)
+        return ERRCODE_INVALID_PARAM;
+
     STORAGE_LOCK();
-    val = g_nv_cfg.servo_center_angle;
-    if (val > 180)
-        val = SERVO_MIDDLE_ANGLE;
+    strncpy(g_nv_cfg.wifi_ssid, ssid, 31);
+    g_nv_cfg.wifi_ssid[31] = '\0';
+    strncpy(g_nv_cfg.wifi_password, password, 63);
+    g_nv_cfg.wifi_password[63] = '\0';
+
+    // 重新计算校验和
+    g_nv_cfg.checksum = 0;
+    g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
+
+    errcode_t ret = uapi_nv_write(ROBOT_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
     STORAGE_UNLOCK();
-    return val;
+
+    return ret;
 }

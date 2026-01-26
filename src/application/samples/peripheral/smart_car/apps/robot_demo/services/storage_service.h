@@ -4,40 +4,43 @@
 #include <stdint.h>
 #include "errcode.h"
 
-// 机器人运行参数
-typedef struct {
-    uint16_t obstacle_threshold_cm; // 避障阈值（cm）
-    uint16_t servo_center_angle;    // 舵机回中角度（0~180）
-} robot_params_t;
-
 /**
  * @brief 初始化存储服务，加载或初始化 NV 配置
  */
 void storage_service_init(void);
 
 /**
- * @brief 获取当前机器人参数
- * @param out_params 输出参数指针
+ * @brief 获取 PID 参数
+ * @param kp 输出 Kp 值
+ * @param ki 输出 Ki 值
+ * @param kd 输出 Kd 值
+ * @param speed 输出基础速度
  */
-void storage_service_get_params(robot_params_t *out_params);
+void storage_service_get_pid_params(float *kp, float *ki, float *kd, int16_t *speed);
 
 /**
- * @brief 保存机器人参数到 NV
- * @param params 参数指针
+ * @brief 保存 PID 参数到 NV
+ * @param kp Kp 值
+ * @param ki Ki 值
+ * @param kd Kd 值
+ * @param speed 基础速度
  * @return 错误码
  */
-errcode_t storage_service_save_params(const robot_params_t *params);
+errcode_t storage_service_save_pid_params(float kp, float ki, float kd, int16_t speed);
 
 /**
- * @brief 获取避障阈值便捷接口
- * @return 距离(cm)
+ * @brief 获取 WiFi 配置
+ * @param ssid 输出 SSID 缓冲区（至少 32 字节）
+ * @param password 输出密码缓冲区（至少 64 字节）
  */
-uint16_t storage_service_get_obstacle_threshold(void);
+void storage_service_get_wifi_config(char *ssid, char *password);
 
 /**
- * @brief 获取舵机中位角度便捷接口
- * @return 角度(0-180)
+ * @brief 保存 WiFi 配置到 NV
+ * @param ssid SSID
+ * @param password 密码
+ * @return 错误码
  */
-uint16_t storage_service_get_servo_center(void);
+errcode_t storage_service_save_wifi_config(const char *ssid, const char *password);
 
 #endif

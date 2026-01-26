@@ -93,6 +93,17 @@ function parseOtaPacket(msg) {
 const devices = new Map();
 
 /**
+ * 创建 UDP 服务器（监听设备广播和状态）
+ */
+const udpClient = dgram.createSocket('udp4');
+udpClient.bind(CONFIG.UDP_BROADCAST_PORT);
+
+/**
+ * 创建 WebSocket 服务器
+ */
+const wss = new WebSocket.Server({ port: CONFIG.WS_PORT });
+
+/**
  * 处理来自设备的 UDP 消息
  */
 udpClient.on('message', (msg, rinfo) => {

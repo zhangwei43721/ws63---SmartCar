@@ -2,48 +2,41 @@
  ****************************************************************************************************
  * @file        robot_config.h
  * @brief       智能小车配置常量定义
- * @note        集中管理所有硬件、时间、网络等配置参数
  ****************************************************************************************************
  */
 
 #ifndef ROBOT_CONFIG_H
 #define ROBOT_CONFIG_H
 
-/* =============== 任务配置 =============== */
-#define CAR_CONTROL_DEMO_TASK_STACK_SIZE (1024 * 10)
-#define CAR_CONTROL_DEMO_TASK_PRIORITY 25
+/* 任务配置 */
+#define TASK_STACK_SIZE (1024 * 10) // 任务栈大小
+#define TASK_PRIO 25                // 任务优先级
 
-/* =============== 舵机配置 =============== */
-#define SERVO_LEFT_ANGLE 180  // 舵机左转角度
-#define SERVO_RIGHT_ANGLE 0   // 舵机右转角度
-#define SERVO_MIDDLE_ANGLE 90 // 舵机中间角度
+/* 舵机配置 */
+#define SERVO_LEFT 180  // 左转角度
+#define SERVO_RIGHT 0   // 右转角度
+#define SERVO_CENTER 90 // 中间角度
 
-#ifndef DISTANCE_BETWEEN_CAR_AND_OBSTACLE
-#define DISTANCE_BETWEEN_CAR_AND_OBSTACLE 20 // 避障距离阈值 (cm)
-#endif
+/* 避障配置 */
+#define OBSTACLE_DISTANCE 20 // 避障阈值
 
-/* =============== 时间配置（毫秒） =============== */
-#define SERVO_MOVE_DELAY_MS 350        // 舵机转动等待时间
-#define SENSOR_STABILIZE_MS 50         // 传感器稳定等待时间
-#define BACKWARD_MOVE_MS 400           // 后退时间
-#define TURN_MOVE_MS 400               // 转向时间
-#define REMOTE_CMD_TIMEOUT_MS 500      // 遥控命令超时时间
-#define KEY_INTERRUPT_PROTECT_TIME 200 // 按键中断防抖时间
+/* 时间配置 */
+#define SERVO_DELAY 350    // 舵机转动等待
+#define SENSOR_DELAY 50    // 传感器稳定等待
+#define BACKWARD_TIME 400  // 后退时间
+#define TURN_TIME 400      // 转向时间
+#define REMOTE_TIMEOUT 500 // 遥控命令超时
+#define KEY_DEBOUNCE 200   // 按键防抖
+#define LOOP_DELAY 20      // 主循环延时
+#define STANDBY_DELAY 500  // 待机更新间隔
 
-#define TELEMETRY_REPORT_MS 500     // 遥测数据上报间隔
-#define MAIN_LOOP_DELAY_MS 20       // 主循环延时
-#define MODE_CHECK_DELAY_MS 10      // 模式检查延时
-#define STANDBY_UPDATE_DELAY_MS 500 // 待机模式更新延时
+/* 网络配置 */
+#define RECV_TIMEOUT 100         // 接收超时
+#define WIFI_RETRY_INTERVAL 5000 // WiFi 重试间隔
 
-/* =============== 网络配置 =============== */
-#define TCP_RECONNECT_DELAY_MS 2000 // TCP 重连延时
-#define RECV_TIMEOUT_MS 100         // 接收超时时间
-#define WIFI_RETRY_INTERVAL_MS 5000 // WiFi 重试间隔
-
-/* =============== 缓冲区配置 =============== */
-#define PAYLOAD_BUFFER_SIZE 128 // 数据负载缓冲区大小
-#define IP_BUFFER_SIZE 32       // IP 地址缓冲区大小
-#define JSON_BUFFER_SIZE 256    // JSON 数据缓冲区大小
-#define MODE_BUFFER_SIZE 32     // 模式字符串缓冲区大小
+/* 缓冲区配置 */
+#define BUF_PAYLOAD 128 // 数据负载缓冲区
+#define BUF_IP 32       // IP 地址缓冲区
+#define BUF_MODE 32     // 模式字符串缓冲区
 
 #endif /* ROBOT_CONFIG_H */

@@ -12,8 +12,7 @@
 - **SG90 舵机控制** - 角度控制与扫描
 - **SSD1306 OLED 显示屏** - 状态显示 (I2C，支持中文)
 - **WiFi UDP 通信** - WiFi 网络连接、遥控命令、OTA 升级
-- **HTTP 控制服务** - Web 界面控制与参数配置
-- **NV 存储服务** - 运行参数持久化存储
+- **NV 存储服务** - PID 参数和 WiFi 配置持久化存储
 
 ## 架构设计
 
@@ -33,7 +32,6 @@
 |                      功能服务层 (Services)                        |
 |  - UI Service (OLED 显示、中文字体)                                |
 |  - UDP Service (遥控命令、状态上报、OTA)                            |
-|  - HTTP Service (Web API)                                        |
 |  - Storage Service (NV 参数持久化)                                 |
 +------------------------------------------------------------------+
                        | 调用
@@ -56,7 +54,6 @@ apps/robot_demo/
 ├── core/                  # 【硬件管理层】
 │   ├── robot_mgr.c/h      # 状态机管理器：模式切换、生命周期管理
 │   ├── robot_config.h     # 配置常量：时间参数、网络配置、缓冲区大小
-│   ├── mode_common.c/h    # 模式公共接口：遥测数据上报
 │   ├── mode_trace.c/h     # 循迹模式：PID 控制算法
 │   ├── mode_obstacle.c/h  # 避障模式：超声波测距与转向决策
 │   └── mode_remote.c/h    # 遥控模式：UDP 命令解析与超时保护
@@ -65,10 +62,8 @@ apps/robot_demo/
     ├── ui_service.c/h         # OLED 显示服务
     ├── udp_service.c/h        # UDP 通信服务
     ├── udp_net_common.c/h     # UDP 网络公共层
-    ├── http_ctrl_service.c/h  # HTTP 控制服务（已弃用）
-    ├── storage_service.c/h    # NV 存储服务
-    ├── ota_service.c/h        # OTA 升级服务（未开发完成）
-    └── net_service.c/h        # 网络服务（已弃用）
+    ├── storage_service.c/h    # NV 存储服务（PID + WiFi 配置）
+    └── ota_service.c/h        # OTA 升级服务
 ```
 
 ### 3. 模式接口设计
@@ -161,18 +156,17 @@ application/samples/peripheral/smart_car/
 
 **2. 循迹模式 (Tracking)**
 - **行为**：根据底部 3 路红外传感器状态，自动沿黑线行驶
-- **算法**：PID 控制算法，支持实时参数调整
-- **遥测**：定期上报红外状态和 PID 调试数据
+- **算法**：PID 控制算法，支持实时参数调整和持久化存储
 - **特点**：
   - 动态速度调整（误差大时自动减速）
   - 积分分离（防止过冲）
   - 丢失黑线记忆功能
+  - PID 参数自动保存到 NV，重启后保持
 
 **3. 避障模式 (Avoid)**
 - **行为**：自动前进，当距离 < 阈值时停车并扫描
-- **阈值**：可通过 Web 界面配置（默认 20cm）
+- **阈值**：默认 20cm
 - **策略**：停车 → 后退 → 左右扫描 → 选择宽敞方向 → 转向前进
-- **遥测**：定期上报超声波距离数据
 
 **4. WiFi 遥控模式 (Remote)**
 - **行为**：响应上位机 UDP 指令
@@ -182,10 +176,6 @@ application/samples/peripheral/smart_car/
 ## 文档
 
 - [UDP 通信协议文档](docs/UDP_PROTOCOL.md) - 详细的 UDP 接口协议说明
-
-### 2. UDP 遥控协议
-
-> 详细的 UDP 协议说明请参考 [UDP_PROTOCOL.md](docs/UDP_PROTOCOL.md)
 
 **简要说明**：
 
@@ -219,23 +209,20 @@ application/samples/peripheral/smart_car/
 
 ## 配置参数说明
 
-### 可配置参数（通过 NV 存储）
+### NV 存储配置
 
-| 参数 | 默认值 | 说明 |
+| 配置项 | 默认值 | 说明 |
 |:---|:---|:---|
-| `obstacle_threshold_cm` | 20 | 避障距离阈值（cm） |
-| `servo_center_angle` | 90 | 舵机回中角度（0~180） |
-
-### 循迹 PID 参数
-
-| 参数 | 默认值 | 说明 |
-|:---|:---|:---|
+| **PID 参数** | | 循迹模式控制参数 |
 | `Kp` | 16.0 | 比例系数 |
 | `Ki` | 0.0 | 积分系数 |
 | `Kd` | 0.0 | 微分系数 |
 | `base_speed` | 40 | 基础速度 |
+| **WiFi 配置** | | 网络连接参数 |
+| `SSID` | "BSHZ-2.4G" | WiFi 名称 |
+| `Password` | "BS666888" | WiFi 密码 |
 
-> 注：PID 参数可通过 Web 界面实时调整，无需重启设备。
+> 注：PID 参数可通过 UDP 命令实时调整，自动保存到 NV，重启后保持。
 
 ## 开发者指南
 
@@ -293,6 +280,7 @@ application/samples/peripheral/smart_car/
 
 | 日期 | 更新内容 |
 |:---|:---|
+| **2025-01-26** | 简化代码：删除 HTTP 和 TCP 服务；简化 NV 存储为 PID 参数和 WiFi 配置；删除遥测功能；添加 PID 参数持久化 |
 | **2025-01-18** | 重构 robot_demo 架构，分离 core 和 services；添加 PID 循迹算法；添加 NV 存储服务 |
 | **2025-01-14** | 升级通信协议为 4字节 HEX 格式，支持差速控制 |
 | **2025-01-12** | 初始版本，预留基础循迹、避障、遥控功能框架 |

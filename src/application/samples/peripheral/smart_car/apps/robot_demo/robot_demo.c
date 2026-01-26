@@ -32,10 +32,6 @@
 #include "core/robot_config.h"
 #include "core/robot_mgr.h"
 
-/* 任务配置 */
-#define ROBOT_DEMO_TASK_STACK_SIZE CAR_CONTROL_DEMO_TASK_STACK_SIZE
-#define ROBOT_DEMO_TASK_PRIO CAR_CONTROL_DEMO_TASK_PRIORITY
-
 /* GPIO 配置（KEY1，用于模式切换） */
 #define ROBOT_MODE_SWITCH_GPIO 3
 
@@ -60,7 +56,7 @@ static void mode_switch_isr(pin_t pin, uintptr_t param)
     // 1. 获取当前时间滴答
     current_tick = osal_get_jiffies();
     tick_interval = current_tick - g_mode_switch_tick;
-    protect_ticks = osal_msecs_to_jiffies(KEY_INTERRUPT_PROTECT_TIME);
+    protect_ticks = osal_msecs_to_jiffies(KEY_DEBOUNCE);
 
     // 2. 按键防抖处理
     if (tick_interval < protect_ticks) {
@@ -187,10 +183,10 @@ static void robot_demo_entry(void)
     // 创建 OSAL 线程
     osal_kthread_lock();
     task_handle =
-        osal_kthread_create((osal_kthread_handler)robot_demo_task, NULL, "robot_demo_task", ROBOT_DEMO_TASK_STACK_SIZE);
+        osal_kthread_create((osal_kthread_handler)robot_demo_task, NULL, "robot_demo_task", TASK_STACK_SIZE);
 
     if (task_handle != NULL) {
-        ret = osal_kthread_set_priority(task_handle, ROBOT_DEMO_TASK_PRIO);
+        ret = osal_kthread_set_priority(task_handle, TASK_PRIO);
         if (ret != OSAL_SUCCESS) {
             printf("智能小车演示: 设置任务优先级失败\r\n");
         }

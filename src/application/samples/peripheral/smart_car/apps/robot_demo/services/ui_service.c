@@ -103,15 +103,14 @@ void ui_render_standby(const char *wifi_state, const char *ip_addr)
 
     // Convert English states to Chinese if possible
     const char *state_str = wifi_state;
-    if (strstr(wifi_state, "Connecting")) {
+    if (strstr(wifi_state, "Connecting"))
         state_str = "WiFi: 连接中";
-    } else if (strstr(wifi_state, "Connected")) {
+    else if (strstr(wifi_state, "Connected"))
         state_str = "WiFi: 连接成功";
-    } else if (strstr(wifi_state, "Fail")) {
+    else if (strstr(wifi_state, "Fail"))
         state_str = "WiFi: 连接失败";
-    } else if (strstr(wifi_state, "AP")) {
+    else if (strstr(wifi_state, "AP"))
         state_str = "热点模式";
-    }
 
     ssd1306_Fill(Black);
     ssd1306_DrawString16(0, 0, "模式: 停止", White);

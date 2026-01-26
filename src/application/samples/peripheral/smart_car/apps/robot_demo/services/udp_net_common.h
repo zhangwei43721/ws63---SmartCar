@@ -22,7 +22,7 @@ extern int g_udp_net_socket_fd;
 extern bool g_udp_net_bound;
 extern bool g_udp_net_wifi_connected;
 extern bool g_udp_net_wifi_has_ip;
-extern char g_udp_net_ip[IP_BUFFER_SIZE];
+extern char g_udp_net_ip[BUF_IP];
 
 // 简单累加校验（取低 8 位），用于 UDP 协议包校验。
 uint8_t udp_net_common_checksum8_add(const uint8_t *data, size_t len);

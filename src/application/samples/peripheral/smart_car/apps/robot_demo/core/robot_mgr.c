@@ -74,8 +74,8 @@ static void robot_mgr_run_standby_tick(void)
         car_stop();
     }
 
-    if (now - last_ui_update >= osal_msecs_to_jiffies(STANDBY_UPDATE_DELAY_MS)) {
-        char ip_line[IP_BUFFER_SIZE] = {0};
+    if (now - last_ui_update >= osal_msecs_to_jiffies(STANDBY_DELAY)) {
+        char ip_line[BUF_IP] = {0};
         const char *ip = udp_service_get_ip();
 
         if (ip != NULL)
@@ -117,8 +117,6 @@ void robot_mgr_init(void)
     sg90_init();
 
     ui_service_init();
-    // net_service_init();
-    // http_ctrl_service_init();
     udp_service_init();
     robot_mgr_state_mutex_init();
     robot_mgr_set_status(CAR_STOP_STATUS);
@@ -231,14 +229,4 @@ void robot_mgr_get_state_copy(RobotState *out)
     ROBOT_STATE_LOCK();
     *out = g_robot_state;
     ROBOT_STATE_UNLOCK();
-}
-
-unsigned int robot_mgr_get_obstacle_threshold_cm(void)
-{
-    return (unsigned int)storage_service_get_obstacle_threshold();
-}
-
-unsigned int robot_mgr_get_servo_center_angle(void)
-{
-    return (unsigned int)storage_service_get_servo_center();
 }
