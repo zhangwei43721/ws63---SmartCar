@@ -66,7 +66,8 @@ void ui_show_mode_page(CarStatus status)
         return;
 
     // 直接使用枚举值作为索引（更简单，不需要循环查找）
-    if (status >= 0 && status < (int)(sizeof(g_mode_display) / sizeof(g_mode_display[0]))) {
+    int mode_count = (int)(sizeof(g_mode_display) / sizeof(g_mode_display[0]));
+    if (status >= 0 && status < mode_count) {
         ssd1306_Fill(Black);
         ssd1306_DrawString16(0, 0, g_mode_display[status].line0, White);
         ssd1306_DrawString16(0, 16, g_mode_display[status].line1, White);
@@ -80,23 +81,30 @@ void ui_show_mode_page(CarStatus status)
  * @param wifi_state WiFi 连接状态描述
  * @param ip_addr IP 地址字符串
  */
-void ui_render_standby(const char *wifi_state, const char *ip_addr)
+void ui_render_standby(WifiConnectStatus wifi_state, const char *ip_addr)
 {
     ui_service_init();
 
     if (!g_oled_ready)
         return;
 
-    // Convert English states to Chinese if possible
-    const char *state_str = wifi_state;
-    if (strstr(wifi_state, "Connecting"))
-        state_str = "WiFi: 连接中";
-    else if (strstr(wifi_state, "Connected"))
-        state_str = "WiFi: 连接成功";
-    else if (strstr(wifi_state, "Fail"))
-        state_str = "WiFi: 连接失败";
-    else if (strstr(wifi_state, "AP"))
-        state_str = "热点模式";
+    const char *state_str = "WiFi: 未知状态";
+    switch (wifi_state) {
+        case WIFI_STATUS_DISCONNECTED:
+            state_str = "WiFi: 未连接";
+            break;
+        case WIFI_STATUS_CONNECTING:
+            state_str = "WiFi: 连接中";
+            break;
+        case WIFI_STATUS_CONNECTED:
+            state_str = "WiFi: 连接成功";
+            break;
+        case WIFI_STATUS_AP_MODE:
+            state_str = "热点模式";
+            break;
+        default:
+            break;
+    }
 
     ssd1306_Fill(Black);
     ssd1306_DrawString16(0, 0, "模式: 停止", White);

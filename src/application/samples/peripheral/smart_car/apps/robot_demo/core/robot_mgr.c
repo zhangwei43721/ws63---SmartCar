@@ -59,12 +59,15 @@ static void robot_mgr_run_standby_tick(void)
         char ip_line[BUF_IP] = {0};
         const char *ip = udp_service_get_ip();
 
+        // 获取 IP 地址字符串
         if (ip != NULL)
             (void)snprintf(ip_line, sizeof(ip_line), "IP: %s", ip);
         else
             (void)snprintf(ip_line, sizeof(ip_line), "IP: Pending");
 
-        ui_render_standby(udp_service_is_connected() ? "WiFi: Connected" : "WiFi: Connecting", ip_line);
+        // 获取 WiFi 连接状态
+        WifiConnectStatus wifi_status = udp_service_get_wifi_status();
+        ui_render_standby(wifi_status, ip_line);       
         last_ui_update = now;
     }
 }
@@ -139,17 +142,18 @@ void robot_mgr_set_status(CarStatus status)
 void robot_mgr_tick(void)
 {
     CarStatus current_status = g_status; // 当前状态
+    int mode_count = (int)(sizeof(g_mode_ops) / sizeof(g_mode_ops[0])); // 模式数量
 
     // 1. 处理状态切换
     if (current_status != g_last_status) {
         // 退出旧模式
-        if (g_last_status > CAR_STOP_STATUS && g_last_status < sizeof(g_mode_ops) / sizeof(g_mode_ops[0])) {
+        if (g_last_status > CAR_STOP_STATUS && g_last_status < mode_count) {
             if (g_mode_ops[g_last_status].exit)
                 g_mode_ops[g_last_status].exit();
         }
 
         // 进入新模式
-        if (current_status > CAR_STOP_STATUS && current_status < sizeof(g_mode_ops) / sizeof(g_mode_ops[0])) {
+        if (current_status > CAR_STOP_STATUS && current_status < mode_count) {
             if (g_mode_ops[current_status].enter)
                 g_mode_ops[current_status].enter();
         }
@@ -160,7 +164,7 @@ void robot_mgr_tick(void)
     // 2. 执行当前模式逻辑
     if (current_status == CAR_STOP_STATUS) {
         robot_mgr_run_standby_tick();
-    } else if (current_status > CAR_STOP_STATUS && current_status < sizeof(g_mode_ops) / sizeof(g_mode_ops[0])) {
+    } else if (current_status > CAR_STOP_STATUS && current_status < mode_count) {
         if (g_mode_ops[current_status].tick)
             g_mode_ops[current_status].tick();
     }

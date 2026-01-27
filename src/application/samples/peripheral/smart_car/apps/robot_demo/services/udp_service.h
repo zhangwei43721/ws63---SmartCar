@@ -23,6 +23,7 @@ typedef struct {
 
 void udp_service_init(void);
 bool udp_service_is_connected(void);
+WifiConnectStatus udp_service_get_wifi_status(void);
 const char *udp_service_get_ip(void);
 void udp_service_send_state(void);
 bool udp_service_pop_cmd(int8_t *motor1_out, int8_t *motor2_out, int8_t *servo_out);

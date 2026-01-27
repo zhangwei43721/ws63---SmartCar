@@ -14,6 +14,16 @@ typedef enum {
     CAR_BT_CONTROL_STATUS          /* 蓝牙遥控模式（未实现）：通过BLE蓝牙接收控制命令 */
 } CarStatus;
 
+/**
+ * @brief WiFi 连接状态枚举
+ */
+typedef enum {
+    WIFI_STATUS_DISCONNECTED = 0, /* 未连接 */
+    WIFI_STATUS_CONNECTING,       /* 连接中 */
+    WIFI_STATUS_CONNECTED,        /* 已连接 */
+    WIFI_STATUS_AP_MODE           /* 热点模式（预留） */
+} WifiConnectStatus;
+
 // 转向方向常量
 #define CAR_TURN_LEFT 0
 #define CAR_TURN_RIGHT 1

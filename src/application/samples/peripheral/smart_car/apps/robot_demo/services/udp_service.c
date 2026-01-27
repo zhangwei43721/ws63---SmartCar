@@ -34,8 +34,8 @@ static osal_mutex g_mutex;          /* 保护内部状态的互斥锁 */
 static bool g_mutex_inited = false; /* 互斥锁是否已初始化 */
 
 // 使用 robot_config.h 中的通用锁宏
-#define UDP_LOCK()    MUTEX_LOCK(g_mutex, g_mutex_inited)
-#define UDP_UNLOCK()  MUTEX_UNLOCK(g_mutex, g_mutex_inited)
+#define UDP_LOCK() MUTEX_LOCK(g_mutex, g_mutex_inited)
+#define UDP_UNLOCK() MUTEX_UNLOCK(g_mutex, g_mutex_inited)
 
 static bool g_ip_printed = false; /* 标记是否已打印IP */
 
@@ -91,12 +91,29 @@ void udp_service_init(void)
 }
 
 /**
- * @brief 检查UDP绑定状态
- * @return 已绑定返回 true，否则返回 false
+ * @brief 检查 WiFi 是否真正连接（已获取 IP）
+ * @return WiFi 已连接并获取 IP 返回 true，否则返回 false
+ * @note 修复：之前只检查 UDP 是否绑定，现在真正检查 WiFi 状态
  */
 bool udp_service_is_connected(void)
 {
-    return g_udp_net_bound;
+    // WiFi 必须已连接且已获取 IP，UDP socket 必须已绑定
+    return g_udp_net_wifi_connected && g_udp_net_wifi_has_ip && g_udp_net_bound;
+}
+
+/**
+ * @brief 获取 WiFi 连接状态
+ * @return WifiConnectStatus 枚举值
+ */
+WifiConnectStatus udp_service_get_wifi_status(void)
+{
+    if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip)
+        return WIFI_STATUS_CONNECTED;
+    else if (g_udp_net_wifi_connected)
+        // 已连接 WiFi 但未获取 IP，视为连接中
+        return WIFI_STATUS_CONNECTING;
+    else
+        return WIFI_STATUS_DISCONNECTED; // 未连接
 }
 
 /**
