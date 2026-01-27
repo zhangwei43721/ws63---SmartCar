@@ -109,11 +109,9 @@ WifiConnectStatus udp_service_get_wifi_status(void)
 {
     if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip)
         return WIFI_STATUS_CONNECTED;
-    else if (g_udp_net_wifi_connected)
-        // 已连接 WiFi 但未获取 IP，视为连接中
-        return WIFI_STATUS_CONNECTING;
-    else
-        return WIFI_STATUS_DISCONNECTED; // 未连接
+    if (g_udp_net_wifi_connected)
+        return WIFI_STATUS_CONNECTING; // 已连接 WiFi 但未获取 IP
+    return WIFI_STATUS_DISCONNECTED;   // 未连接
 }
 
 /**
@@ -280,16 +278,15 @@ static void *udp_service_task(const char *arg)
         // 确保WiFi连接
         udp_net_common_wifi_ensure_connected();
 
-        // 打印WiFi和IP状态（只打印一次）
-        const char *ip = g_udp_net_ip;
+        // 打印 WiFi 和 IP 状态（只打印一次）
         if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip && !g_ip_printed) {
-            if (ip != NULL && strlen(ip) > 0 && ip[0] != '0') {
-                printf("udp_service: WiFi已连接，IP: %s\r\n", ip);
-                g_ip_printed = true; // 标记已打印
+            const char *ip = g_udp_net_ip;
+            if (ip && strlen(ip) > 0 && ip[0] != '0') {
+                printf("udp_service: WiFi 已连接，IP: %s\r\n", ip);
+                g_ip_printed = true;
             }
         } else if (!g_udp_net_wifi_connected || !g_udp_net_wifi_has_ip) {
-            // 断开连接时重置打印标记
-            g_ip_printed = false;
+            g_ip_printed = false; // 断开连接时重置标记
         }
 
         if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip) {
@@ -306,9 +303,7 @@ static void *udp_service_task(const char *arg)
                 send_heartbeat();
                 last_heartbeat = now_jiffies;
             }
-
-            // 检查状态变化并立即发送
-            udp_service_send_state();
+            udp_service_send_state(); // 检查状态变化并立即发送
         }
 
         // 接收数据 (由于设置了超时，这里不会永久阻塞)
@@ -319,34 +314,30 @@ static void *udp_service_task(const char *arg)
 
         if (n > 0) {
             // 优先处理 OTA 数据包
-            if (ota_service_process_packet(g_rx_buffer, (size_t)n, &from_addr)) {
+            if (ota_service_process_packet(g_rx_buffer, (size_t)n, &from_addr))
                 continue;
-            }
 
-            uint8_t type = g_rx_buffer[0];
-
-            if ((type == 0x01 || type == 0x03 || type == 0x04) && (size_t)n == sizeof(udp_packet_t)) {
-                udp_packet_t *pkt = (udp_packet_t *)g_rx_buffer;
+            udp_packet_t *pkt = (udp_packet_t *)g_rx_buffer;
+            // 校验数据包类型和长度
+            if ((pkt->type == 0x01 || pkt->type == 0x03 || pkt->type == 0x04) &&
+                (size_t)n == sizeof(udp_packet_t)) {
+                // 校验和验证
                 uint8_t checksum = udp_net_common_checksum8_add((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
                 if (checksum == pkt->checksum) {
                     if (pkt->type == 0x01) {
                         udp_service_push_cmd(pkt->motor1, pkt->motor2, pkt->servo);
-                        // 降低控制命令的打印频率，或者注释掉，避免刷屏
-                        // printf("udp_service: 收到控制命令 m1=%d m2=%d s=%d\r\n", pkt->motor1, pkt->motor2,
-                        // pkt->servo);
                     } else if (pkt->type == 0x03) {
+                        // 模式切换命令 (0-4 有效)
                         if (pkt->cmd >= 0 && pkt->cmd <= 4) {
-                            printf("udp_service: 切换模式 cmd=%d (CarStatus)\r\n", pkt->cmd);
+                            printf("udp_service: 切换模式 cmd=%d\r\n", pkt->cmd);
                             robot_mgr_set_status((CarStatus)pkt->cmd);
                         } else {
                             printf("udp_service: 无效的模式命令 cmd=%d\r\n", pkt->cmd);
                         }
                     } else if (pkt->type == 0x04) {
-                        // PID 参数设置命令
-                        // cmd: 参数类型 (1=Kp, 2=Ki, 3=Kd, 4=Speed)
-                        // motor1: 高8位, motor2: 低8位 (组成 int16_t)
+                        // PID 参数设置 (motor1=高8位, motor2=低8位)
                         int16_t val = (int16_t)(((uint8_t)pkt->motor1 << 8) | (uint8_t)pkt->motor2);
-                        printf("udp_service: 设置PID type=%d val=%d\r\n", pkt->cmd, val);
+                        printf("udp_service: 设置 PID type=%d val=%d\r\n", pkt->cmd, val);
                         mode_trace_set_pid(pkt->cmd, val);
                     }
                 }
