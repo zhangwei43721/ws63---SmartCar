@@ -6,7 +6,7 @@
 // --- 配置管理 ---
 const config = {
   // 代理服务器地址（WebSocket）
-  proxyUrl: "ws://192.168.111.18:8081",
+  proxyUrl: "ws://localhost:8081",
   discoveryInterval: 2000,
 };
 

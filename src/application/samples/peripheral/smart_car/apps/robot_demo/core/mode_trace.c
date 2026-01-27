@@ -11,6 +11,7 @@
 // 循迹速度参数配置
 #define TRACE_SPEED_FORWARD 40    // 默认直行速度
 #define TRACE_LOST_TIMEOUT_MS 300 // 丢失黑线后继续行驶的超时时间(ms)
+#define TRACE_SEARCH_SPEED 30     // 丢线后搜索速度
 
 // PID 参数
 static float g_kp = 16.0f;                     /* 比例系数 Kp */
@@ -22,6 +23,46 @@ static float g_last_error = 0; /* 上次误差值（用于微分计算） */
 static float g_integral = 0;   /* 误差积分值（用于积分计算） */
 
 static unsigned long long g_last_seen_tick = 0; /* 上次检测到黑线的时间 */
+static float g_last_valid_error = 0;            /* 上次有效误差值（用于丢线后反向搜索） */
+
+// 循迹传感器误差映射表
+typedef struct {
+    uint8_t left;
+    uint8_t middle;
+    uint8_t right;
+    float error;
+} TraceErrorMap;
+
+// 误差查找表
+// 左偏为负，右偏为正
+static const TraceErrorMap g_trace_error_table[] = {
+    // 左传感器 中传感器 右传感器 误差值
+    {1, 1, 0, -1.0f}, // 左+中: 轻微左偏
+    {0, 1, 1, 1.0f},  // 右+中: 轻微右偏
+    {1, 0, 0, -2.0f}, // 仅左: 严重左偏
+    {0, 0, 1, 2.0f},  // 仅右: 严重右偏
+    {0, 1, 0, 0.0f},  // 仅中: 居中
+    {1, 1, 1, 0.0f},  // 全检测: 居中
+};
+
+/**
+ * @brief 根据传感器状态计算误差值
+ * @param left 左传感器状态
+ * @param middle 中传感器状态
+ * @param right 右传感器状态
+ * @return 误差值 (0表示居中，负值左偏，正值右偏)
+ */
+static float calculate_trace_error(unsigned int left, unsigned int middle, unsigned int right)
+{
+    int table_size = sizeof(g_trace_error_table) / sizeof(g_trace_error_table[0]);
+    for (int i = 0; i < table_size; i++) {
+        if (g_trace_error_table[i].left == left && g_trace_error_table[i].middle == middle &&
+            g_trace_error_table[i].right == right) {
+            return g_trace_error_table[i].error;
+        }
+    }
+    return 0.0f; // 默认无误差（或未检测到）
+}
 
 void mode_trace_enter(void)
 {
@@ -32,6 +73,7 @@ void mode_trace_enter(void)
     // 重置 PID 状态
     g_last_error = 0;
     g_integral = 0;
+    g_last_valid_error = 0; // 重置上次有效误差
 
     // 从 NV 加载 PID 参数
     float kp, ki, kd;
@@ -41,8 +83,7 @@ void mode_trace_enter(void)
     g_ki = ki;
     g_kd = kd;
     g_base_speed = speed;
-    printf("PID 从 NV 加载: Kp=%.2f Ki=%.3f Kd=%.2f Speed=%d\r\n",
-           g_kp, g_ki, g_kd, g_base_speed);
+    printf("PID 从 NV 加载: Kp=%.2f Ki=%.3f Kd=%.2f Speed=%d\r\n", g_kp, g_ki, g_kd, g_base_speed);
 }
 
 // 设置 PID 参数
@@ -73,6 +114,38 @@ void mode_trace_set_pid(int type, int value)
 // 根据用户指示：黑色是高电平
 #define TRACE_DETECT_BLACK 1
 
+/**
+ * @brief PID 核心计算算法
+ * @param error 当前误差
+ * @return PID 输出值
+ */
+static float calculate_pid(float error)
+{
+    // 1. 累加积分
+    g_integral += error;
+
+    // 2. 积分限幅 (防止积分饱和)
+    if (g_integral > 50)
+        g_integral = 50;
+    if (g_integral < -50)
+        g_integral = -50;
+
+    // 3. 积分分离 (大误差时不积分)
+    if (error > 1 || error < -1) {
+        g_integral = 0;
+    }
+
+    // 4. 计算 P, I, D 三项
+    float p_term = g_kp * error;
+    float i_term = g_ki * g_integral;
+    float d_term = g_kd * (error - g_last_error);
+
+    // 5. 更新上次误差
+    g_last_error = error;
+
+    return p_term + i_term + d_term;
+}
+
 void mode_trace_tick(void)
 {
     unsigned int left = tcrt5000_get_left();
@@ -84,58 +157,14 @@ void mode_trace_tick(void)
     robot_mgr_update_ir_status(left, middle, right);
 
     // 计算误差 Error
-    // 使用查找表：左偏为负，右偏为正
-    // 误差值越大，表示偏离越严重，需要更强的转向
-    typedef struct {
-        uint8_t left;
-        uint8_t middle;
-        uint8_t right;
-        float error;
-    } error_map_t;
-
-    static const error_map_t error_table[] = {
-        // 左传感器 中传感器 右传感器 误差值
-        {1, 1, 0, -1.0f},  // 左+中: 轻微左偏
-        {0, 1, 1,  1.0f},  // 右+中: 轻微右偏
-        {1, 0, 0, -2.0f},  // 仅左: 严重左偏
-        {0, 0, 1,  2.0f},  // 仅右: 严重右偏
-        {0, 1, 0,  0.0f},  // 仅中: 居中
-        {1, 1, 1,  0.0f},  // 全检测: 居中
-    };
-
-    // 查找对应的误差值
-    float error = 0.0f;
-    for (int i = 0; i < 6; i++) {
-        if (error_table[i].left == left &&
-            error_table[i].middle == middle &&
-            error_table[i].right == right) {
-            error = error_table[i].error;
-            break;
-        }
-    }
+    float error = calculate_trace_error(left, middle, right);
 
     if (left == TRACE_DETECT_BLACK || middle == TRACE_DETECT_BLACK || right == TRACE_DETECT_BLACK) {
         g_last_seen_tick = now;
+        g_last_valid_error = error; // 保存当前有效误差，用于丢线后反向搜索
 
         // PID 计算
-        g_integral += error;
-        // 积分限幅 (优化：减小限幅范围，防止过大)
-        if (g_integral > 50)
-            g_integral = 50;
-        if (g_integral < -50)
-            g_integral = -50;
-
-        // 积分分离：当误差较大时，不进行积分，防止过冲
-        if (error > 1 || error < -1) {
-            g_integral = 0;
-        }
-
-        float p_term = g_kp * error;
-        float i_term = g_ki * g_integral;
-        float d_term = g_kd * (error - g_last_error);
-
-        float pid_output = p_term + i_term + d_term;
-        g_last_error = error;
+        float pid_output = calculate_pid(error);
 
         // --- 优化策略 ---
 
@@ -147,10 +176,6 @@ void mode_trace_tick(void)
             current_base_speed = (int)(g_base_speed * 0.6f); // 降速至 60%
         else if (error >= 1 || error <= -1)
             current_base_speed = (int)(g_base_speed * 0.9f); // 90% (轻微减速)
-
-        // 确保最小速度，防止电机停转 (根据经验 l9110s 至少需要 20-30 PWM)
-        if (current_base_speed < 20)
-            current_base_speed = 20;
 
         // 使用四舍五入而不是截断，以保留 0.5 级别的微调效果
         int pid_out_int = (int)(pid_output > 0 ? (pid_output + 0.5f) : (pid_output - 0.5f));
@@ -176,15 +201,23 @@ void mode_trace_tick(void)
 
     } else {
         // 未检测到黑线
-        // 记忆功能：如果刚丢失信号不久，继续直行一段距离
         if (now - g_last_seen_tick < osal_msecs_to_jiffies(TRACE_LOST_TIMEOUT_MS)) {
-            // 丢失信号时，保持上一次的转向相反的趋势可能比直行更好？
-            // 暂时保持直行，或者可以尝试用 g_last_error 来决定转向
-            // 这里简单处理为直行，避免过度转向
-            l9110s_set_differential(g_base_speed, g_base_speed);
+            // 刚丢失信号不久，使用反向搜索策略
+            // 如果上次是左偏（误差为负），向右转来找线；如果上次是右偏（误差为正），向左转来找线
+            int search_speed = TRACE_SEARCH_SPEED;
+
+            if (g_last_valid_error < -0.5f) {
+                // 上次左偏，现在向右转（左轮快，右轮慢）
+                l9110s_set_differential(search_speed, -search_speed / 2);
+            } else if (g_last_valid_error > 0.5f) {
+                // 上次右偏，现在向左转（左轮慢，右轮快）
+                l9110s_set_differential(-search_speed / 2, search_speed);
+            } else {
+                // 上次居中，继续直行搜索
+                l9110s_set_differential(search_speed, search_speed);
+            }
         } else {
-            // 超时仍未找到，停车
-            l9110s_set_differential(0, 0);
+            l9110s_set_differential(0, 0); // 超时仍未找到，停车
         }
     }
 }

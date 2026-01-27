@@ -30,47 +30,50 @@ static osal_mutex g_state_mutex;
 // 互斥锁是否已初始化的标志（初始化成功后设为 true）
 static bool g_state_mutex_inited = false;
 
+static void mode_standby_enter(void)
+{
+    // 切换到待机模式时，立即停止小车
+    CAR_STOP();
+}
+
+/**
+ * @brief 待机模式周期回调函数
+ * @note 每 500ms 更新一次 OLED 显示，展示 WiFi 连接状态和 IP 地址
+ */
+static void mode_standby_tick(void)
+{
+    static unsigned long long last_ui_update = 0; // 上次 UI 更新时间戳
+    unsigned long long now = osal_get_jiffies();  // 当前时间戳
+
+    // 每 STANDBY_DELAY (500ms) 更新一次 UI，避免频繁刷新影响性能
+    if (now - last_ui_update >= osal_msecs_to_jiffies(STANDBY_DELAY)) {
+        char ip_line[BUF_IP] = {0};            // IP 地址显示缓冲区
+        const char *ip = udp_service_get_ip(); // 从 UDP 服务获取 IP 地址
+
+        // 格式化 IP 地址字符串（如果有 IP 就显示，否则显示 "Pending"）
+        (void)snprintf(ip_line, sizeof(ip_line), "IP: %s", ip ? ip : "Pending");
+
+        WifiConnectStatus wifi_status = udp_service_get_wifi_status(); // 获取 WiFi 连接状态
+        ui_render_standby(wifi_status, ip_line);                       // 在 OLED 显示状态和 IP 地址
+        last_ui_update = now;                                          // 更新上次刷新时间戳
+    }
+}
+
+static void mode_standby_exit(void)
+{
+    // 退出待机模式时无需特殊处理
+}
+
 // 模式操作接口定义（按 CarStatus 枚举值索引）
 static RobotModeOps g_mode_ops[] = {
     // CAR_STOP_STATUS (0)
-    {NULL, NULL, NULL},
+    {mode_standby_enter, mode_standby_tick, mode_standby_exit},
     // CAR_TRACE_STATUS (1)
     {mode_trace_enter, mode_trace_tick, mode_trace_exit},
     // CAR_OBSTACLE_AVOIDANCE_STATUS (2)
     {mode_obstacle_enter, mode_obstacle_tick, mode_obstacle_exit},
     // CAR_WIFI_CONTROL_STATUS (3)
     {mode_remote_enter, mode_remote_tick, mode_remote_exit}};
-
-/**
- * @brief 运行待机模式，显示 WiFi 连接状态和 IP 地址
- * @note 待机模式由主 tick 循环直接处理，不通过 ops 接口（为了简化 UI 更新逻辑）
- */
-static void robot_mgr_run_standby_tick(void)
-{
-    static unsigned long long last_ui_update = 0;
-    unsigned long long now = osal_get_jiffies();
-
-    // 只有在切换到待机时停止一次
-    if (g_last_status != CAR_STOP_STATUS) {
-        CAR_STOP();
-    }
-
-    if (now - last_ui_update >= osal_msecs_to_jiffies(STANDBY_DELAY)) {
-        char ip_line[BUF_IP] = {0};
-        const char *ip = udp_service_get_ip();
-
-        // 获取 IP 地址字符串
-        if (ip != NULL)
-            (void)snprintf(ip_line, sizeof(ip_line), "IP: %s", ip);
-        else
-            (void)snprintf(ip_line, sizeof(ip_line), "IP: Pending");
-
-        // 获取 WiFi 连接状态
-        WifiConnectStatus wifi_status = udp_service_get_wifi_status();
-        ui_render_standby(wifi_status, ip_line);       
-        last_ui_update = now;
-    }
-}
 
 /**
  * @brief 初始化状态互斥锁，保护全局机器人状态的并发访问
@@ -127,11 +130,9 @@ void robot_mgr_set_status(CarStatus status)
     if (g_status != status) {
         g_status = status;
         // 加锁保护状态更新
-        if (g_state_mutex_inited) {
-            osal_mutex_lock(&g_state_mutex);
-            g_robot_state.mode = status;
-            osal_mutex_unlock(&g_state_mutex);
-        }
+        MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
+        g_robot_state.mode = status;
+        MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
         ui_show_mode_page(status);
     }
 }
@@ -141,19 +142,19 @@ void robot_mgr_set_status(CarStatus status)
  */
 void robot_mgr_tick(void)
 {
-    CarStatus current_status = g_status; // 当前状态
+    CarStatus current_status = g_status;                                // 当前状态
     int mode_count = (int)(sizeof(g_mode_ops) / sizeof(g_mode_ops[0])); // 模式数量
 
     // 1. 处理状态切换
     if (current_status != g_last_status) {
         // 退出旧模式
-        if (g_last_status > CAR_STOP_STATUS && g_last_status < mode_count) {
+        if (g_last_status >= CAR_STOP_STATUS && g_last_status < mode_count) {
             if (g_mode_ops[g_last_status].exit)
                 g_mode_ops[g_last_status].exit();
         }
 
         // 进入新模式
-        if (current_status > CAR_STOP_STATUS && current_status < mode_count) {
+        if (current_status >= CAR_STOP_STATUS && current_status < mode_count) {
             if (g_mode_ops[current_status].enter)
                 g_mode_ops[current_status].enter();
         }
@@ -162,57 +163,9 @@ void robot_mgr_tick(void)
     }
 
     // 2. 执行当前模式逻辑
-    if (current_status == CAR_STOP_STATUS) {
-        robot_mgr_run_standby_tick();
-    } else if (current_status > CAR_STOP_STATUS && current_status < mode_count) {
+    if (current_status >= CAR_STOP_STATUS && current_status < mode_count) {
         if (g_mode_ops[current_status].tick)
             g_mode_ops[current_status].tick();
-    }
-}
-
-/**
- * @brief 更新舵机角度到全局状态
- * @param angle 舵机角度值（0-180度）
- */
-void robot_mgr_update_servo_angle(unsigned int angle)
-{
-    // 加锁保护状态更新
-    if (g_state_mutex_inited) {
-        osal_mutex_lock(&g_state_mutex);
-        g_robot_state.servo_angle = angle;
-        osal_mutex_unlock(&g_state_mutex);
-    }
-}
-
-/**
- * @brief 更新超声波测距值到全局状态
- * @param distance 距离值（单位：厘米）
- */
-void robot_mgr_update_distance(float distance)
-{
-    // 加锁保护状态更新
-    if (g_state_mutex_inited) {
-        osal_mutex_lock(&g_state_mutex);
-        g_robot_state.distance = distance;
-        osal_mutex_unlock(&g_state_mutex);
-    }
-}
-
-/**
- * @brief 更新红外传感器状态到全局状态
- * @param left 左侧红外传感器状态
- * @param middle 中间红外传感器状态
- * @param right 右侧红外传感器状态
- */
-void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right)
-{
-    // 加锁保护状态更新
-    if (g_state_mutex_inited) {
-        osal_mutex_lock(&g_state_mutex);
-        g_robot_state.ir_left = left;
-        g_robot_state.ir_middle = middle;
-        g_robot_state.ir_right = right;
-        osal_mutex_unlock(&g_state_mutex);
     }
 }
 
@@ -227,9 +180,47 @@ void robot_mgr_get_state_copy(RobotState *out)
         return;
 
     // 加锁保护状态读取
-    if (g_state_mutex_inited) {
-        osal_mutex_lock(&g_state_mutex);
-        *out = g_robot_state;
-        osal_mutex_unlock(&g_state_mutex);
-    }
+    MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
+    *out = g_robot_state;
+    MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
+}
+
+/**
+ * @brief 更新舵机角度到全局状态
+ * @param angle 舵机角度值（0-180度）
+ * @note 使用互斥锁保护，防止多个线程同时修改状态
+ */
+void robot_mgr_update_servo_angle(unsigned int angle)
+{
+    MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
+    g_robot_state.servo_angle = angle;
+    MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
+}
+
+/**
+ * @brief 更新超声波测距值到全局状态
+ * @param distance 距离值（单位：厘米）
+ * @note 使用互斥锁保护，防止多个线程同时修改状态
+ */
+void robot_mgr_update_distance(float distance)
+{
+    MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
+    g_robot_state.distance = distance;
+    MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
+}
+
+/**
+ * @brief 更新红外传感器状态到全局状态
+ * @param left 左侧红外传感器状态
+ * @param middle 中间红外传感器状态
+ * @param right 右侧红外传感器状态
+ * @note 使用互斥锁保护，防止多个线程同时修改状态
+ */
+void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right)
+{
+    MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
+    g_robot_state.ir_left = left;
+    g_robot_state.ir_middle = middle;
+    g_robot_state.ir_right = right;
+    MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }

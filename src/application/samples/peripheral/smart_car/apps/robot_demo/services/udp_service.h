@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "errcode.h"
+#include "../robot_common.h"
 
 #define UDP_SERVER_PORT 8888
 #define UDP_SERVER_IP "192.168.3.151"

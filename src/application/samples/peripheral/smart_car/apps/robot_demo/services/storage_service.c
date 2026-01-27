@@ -11,21 +11,21 @@
 // - magic/version: 结构有效性标识
 // - checksum: 对整个结构体做 16-bit 累加校验（校验时将 checksum 置 0）
 typedef struct {
-    uint32_t magic;          // 魔术字，用于验证配置有效性 (0x524F4254 = "ROBT")
-    uint16_t version;        // 配置版本号
-    uint16_t checksum;       // 16 位校验和（整个结构体累加，计算时此字段置 0）
+    uint32_t magic;    // 魔术字，用于验证配置有效性 (0x524F4254 = "ROBT")
+    uint16_t version;  // 配置版本号
+    uint16_t checksum; // 16 位校验和（整个结构体累加，计算时此字段置 0）
 
     // PID 参数 (使用整数存储，避免 float 二进制兼容问题)
-    int32_t pid_kp_x1000;    // Kp * 1000
-    int32_t pid_ki_x10000;   // Ki * 10000
-    int32_t pid_kd_x500;     // Kd * 500
-    int16_t pid_base_speed;  // 基础速度
+    int32_t pid_kp_x1000;   // Kp * 1000
+    int32_t pid_ki_x10000;  // Ki * 10000
+    int32_t pid_kd_x500;    // Kd * 500
+    int16_t pid_base_speed; // 基础速度
 
     // WiFi 配置
-    char wifi_ssid[32];      // WiFi SSID
-    char wifi_password[64];  // WiFi 密码
+    char wifi_ssid[32];     // WiFi SSID
+    char wifi_password[64]; // WiFi 密码
 
-    uint8_t reserved[8];     // 保留字段，用于未来扩展
+    uint8_t reserved[8]; // 保留字段，用于未来扩展
 } robot_nv_config_t;
 
 #define ROBOT_NV_CONFIG_KEY ((uint16_t)0x2000)
@@ -37,8 +37,8 @@ static osal_mutex g_storage_mutex;          /* 保护 NV 存储访问的互斥�
 static bool g_storage_mutex_inited = false; /* 互斥锁是否已初始化 */
 
 // 使用 robot_config.h 中的通用锁宏
-#define STORAGE_LOCK()    MUTEX_LOCK(g_storage_mutex, g_storage_mutex_inited)
-#define STORAGE_UNLOCK()  MUTEX_UNLOCK(g_storage_mutex, g_storage_mutex_inited)
+#define STORAGE_LOCK() MUTEX_LOCK(g_storage_mutex, g_storage_mutex_inited)
+#define STORAGE_UNLOCK() MUTEX_UNLOCK(g_storage_mutex, g_storage_mutex_inited)
 
 /**
  * @brief NV 配置校验和计算（16 位累加）
@@ -66,9 +66,9 @@ static void nv_set_defaults(robot_nv_config_t *cfg)
     cfg->version = ROBOT_NV_CONFIG_VERSION;
 
     // PID 默认值
-    cfg->pid_kp_x1000 = 16000;       // Kp = 16.0
-    cfg->pid_ki_x10000 = 0;          // Ki = 0.0
-    cfg->pid_kd_x500 = 0;            // Kd = 0.0
+    cfg->pid_kp_x1000 = 16000; // Kp = 16.0
+    cfg->pid_ki_x10000 = 0;    // Ki = 0.0
+    cfg->pid_kd_x500 = 0;      // Kd = 0.0
     cfg->pid_base_speed = 40;
 
     // WiFi 默认值

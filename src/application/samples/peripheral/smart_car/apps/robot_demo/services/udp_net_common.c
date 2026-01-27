@@ -14,14 +14,14 @@ static osal_mutex g_net_mutex;          /* 保护网络状态的互斥锁 */
 static bool g_net_mutex_inited = false; /* 互斥锁是否已初始化 */
 
 // 使用 robot_config.h 中的通用锁宏
-#define NET_LOCK()    MUTEX_LOCK(g_net_mutex, g_net_mutex_inited)
-#define NET_UNLOCK()  MUTEX_UNLOCK(g_net_mutex, g_net_mutex_inited)
+#define NET_LOCK() MUTEX_LOCK(g_net_mutex, g_net_mutex_inited)
+#define NET_UNLOCK() MUTEX_UNLOCK(g_net_mutex, g_net_mutex_inited)
 
-static bool g_wifi_inited = false;             /* WiFi 是否已初始化 */
-bool g_udp_net_wifi_connected = false;         /* WiFi 是否已连接（导出供其他模块使用） */
-bool g_udp_net_wifi_has_ip = false;            /* WiFi 是否已获取IP（导出供其他模块使用） */
-char g_udp_net_ip[BUF_IP] = "0.0.0.0"; /* 本机IP地址字符串（导出供其他模块使用） */
-static unsigned int g_wifi_last_retry = 0;     /* 上次WiFi重连时间（滴答数） */
+static bool g_wifi_inited = false;         /* WiFi 是否已初始化 */
+bool g_udp_net_wifi_connected = false;     /* WiFi 是否已连接（导出供其他模块使用） */
+bool g_udp_net_wifi_has_ip = false;        /* WiFi 是否已获取IP（导出供其他模块使用） */
+char g_udp_net_ip[BUF_IP] = "0.0.0.0";     /* 本机IP地址字符串（导出供其他模块使用） */
+static unsigned int g_wifi_last_retry = 0; /* 上次WiFi重连时间（滴答数） */
 
 int g_udp_net_socket_fd = -1; /* UDP 套接字文件描述符（导出供其他模块使用） */
 bool g_udp_net_bound = false; /* UDP 套接字是否已绑定（导出供其他模块使用） */

@@ -57,8 +57,8 @@ static osal_mutex g_ota_mutex;          /* 保护 OTA 状态的互斥锁 */
 static bool g_ota_mutex_inited = false; /* 互斥锁是否已初始化 */
 
 // 使用 robot_config.h 中的通用锁宏
-#define OTA_LOCK()    MUTEX_LOCK(g_ota_mutex, g_ota_mutex_inited)
-#define OTA_UNLOCK()  MUTEX_UNLOCK(g_ota_mutex, g_ota_mutex_inited)
+#define OTA_LOCK() MUTEX_LOCK(g_ota_mutex, g_ota_mutex_inited)
+#define OTA_UNLOCK() MUTEX_UNLOCK(g_ota_mutex, g_ota_mutex_inited)
 
 /**
  * @brief OTA 升级内存分配适配函数

@@ -38,9 +38,8 @@ static const ModeDisplayInfo g_mode_display[] = {
  */
 void ui_service_init(void)
 {
-    if (g_oled_ready) {
+    if (g_oled_ready) 
         return;
-    }
 
     uapi_pin_set_mode(ROBOT_I2C_SCL_PIN, ROBOT_I2C_PIN_MODE);
     uapi_pin_set_mode(ROBOT_I2C_SDA_PIN, ROBOT_I2C_PIN_MODE);

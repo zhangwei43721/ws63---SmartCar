@@ -64,16 +64,14 @@ void mode_obstacle_tick(void)
 
         // 选择宽敞的一侧转向
         if (left_dist > right_dist)
-            CAR_LEFT();   // 左侧宽敞，左转
+            CAR_LEFT(); // 左侧宽敞，左转
         else
-            CAR_RIGHT();  // 右侧宽敞，右转
+            CAR_RIGHT(); // 右侧宽敞，右转
 
         osal_msleep(TURN_TIME);
         CAR_STOP();
-    } else {
-        // 路径通畅，继续直行
-        CAR_FORWARD();
-    }
+    } else
+        CAR_FORWARD(); // 路径通畅，继续直行
 }
 
 /**
