@@ -26,9 +26,9 @@
 #include "soc_osal.h"
 
 // TCRT5000红外循迹传感器引脚定义
-#define TCRT5000_LEFT_GPIO 4   // 左侧传感器（需要PIN_MODE_2）
-#define TCRT5000_MIDDLE_GPIO 2 // 中间传感器（需要PIN_MODE_0）
-#define TCRT5000_RIGHT_GPIO 0  // 右侧传感器（需要PIN_MODE_0）
+#define TCRT5000_LEFT_GPIO 9   // 左侧传感器（需要PIN_MODE_2）
+#define TCRT5000_MIDDLE_GPIO 8 // 中间传感器（需要PIN_MODE_0）
+#define TCRT5000_RIGHT_GPIO 7  // 右侧传感器（需要PIN_MODE_0）
 
 // 传感器状态定义
 #define TCRT5000_ON_BLACK 0 // 检测到黑线

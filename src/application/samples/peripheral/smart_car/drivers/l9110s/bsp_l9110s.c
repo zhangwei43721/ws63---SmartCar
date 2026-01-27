@@ -166,9 +166,9 @@ static void *motor_diff_daemon_task(const char *arg)
  */
 void l9110s_init(void)
 {
-    uapi_pin_set_mode(L9110S_LEFT_A_GPIO, 0);
-    uapi_pin_set_mode(L9110S_LEFT_B_GPIO, 0);
-    uapi_pin_set_mode(L9110S_RIGHT_A_GPIO, 4); // 注意复用信号4才是GPIO
+    uapi_pin_set_mode(L9110S_LEFT_A_GPIO, 2); // 注意复用信号2才是GPIO
+    uapi_pin_set_mode(L9110S_LEFT_B_GPIO, 4); // 注意复用信号4才是GPIO
+    uapi_pin_set_mode(L9110S_RIGHT_A_GPIO, 0);
     uapi_pin_set_mode(L9110S_RIGHT_B_GPIO, 0);
 
     uapi_gpio_set_dir(L9110S_LEFT_A_GPIO, GPIO_DIRECTION_OUTPUT);
@@ -191,34 +191,10 @@ void l9110s_init(void)
 }
 
 /**
- * @brief 设置左轮电机速度和方向
- */
-void l9110s_set_left_motor(int8_t speed)
-{
-    if (speed > 100)
-        speed = 100;
-    if (speed < -100)
-        speed = -100;
-    g_left_motor_speed = speed;
-}
-
-/**
- * @brief 设置右轮电机速度和方向
- */
-void l9110s_set_right_motor(int8_t speed)
-{
-    if (speed > 100)
-        speed = 100;
-    if (speed < -100)
-        speed = -100;
-    g_right_motor_speed = speed;
-}
-
-/**
  * @brief 设置双轮差速
  */
 void l9110s_set_differential(int8_t left_speed, int8_t right_speed)
 {
-    l9110s_set_left_motor(left_speed);
-    l9110s_set_right_motor(right_speed);
+    g_left_motor_speed = left_speed;
+    g_right_motor_speed = right_speed;
 }

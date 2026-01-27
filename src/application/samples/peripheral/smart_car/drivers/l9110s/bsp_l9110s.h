@@ -25,14 +25,14 @@
 #include "gpio.h"
 #include "soc_osal.h"
 
-// L9110S电机驱动引脚定义 (根据硬件原理图)
+// L9110S电机驱动引脚定义
 // 左轮电机控制引脚
-#define L9110S_LEFT_A_GPIO 7 // MOTOR_IN1 (GPIO_07)
-#define L9110S_LEFT_B_GPIO 8 // MOTOR_IN2 (GPIO_08)
+#define L9110S_LEFT_A_GPIO 4
+#define L9110S_LEFT_B_GPIO 5
 
 // 右轮电机控制引脚
-#define L9110S_RIGHT_A_GPIO 5 // MOTOR_IN3 (GPIO_05)
-#define L9110S_RIGHT_B_GPIO 6 // MOTOR_IN4 (GPIO_06)
+#define L9110S_RIGHT_A_GPIO 0
+#define L9110S_RIGHT_B_GPIO 2
 
 /**
  * @brief 初始化L9110S电机驱动
@@ -41,25 +41,11 @@
 void l9110s_init(void);
 
 // 电机控制宏
-#define CAR_FORWARD()  l9110s_set_differential(100, 100)
+#define CAR_FORWARD() l9110s_set_differential(100, 100)
 #define CAR_BACKWARD() l9110s_set_differential(-100, -100)
-#define CAR_LEFT()     l9110s_set_differential(0, 100)
-#define CAR_RIGHT()    l9110s_set_differential(100, 0)
-#define CAR_STOP()     l9110s_set_differential(0, 0)
-
-/**
- * @brief 设置左轮电机速度和方向
- * @param speed 速度值 -100~100 (负=反转, 0=停止, 正=正转)
- * @return 无
- */
-void l9110s_set_left_motor(int8_t speed);
-
-/**
- * @brief 设置右轮电机速度和方向
- * @param speed 速度值 -100~100 (负=反转, 0=停止, 正=正转)
- * @return 无
- */
-void l9110s_set_right_motor(int8_t speed);
+#define CAR_LEFT() l9110s_set_differential(0, 100)
+#define CAR_RIGHT() l9110s_set_differential(100, 0)
+#define CAR_STOP() l9110s_set_differential(0, 0)
 
 /**
  * @brief 设置双轮差速（遥控模式使用）
