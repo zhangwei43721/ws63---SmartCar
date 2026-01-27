@@ -118,8 +118,8 @@ application/samples/peripheral/smart_car/
 
 | 模块 | 功能 | GPIO引脚 | 备注 |
 |:---|:---|:---|:---|
-| **L9110S 电机** | 左轮 A/B | GPIO 6 / 7 | PWM 控制 |
-| | 右轮 A/B | GPIO 8 / 9 | PWM 控制 |
+| **L9110S 电机** | 左轮 A/B | GPIO 7 / 8 | PWM 控制 |
+| | 右轮 A/B | GPIO 5 / 6 | PWM 控制 |
 | **HC-SR04** | TRIG / ECHO | GPIO 11 / 12 | 超声波测距 |
 | **TCRT5000** | 左 / 中 / 右 | GPIO 4 / 2 / 0 | 循迹传感器 |
 | **SG90 舵机** | PWM 信号 | GPIO 13 | 头部舵机 |
