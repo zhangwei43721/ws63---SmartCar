@@ -38,7 +38,7 @@ static const ModeDisplayInfo g_mode_display[] = {
  */
 void ui_service_init(void)
 {
-    if (g_oled_ready) 
+    if (g_oled_ready)
         return;
 
     uapi_pin_set_mode(ROBOT_I2C_SCL_PIN, ROBOT_I2C_PIN_MODE);
@@ -87,23 +87,15 @@ void ui_render_standby(WifiConnectStatus wifi_state, const char *ip_addr)
     if (!g_oled_ready)
         return;
 
-    const char *state_str = "WiFi: 未知状态";
-    switch (wifi_state) {
-        case WIFI_STATUS_DISCONNECTED:
-            state_str = "WiFi: 未连接";
-            break;
-        case WIFI_STATUS_CONNECTING:
-            state_str = "WiFi: 连接中";
-            break;
-        case WIFI_STATUS_CONNECTED:
-            state_str = "WiFi: 连接成功";
-            break;
-        case WIFI_STATUS_AP_MODE:
-            state_str = "热点模式";
-            break;
-        default:
-            break;
-    }
+    // WiFi 状态字符串查找表（按 WifiConnectStatus 枚举值索引）
+    static const char *wifi_state_str[] = {
+        "WiFi: 未连接",   // WIFI_STATUS_DISCONNECTED (0)
+        "WiFi: 连接中",   // WIFI_STATUS_CONNECTING (1)
+        "WiFi: 连接成功", // WIFI_STATUS_CONNECTED (2)
+        "热点模式"        // WIFI_STATUS_AP_MODE (3)
+    };
+
+    const char *state_str = (wifi_state >= 0 && wifi_state < 4) ? wifi_state_str[wifi_state] : "WiFi: 未知状态";
 
     ssd1306_Fill(Black);
     ssd1306_DrawString16(0, 0, "模式: 停止", White);

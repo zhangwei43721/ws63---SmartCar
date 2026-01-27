@@ -1,110 +1,82 @@
 #include "udp_service.h"
 #include "../core/robot_mgr.h"
+#include "../core/robot_config.h"
 #include "../core/mode_trace.h"
 #include "udp_net_common.h"
 #include "ota_service.h"
-
 #include "lwip/inet.h"
-#include "lwip/ip_addr.h"
 #include "lwip/sockets.h"
 
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+// --- 前向声明 ---
+static void *udp_service_task(const char *arg);
 
-// UDP数据包格式 (7字节)
+// --- 数据结构 ---
 typedef struct {
-    uint8_t type;     // 数据包类型: 0x01=控制, 0x02=状态, 0x03=模式, 0xFE=心跳, 0xFF=存在广播
-    uint8_t cmd;      // 命令类型/模式编号
-    int8_t motor1;    // 左电机值 -100~100
-    int8_t motor2;    // 右电机值 -100~100
-    int8_t servo;     // 舵机角度 0~180
-    int8_t ir_data;   // 红外传感器数据 (bit0=左, bit1=中, bit2=右)
-    uint8_t checksum; // 校验和（累加和）
+    uint8_t type;   // 0x01=控制, 0x02=状态, 0x03=模式, 0x04=PID, 0xFE=心跳, 0xFF=广播
+    uint8_t cmd;    // 命令/模式
+    int8_t motor1;  // 左电机 / PID高位
+    int8_t motor2;  // 右电机 / PID低位
+    int8_t servo;   // 舵机
+    int8_t ir_data; // 红外
+    uint8_t checksum;
 } __attribute__((packed)) udp_packet_t;
 
-static void *udp_service_task(const char *arg);
-static void udp_service_broadcast_presence(void);
+// --- 全局变量 ---
+static osal_mutex g_mutex;
+static bool g_mutex_inited = false;
+static uint8_t g_buf[UDP_BUFFER_SIZE]; // 收发共用缓冲区（单线程安全）
+static struct {
+    int8_t m1, m2, servo;
+    bool has_new;
+} g_cmd = {0}; // 命令缓存
+static struct {
+    RobotState last;
+    uint64_t last_time;
+    bool inited;
+} g_state = {0}; // 状态缓存
 
-static osal_task *g_udp_task_handle = NULL; /* UDP 服务任务句柄 */
-static bool g_udp_task_started = false;     /* UDP 任务是否已启动 */
-
-static osal_mutex g_mutex;          /* 保护内部状态的互斥锁 */
-static bool g_mutex_inited = false; /* 互斥锁是否已初始化 */
-
-// 使用 robot_config.h 中的通用锁宏
-#define UDP_LOCK() MUTEX_LOCK(g_mutex, g_mutex_inited)
-#define UDP_UNLOCK() MUTEX_UNLOCK(g_mutex, g_mutex_inited)
-
-static bool g_ip_printed = false; /* 标记是否已打印IP */
-
-static uint8_t g_rx_buffer[UDP_BUFFER_SIZE]; /* UDP 接收缓冲区 */
-static uint8_t g_tx_buffer[UDP_BUFFER_SIZE]; /* UDP 发送缓冲区 */
-
-static int8_t g_latest_motor1 = 0; /* 最新接收的左电机值 */
-static int8_t g_latest_motor2 = 0; /* 最新接收的右电机值 */
-static int8_t g_latest_servo = 0;  /* 最新接收的舵机值 */
-static bool g_has_latest = false;  /* 是否有最新的控制命令 */
-
-// 上次发送的状态，用于检测变化
-static RobotState g_last_sent_state = {0};            /* 上次发送的状态副本 */
-static bool g_state_initialized = false;              /* 状态是否已初始化 */
-static unsigned long long g_last_state_send_time = 0; /* 上次发送状态的时间 */
+// --- 核心辅助函数 ---
 
 /**
- * @brief 初始化UDP服务互斥锁
+ * @brief 通用发送函数：构建包、计算校验和并广播
  */
-static void udp_service_mutex_init(void)
+static void send_packet(uint8_t type, uint8_t cmd, int8_t m1, int8_t m2, int8_t servo, int8_t ir)
+{
+    udp_packet_t *pkt = (udp_packet_t *)g_buf;
+    pkt->type = type;
+    pkt->cmd = cmd;
+    pkt->motor1 = m1;
+    pkt->motor2 = m2;
+    pkt->servo = servo;
+    pkt->ir_data = ir;
+    pkt->checksum = udp_net_common_checksum8_add((uint8_t *)pkt, 6);
+    udp_net_common_send_broadcast(g_buf, 7, UDP_BROADCAST_PORT);
+}
+
+// --- 外部接口 ---
+
+void udp_service_init(void)
 {
     if (g_mutex_inited)
         return;
-
-    if (osal_mutex_init(&g_mutex) == OSAL_SUCCESS)
-        g_mutex_inited = true;
-    else
-        printf("udp_service: 互斥锁初始化失败\r\n");
-}
-
-/**
- * @brief 初始化UDP服务，创建UDP通信任务
- */
-void udp_service_init(void)
-{
-    if (g_udp_task_started)
-        return;
-
-    udp_service_mutex_init();
     udp_net_common_init();
     ota_service_init();
+    if (osal_mutex_init(&g_mutex) == OSAL_SUCCESS)
+        g_mutex_inited = true;
 
-    osal_kthread_lock();
-    g_udp_task_handle = osal_kthread_create((osal_kthread_handler)udp_service_task, NULL, "udp_task", UDP_STACK_SIZE);
-    if (g_udp_task_handle != NULL) {
-        (void)osal_kthread_set_priority(g_udp_task_handle, UDP_TASK_PRIORITY);
-        g_udp_task_started = true;
-        printf("udp_service: UDP 任务已创建\r\n");
-    } else
-        printf("udp_service: 创建 UDP 任务失败\r\n");
-
-    osal_kthread_unlock();
+    osal_task *task = osal_kthread_create((osal_kthread_handler)udp_service_task, NULL, "udp_task", UDP_STACK_SIZE);
+    if (task) {
+        osal_kthread_set_priority(task, UDP_TASK_PRIORITY);
+        printf("udp_service: 任务启动\r\n");
+    }
 }
 
-/**
- * @brief 检查 WiFi 是否真正连接（已获取 IP）
- * @return WiFi 已连接并获取 IP 返回 true，否则返回 false
- * @note 修复：之前只检查 UDP 是否绑定，现在真正检查 WiFi 状态
- */
 bool udp_service_is_connected(void)
 {
-    // WiFi 必须已连接且已获取 IP，UDP socket 必须已绑定
     return g_udp_net_wifi_connected && g_udp_net_wifi_has_ip && g_udp_net_bound;
 }
 
-/**
- * @brief 获取 WiFi 连接状态
- * @return WifiConnectStatus 枚举值
- */
+// WiFi连接状态返回
 WifiConnectStatus udp_service_get_wifi_status(void)
 {
     if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip)
@@ -114,239 +86,133 @@ WifiConnectStatus udp_service_get_wifi_status(void)
     return WIFI_STATUS_DISCONNECTED;   // 未连接
 }
 
-/**
- * @brief 获取本机 IP 地址
- * @return IP 地址字符串
- */
 const char *udp_service_get_ip(void)
 {
     return g_udp_net_ip;
 }
 
-/**
- * @brief 从命令队列中取出一条控制命令
- * @param motor1_out 左电机命令输出指针
- * @param motor2_out 右电机命令输出指针
- * @param servo_out 舵机命令输出指针
- * @return 有命令返回 true，无命令返回 false
- */
-bool udp_service_pop_cmd(int8_t *motor1_out, int8_t *motor2_out, int8_t *servo_out)
+// 存入命令 (线程安全)
+void udp_service_push_cmd(int8_t m1, int8_t m2, int8_t s)
 {
-    if (motor1_out == NULL || motor2_out == NULL || servo_out == NULL)
-        return false;
+    MUTEX_LOCK(g_mutex, g_mutex_inited);
+    g_cmd.m1 = m1;
+    g_cmd.m2 = m2;
+    g_cmd.servo = s;
+    g_cmd.has_new = true;
+    MUTEX_UNLOCK(g_mutex, g_mutex_inited);
+}
 
-    UDP_LOCK();
-    bool has = g_has_latest;
-    if (has) {
-        *motor1_out = g_latest_motor1;
-        *motor2_out = g_latest_motor2;
-        *servo_out = g_latest_servo;
-        g_has_latest = false;
+// 取出命令 (线程安全)
+bool udp_service_pop_cmd(int8_t *m1, int8_t *m2, int8_t *s)
+{
+    bool ret = false;
+    MUTEX_LOCK(g_mutex, g_mutex_inited);
+    if (g_cmd.has_new) {
+        *m1 = g_cmd.m1;
+        *m2 = g_cmd.m2;
+        *s = g_cmd.servo;
+        g_cmd.has_new = false;
+        ret = true;
     }
-    UDP_UNLOCK();
-
-    return has;
+    MUTEX_UNLOCK(g_mutex, g_mutex_inited);
+    return ret;
 }
 
-/**
- * @brief 将控制命令推入队列
- * @param motor1 左电机命令值
- * @param motor2 右电机命令值
- * @param servo 舵机命令值
- */
-void udp_service_push_cmd(int8_t motor1, int8_t motor2, int8_t servo)
+// --- 内部逻辑 ---
+
+// 检查并发送状态 (变化时发送 或 每500ms发送)
+static void check_and_send_state(uint64_t now)
 {
-    UDP_LOCK();
-    g_latest_motor1 = motor1;
-    g_latest_motor2 = motor2;
-    g_latest_servo = servo;
-    g_has_latest = true;
-    UDP_UNLOCK();
-}
+    RobotState curr;
+    robot_mgr_get_state_copy(&curr);
 
-/**
- * @brief 检测状态是否发生变化
- */
-static bool has_state_changed(const RobotState *new_state)
-{
-    if (!g_state_initialized)
-        return true;
+    bool changed = !g_state.inited || curr.mode != g_state.last.mode || curr.servo_angle != g_state.last.servo_angle ||
+                   (curr.distance > 0 && curr.distance != g_state.last.distance) ||
+                   curr.ir_left != g_state.last.ir_left || curr.ir_middle != g_state.last.ir_middle ||
+                   curr.ir_right != g_state.last.ir_right;
 
-    return (new_state->mode != g_last_sent_state.mode || new_state->servo_angle != g_last_sent_state.servo_angle ||
-            (new_state->distance > 0 && new_state->distance != g_last_sent_state.distance) ||
-            new_state->ir_left != g_last_sent_state.ir_left || new_state->ir_middle != g_last_sent_state.ir_middle ||
-            new_state->ir_right != g_last_sent_state.ir_right);
-}
+    if (changed || (now - g_state.last_time >= 500)) {
+        uint8_t ir_bits = (curr.ir_left & 1) | ((curr.ir_middle & 1) << 1) | ((curr.ir_right & 1) << 2);
+        send_packet(0x02, curr.mode, curr.servo_angle, (int8_t)(curr.distance * 10), 0, ir_bits);
 
-/**
- * @brief 发送状态数据包
- */
-static void send_state_packet(const RobotState *state)
-{
-    udp_packet_t *pkt = (udp_packet_t *)g_tx_buffer;
-    pkt->type = 0x02; // 传感器状态
-    pkt->cmd = (uint8_t)state->mode;
-    pkt->motor1 = (int8_t)state->servo_angle;
-    pkt->motor2 = (int8_t)(state->distance * 10); // 距离放大10倍
-    pkt->servo = 0;
-
-    // 红外数据打包到 ir_data (bit0=左, bit1=中, bit2=右)
-    pkt->ir_data = ((state->ir_left & 1) << 0) | ((state->ir_middle & 1) << 1) | ((state->ir_right & 1) << 2);
-
-    pkt->checksum = udp_net_common_checksum8_add((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
-
-    (void)udp_net_common_send_broadcast(g_tx_buffer, sizeof(udp_packet_t), UDP_BROADCAST_PORT);
-
-    // 更新上次发送的状态和时间
-    g_last_sent_state = *state;
-    g_state_initialized = true;
-    g_last_state_send_time = osal_get_jiffies();
-}
-
-/**
- * @brief 发送心跳包
- */
-static void send_heartbeat(void)
-{
-    udp_packet_t *pkt = (udp_packet_t *)g_tx_buffer;
-    pkt->type = 0xFE; // 心跳包
-    pkt->cmd = 0x00;
-    pkt->motor1 = 0;
-    pkt->motor2 = 0;
-    pkt->servo = 0;
-    pkt->ir_data = 0;
-    pkt->checksum = udp_net_common_checksum8_add((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
-    (void)udp_net_common_send_broadcast(g_tx_buffer, sizeof(udp_packet_t), UDP_BROADCAST_PORT);
-}
-
-/**
- * @brief 检查并发送状态变化
- * @note 状态变化时立即发送，否则每500ms发送一次（保持前端状态同步）
- */
-void udp_service_send_state(void)
-{
-    RobotState state;
-    robot_mgr_get_state_copy(&state);
-
-    // 检查状态是否变化，或者超过500ms没发送了
-    unsigned long long now = osal_get_jiffies();
-    bool should_send = has_state_changed(&state) || (g_state_initialized && (now - g_last_state_send_time >= 500));
-
-    if (should_send) {
-        send_state_packet(&state);
+        g_state.last = curr;
+        g_state.last_time = now;
+        g_state.inited = true;
     }
 }
 
-/**
- * @brief 广播设备存在信息
- */
-static void udp_service_broadcast_presence(void)
-{
-    // 创建存在广播包
-    udp_packet_t *pkt = (udp_packet_t *)g_tx_buffer;
-    pkt->type = 0xFF; // 存在广播
-    pkt->cmd = 0x00;
-    pkt->motor1 = 0;
-    pkt->motor2 = 0;
-    pkt->servo = 0;
-    pkt->ir_data = 0;
-    pkt->checksum = udp_net_common_checksum8_add((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
-    (void)udp_net_common_send_broadcast(g_tx_buffer, sizeof(udp_packet_t), UDP_BROADCAST_PORT);
-}
+// --- 主任务 ---
 
-/**
- * @brief UDP 通信任务主函数
- * @param arg 任务参数（未使用）
- * @note 监听UDP端口，接收控制命令
- */
 static void *udp_service_task(const char *arg)
 {
-    UNUSED(arg);
-
+    (void)arg;
     int sockfd = udp_net_common_open_and_bind(UDP_SERVER_PORT, 100, true);
-    if (sockfd < 0) {
+    if (sockfd < 0)
         return NULL;
-    }
 
-    printf("udp_service: UDP 服务已启动，监听端口 %d\r\n", UDP_SERVER_PORT);
-
-    // 广播计数器
-    unsigned long long last_broadcast = 0;
-    unsigned long long last_heartbeat = 0;
+    uint64_t t_broadcast = 0, t_heartbeat = 0;
+    bool ip_shown = false;
 
     while (1) {
-        // 确保WiFi连接
         udp_net_common_wifi_ensure_connected();
+        bool ready = g_udp_net_wifi_connected && g_udp_net_wifi_has_ip;
 
-        // 打印 WiFi 和 IP 状态（只打印一次）
-        if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip && !g_ip_printed) {
-            const char *ip = g_udp_net_ip;
-            if (ip && strlen(ip) > 0 && ip[0] != '0') {
-                printf("udp_service: WiFi 已连接，IP: %s\r\n", ip);
-                g_ip_printed = true;
-            }
-        } else if (!g_udp_net_wifi_connected || !g_udp_net_wifi_has_ip) {
-            g_ip_printed = false; // 断开连接时重置标记
+        // 1. 状态打印
+        if (ready && !ip_shown) {
+            printf("udp_service: IP: %s\r\n", g_udp_net_ip);
+            ip_shown = true;
+        } else if (!ready) {
+            ip_shown = false;
         }
 
-        if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip) {
-            unsigned long long now_jiffies = osal_get_jiffies();
-
-            // 每2秒广播一次存在信息
-            if (now_jiffies - last_broadcast >= 2000) {
-                udp_service_broadcast_presence();
-                last_broadcast = now_jiffies;
+        // 2. 定时任务 (广播、心跳、状态)
+        if (ready) {
+            uint64_t now = osal_get_jiffies();
+            if (now - t_broadcast >= 2000) { // 2秒广播存在
+                send_packet(0xFF, 0, 0, 0, 0, 0);
+                t_broadcast = now;
             }
-
-            // 每10秒发送心跳包
-            if (now_jiffies - last_heartbeat >= 10000) {
-                send_heartbeat();
-                last_heartbeat = now_jiffies;
+            if (now - t_heartbeat >= 10000) { // 10秒心跳
+                send_packet(0xFE, 0, 0, 0, 0, 0);
+                t_heartbeat = now;
             }
-            udp_service_send_state(); // 检查状态变化并立即发送
+            check_and_send_state(now);
         }
 
-        // 接收数据 (由于设置了超时，这里不会永久阻塞)
-        struct sockaddr_in from_addr;
-        socklen_t from_len = sizeof(from_addr);
-        ssize_t n =
-            lwip_recvfrom(sockfd, g_rx_buffer, sizeof(g_rx_buffer), 0, (struct sockaddr *)&from_addr, &from_len);
+        // 3. 接收处理 (非阻塞/超时模式)
+        struct sockaddr_in client_addr;
+        socklen_t len = sizeof(client_addr);
+        ssize_t n = lwip_recvfrom(sockfd, g_buf, sizeof(g_buf), 0, (struct sockaddr *)&client_addr, &len);
 
         if (n > 0) {
-            // 优先处理 OTA 数据包
-            if (ota_service_process_packet(g_rx_buffer, (size_t)n, &from_addr))
+            // 处理 OTA
+            if (ota_service_process_packet(g_buf, (size_t)n, &client_addr))
                 continue;
 
-            udp_packet_t *pkt = (udp_packet_t *)g_rx_buffer;
-            // 校验数据包类型和长度
-            if ((pkt->type == 0x01 || pkt->type == 0x03 || pkt->type == 0x04) &&
-                (size_t)n == sizeof(udp_packet_t)) {
-                // 校验和验证
-                uint8_t checksum = udp_net_common_checksum8_add((uint8_t *)pkt, sizeof(udp_packet_t) - 1);
-                if (checksum == pkt->checksum) {
-                    if (pkt->type == 0x01) {
+            // 处理控制协议 (长度7且校验通过)
+            udp_packet_t *pkt = (udp_packet_t *)g_buf;
+            if (n == 7 && udp_net_common_checksum8_add(g_buf, 6) == pkt->checksum) {
+                switch (pkt->type) {
+                    case 0x01: // 控制
                         udp_service_push_cmd(pkt->motor1, pkt->motor2, pkt->servo);
-                    } else if (pkt->type == 0x03) {
-                        // 模式切换命令 (0-4 有效)
-                        if (pkt->cmd >= 0 && pkt->cmd <= 4) {
-                            printf("udp_service: 切换模式 cmd=%d\r\n", pkt->cmd);
+                        break;
+                    case 0x03: // 模式切换
+                        if (pkt->cmd <= 4) {
+                            printf("udp_service: Set Mode %d\r\n", pkt->cmd);
                             robot_mgr_set_status((CarStatus)pkt->cmd);
-                        } else {
-                            printf("udp_service: 无效的模式命令 cmd=%d\r\n", pkt->cmd);
                         }
-                    } else if (pkt->type == 0x04) {
-                        // PID 参数设置 (motor1=高8位, motor2=低8位)
+                        break;
+                    case 0x04: { // PID设置 (需要大括号才能声明变量)
                         int16_t val = (int16_t)(((uint8_t)pkt->motor1 << 8) | (uint8_t)pkt->motor2);
-                        printf("udp_service: 设置 PID type=%d val=%d\r\n", pkt->cmd, val);
+                        printf("udp_service: 设置pid值类型=%d 值=%d\r\n", pkt->cmd, val);
                         mode_trace_set_pid(pkt->cmd, val);
+                        break;
                     }
                 }
             }
         }
-        // n == 0 表示超时，这是正常的，继续循环
 
         osal_msleep(50);
     }
-
     return NULL;
 }
