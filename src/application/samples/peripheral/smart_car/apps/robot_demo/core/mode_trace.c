@@ -7,6 +7,7 @@
 #include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
 
 #include <stdio.h>
+#include "adc.h"
 
 // 循迹速度参数配置
 #define TRACE_SPEED_FORWARD 40    // 默认直行速度
@@ -67,6 +68,7 @@ static float calculate_trace_error(unsigned int left, unsigned int middle, unsig
 void mode_trace_enter(void)
 {
     printf("进入循迹模式...\r\n");
+
     // 进入模式时初始化时间戳，防止误判
     g_last_seen_tick = osal_get_jiffies();
 
@@ -83,7 +85,16 @@ void mode_trace_enter(void)
     g_ki = ki;
     g_kd = kd;
     g_base_speed = speed;
-    printf("PID 从 NV 加载: Kp=%.2f Ki=%.3f Kd=%.2f Speed=%d\r\n", g_kp, g_ki, g_kd, g_base_speed);
+
+    // 浮点数转整数打印
+    int kp_int = (int)(g_kp * 100);
+    int ki_int = (int)(g_ki * 1000);
+    int kd_int = (int)(g_kd * 100);
+    printf("PID: Kp=%d.%02d Ki=%d.%03d Kd=%d.%02d Speed=%d\r\n",
+           kp_int / 100, (kp_int >= 0 ? kp_int : -kp_int) % 100,
+           ki_int / 1000, (ki_int >= 0 ? ki_int : -ki_int) % 1000,
+           kd_int / 100, (kd_int >= 0 ? kd_int : -kd_int) % 100,
+           g_base_speed);
 }
 
 // 设置 PID 参数
@@ -111,8 +122,8 @@ void mode_trace_set_pid(int type, int value)
 /*
  * 循迹模式主循环
  */
-// 根据用户指示：黑色是高电平
-#define TRACE_DETECT_BLACK 1
+// TCRT5000传感器: 检测到黑线返回0，检测到白线返回1
+#define TRACE_DETECT_BLACK 0  // 修正：黑线是0，不是1
 
 /**
  * @brief PID 核心计算算法
@@ -148,10 +159,32 @@ static float calculate_pid(float error)
 
 void mode_trace_tick(void)
 {
+    // 触发ADC采样
+    adc_scan_config_t config = {.type = 0, .freq = 1};
+    uapi_adc_auto_scan_ch_enable(TCRT5000_LEFT_ADC_CHANNEL, config, tcrt5000_adc_callback);
+    uapi_adc_auto_scan_ch_disable(TCRT5000_LEFT_ADC_CHANNEL);
+
+    uapi_adc_auto_scan_ch_enable(TCRT5000_MIDDLE_ADC_CHANNEL, config, tcrt5000_adc_callback);
+    uapi_adc_auto_scan_ch_disable(TCRT5000_MIDDLE_ADC_CHANNEL);
+
+    uapi_adc_auto_scan_ch_enable(TCRT5000_RIGHT_ADC_CHANNEL, config, tcrt5000_adc_callback);
+    uapi_adc_auto_scan_ch_disable(TCRT5000_RIGHT_ADC_CHANNEL);
+
+    // 获取传感器状态
     unsigned int left = tcrt5000_get_left();
     unsigned int middle = tcrt5000_get_middle();
     unsigned int right = tcrt5000_get_right();
     unsigned long long now = osal_get_jiffies();
+
+    // 调试信息：每20次循环打印一次
+    static int debug_cnt = 0;
+    if (++debug_cnt >= 20) {
+        debug_cnt = 0;
+        // 打印传感器状态和ADC原始值
+        printf("TRACE: L=%d M=%d R=%d, ADC: L=%d M=%d R=%d mV\n",
+               left, middle, right,
+               tcrt5000_get_left_adc(), tcrt5000_get_middle_adc(), tcrt5000_get_right_adc());
+    }
 
     // 更新红外传感器状态到全局状态
     robot_mgr_update_ir_status(left, middle, right);
@@ -197,11 +230,28 @@ void mode_trace_tick(void)
         if (right_speed < -100)
             right_speed = -100;
 
+        // 调试信息：打印误差和速度
+        if (debug_cnt == 0) {
+            // 浮点数转整数显示：error*100 保留2位小数
+            int error_int = (int)(error * 100);
+            int pid_int = (int)(pid_output * 100);
+            printf("Error=%d.%02d PID=%d.%02d Speed: L=%d R=%d\n",
+                   error_int / 100, (error_int >= 0 ? error_int : -error_int) % 100,
+                   pid_int / 100, (pid_int >= 0 ? pid_int : -pid_int) % 100,
+                   left_speed, right_speed);
+        }
+
         l9110s_set_differential((int8_t)left_speed, (int8_t)right_speed);
 
     } else {
-        // 未检测到黑线
+        // 未检测到黑线 - 丢线状态
         if (now - g_last_seen_tick < osal_msecs_to_jiffies(TRACE_LOST_TIMEOUT_MS)) {
+            // 调试信息：打印丢线搜索
+            if (debug_cnt == 0) {
+                int err_int = (int)(g_last_valid_error * 100);
+                printf("LOST LINE! Searching... last_err=%d.%02d\n",
+                       err_int / 100, (err_int >= 0 ? err_int : -err_int) % 100);
+            }
             // 刚丢失信号不久，使用反向搜索策略
             // 如果上次是左偏（误差为负），向右转来找线；如果上次是右偏（误差为正），向左转来找线
             int search_speed = TRACE_SEARCH_SPEED;
@@ -217,6 +267,10 @@ void mode_trace_tick(void)
                 l9110s_set_differential(search_speed, search_speed);
             }
         } else {
+            // 调试信息：打印超时停车
+            if (debug_cnt == 0) {
+                printf("LOST TIMEOUT! STOP.\n");
+            }
             l9110s_set_differential(0, 0); // 超时仍未找到，停车
         }
     }

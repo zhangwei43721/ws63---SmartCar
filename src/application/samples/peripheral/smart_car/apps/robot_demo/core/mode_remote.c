@@ -29,7 +29,7 @@ void mode_remote_tick(void)
     }
 
     // 命令超时自动停车
-    unsigned long long now = osal_get_jiffies();
+    unsigned long long now = osal_get_jiffies(); // 获取当前时间
     if (now - g_last_cmd_tick > osal_msecs_to_jiffies(REMOTE_TIMEOUT)) {
         l9110s_set_differential(0, 0); // 双电机停止
         sg90_set_angle(SERVO_CENTER);

@@ -100,7 +100,7 @@ void robot_mgr_init(void)
 
     l9110s_init();
     hcsr04_init();
-    tcrt5000_init();
+    tcrt5000_adc_init();  // 使用ADC模式初始化TCRT5000
     sg90_init();
 
     ui_service_init();

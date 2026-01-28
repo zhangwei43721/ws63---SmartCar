@@ -26,13 +26,37 @@
 #include "soc_osal.h"
 
 // TCRT5000红外循迹传感器引脚定义
-#define TCRT5000_LEFT_GPIO 9   // 左侧传感器（需要PIN_MODE_2）
-#define TCRT5000_MIDDLE_GPIO 8 // 中间传感器（需要PIN_MODE_0）
-#define TCRT5000_RIGHT_GPIO 7  // 右侧传感器（需要PIN_MODE_0）
+// GPIO7/8/9支持ADC，分别对应通道0/1/2
+#define TCRT5000_LEFT_GPIO 9    // 左侧传感器 - ADC通道2
+#define TCRT5000_MIDDLE_GPIO 8  // 中间传感器 - ADC通道1
+#define TCRT5000_RIGHT_GPIO 7   // 右侧传感器 - ADC通道0
+
+// ADC通道定义
+#define TCRT5000_LEFT_ADC_CHANNEL 2    // 左侧传感器ADC通道
+#define TCRT5000_MIDDLE_ADC_CHANNEL 1  // 中间传感器ADC通道
+#define TCRT5000_RIGHT_ADC_CHANNEL 0   // 右侧传感器ADC通道
 
 // 传感器状态定义
-#define TCRT5000_ON_BLACK 0 // 检测到黑线
-#define TCRT5000_ON_WHITE 1 // 检测到白色/无黑线
+#define TCRT5000_ON_BLACK 0  // 检测到黑线
+#define TCRT5000_ON_WHITE 1  // 检测到白色/无黑线
+
+// ADC阈值定义（mV）
+// ADC值 >= 阈值表示检测到黑线，ADC值 < 阈值表示检测到白线
+#define TCRT5000_LEFT_THRESHOLD 1700   // 左侧传感器阈值
+#define TCRT5000_MIDDLE_THRESHOLD 1300 // 中间传感器阈值
+#define TCRT5000_RIGHT_THRESHOLD 1500  // 右侧传感器阈值
+
+// ADC数据存储（使用自动扫描模式）
+extern uint32_t g_tcrt5000_adc_data[3];  // 存储左、中、右三个传感器的ADC电压值（mV）
+
+/**
+ * @brief ADC自动扫描回调函数
+ * @param channel ADC通道
+ * @param buffer ADC采样数据缓冲区
+ * @param length 数据长度
+ * @param next 继续扫描标志
+ */
+void tcrt5000_adc_callback(uint8_t channel, uint32_t *buffer, uint32_t length, bool *next);
 
 /**
  * @brief 初始化TCRT5000红外循迹传感器
@@ -57,5 +81,29 @@ unsigned int tcrt5000_get_middle(void);
  * @return 0: 检测到黑线, 1: 未检测到黑线
  */
 unsigned int tcrt5000_get_right(void);
+
+/**
+ * @brief 初始化TCRT5000 ADC模式
+ * @return 无
+ */
+void tcrt5000_adc_init(void);
+
+/**
+ * @brief 获取左侧传感器ADC电压值
+ * @return ADC电压值 (mV)
+ */
+uint32_t tcrt5000_get_left_adc(void);
+
+/**
+ * @brief 获取中间传感器ADC电压值
+ * @return ADC电压值 (mV)
+ */
+uint32_t tcrt5000_get_middle_adc(void);
+
+/**
+ * @brief 获取右侧传感器ADC电压值
+ * @return ADC电压值 (mV)
+ */
+uint32_t tcrt5000_get_right_adc(void);
 
 #endif /* __BSP_TCRT5000_H__ */
