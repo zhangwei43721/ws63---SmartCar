@@ -2,7 +2,7 @@
  ****************************************************************************************************
  * @file        bsp_l9110s.h
  * @author      SkyForever
- * @version     V1.0
+ * @version     V1.4
  * @date        2025-01-12
  * @brief       L9110S电机驱动BSP层头文件
  * @license     Copyright (c) 2024-2034
@@ -20,19 +20,9 @@
 #ifndef __BSP_L9110S_H__
 #define __BSP_L9110S_H__
 
-#include <stdint.h>
-#include "pinctrl.h"
-#include "gpio.h"
-#include "soc_osal.h"
-
-// L9110S电机驱动引脚定义
-// 左轮电机控制引脚
-#define L9110S_LEFT_A_GPIO 4
-#define L9110S_LEFT_B_GPIO 5
-
-// 右轮电机控制引脚
-#define L9110S_RIGHT_A_GPIO 0
-#define L9110S_RIGHT_B_GPIO 2
+// 驱动电机GPIO口:  4, 5, 0, 2
+static const uint8_t MOTOR_CH[] = {4, 5, 0, 2};
+#define PWM_PERIOD 50 // 20kHz (50us)
 
 /**
  * @brief 初始化L9110S电机驱动

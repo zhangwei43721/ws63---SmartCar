@@ -2,199 +2,61 @@
  ****************************************************************************************************
  * @file        bsp_l9110s.c
  * @author      SkyForever
- * @version     V1.2 (Fix Conflict & Direction)
+ * @version     V1.4
  * @date        2025-01-12
- * @brief       L9110S电机驱动BSP层实现
+ * @brief       L9110S电机驱动BSP层实现（硬件PWM版本）
  ****************************************************************************************************
  */
 
 #include "bsp_l9110s.h"
-#include "gpio.h"
+#include <stdint.h>
 #include "pinctrl.h"
-#include "hal_gpio.h"
+#include "gpio.h"
 #include "soc_osal.h"
+#include "pwm.h"
 
-// 添加差速控制的软件PWM参数
-#define MOTOR_PWM_PERIOD_US 20000 // 20ms周期 (50Hz)
-
-// 全局变量用于差速控制
-static volatile int8_t g_left_motor_speed = 0;
-static volatile int8_t g_right_motor_speed = 0;
-static volatile int g_diff_running = 0;
-
-/**
- * @brief GPIO控制函数
- */
-static void gpio_control(unsigned int gpio, unsigned int value)
+static void pwm_update(uint8_t ch, uint32_t duty)
 {
-    uapi_gpio_set_dir(gpio, GPIO_DIRECTION_OUTPUT);
-    uapi_gpio_set_val(gpio, value);
+    // 配置结构体 (利用 C99 指定初始化，未指定成员自动为0)
+    pwm_config_t cfg = {.low_time = PWM_PERIOD - duty, .high_time = duty, .repeat = true};
+    uapi_pwm_open(ch, &cfg); // 打开单通道 PWM
 }
 
-/**
- * @brief 微秒级延时
- */
-static void delay_us(unsigned int duration_us)
-{
-    if (duration_us == 0) {
-        return;
-    }
-
-    if (duration_us >= 1000) {
-        osal_msleep(duration_us / 1000);
-        duration_us %= 1000;
-    }
-
-    if (duration_us > 0) {
-        osal_udelay(duration_us);
-    }
-}
-
-/**
- * @brief 差速控制后台守护任务
- * @note  这是唯一控制GPIO的地方，避免冲突
- */
-static void *motor_diff_daemon_task(const char *arg)
-{
-    (void)arg;
-    while (g_diff_running) {
-        int8_t left_speed = g_left_motor_speed;
-        int8_t right_speed = g_right_motor_speed;
-
-        unsigned int left_abs = (left_speed < 0) ? (unsigned int)(-left_speed) : (unsigned int)left_speed;
-        unsigned int right_abs = (right_speed < 0) ? (unsigned int)(-right_speed) : (unsigned int)right_speed;
-
-        // 限幅
-        if (left_abs > 100)
-            left_abs = 100;
-        if (right_abs > 100)
-            right_abs = 100;
-
-        unsigned int left_on_us = (left_abs * MOTOR_PWM_PERIOD_US) / 100;
-        unsigned int right_on_us = (right_abs * MOTOR_PWM_PERIOD_US) / 100;
-
-        // 全停状态下休眠，节省CPU
-        if (left_on_us == 0 && right_on_us == 0) {
-            gpio_control(L9110S_LEFT_A_GPIO, 0);
-            gpio_control(L9110S_LEFT_B_GPIO, 0);
-            gpio_control(L9110S_RIGHT_A_GPIO, 0);
-            gpio_control(L9110S_RIGHT_B_GPIO, 0);
-            osal_msleep(20);
-            continue;
-        }
-
-        // --- 开启阶段 (PWM High) ---
-
-        // 左轮逻辑
-        if (left_on_us > 0) {
-            if (left_speed > 0) {
-                // 左轮前进
-                gpio_control(L9110S_LEFT_A_GPIO, 0);
-                gpio_control(L9110S_LEFT_B_GPIO, 1);
-            } else {
-                // 左轮后退
-                gpio_control(L9110S_LEFT_A_GPIO, 1);
-                gpio_control(L9110S_LEFT_B_GPIO, 0);
-            }
-        } else {
-            gpio_control(L9110S_LEFT_A_GPIO, 0);
-            gpio_control(L9110S_LEFT_B_GPIO, 0);
-        }
-
-        // 右轮逻辑 (根据你的反馈：0/1是前进)
-        if (right_on_us > 0) {
-            if (right_speed > 0) {
-                // 右轮前进 (A=0, B=1)
-                gpio_control(L9110S_RIGHT_A_GPIO, 0);
-                gpio_control(L9110S_RIGHT_B_GPIO, 1);
-            } else {
-                // 右轮后退 (A=1, B=0)
-                gpio_control(L9110S_RIGHT_A_GPIO, 1);
-                gpio_control(L9110S_RIGHT_B_GPIO, 0);
-            }
-        } else {
-            gpio_control(L9110S_RIGHT_A_GPIO, 0);
-            gpio_control(L9110S_RIGHT_B_GPIO, 0);
-        }
-
-        // --- PWM 延时控制 ---
-        // 这里的逻辑是处理左右轮由于占空比不同而需要分段延时
-
-        unsigned int first_end_us = left_on_us;
-        if (right_on_us < first_end_us)
-            first_end_us = right_on_us;
-
-        if (first_end_us > 0)
-            delay_us(first_end_us);
-
-        // 第一阶段结束，关掉时间较短的那个
-        if (left_on_us == first_end_us && left_on_us < MOTOR_PWM_PERIOD_US) {
-            gpio_control(L9110S_LEFT_A_GPIO, 0);
-            gpio_control(L9110S_LEFT_B_GPIO, 0);
-        }
-        if (right_on_us == first_end_us && right_on_us < MOTOR_PWM_PERIOD_US) {
-            gpio_control(L9110S_RIGHT_A_GPIO, 0);
-            gpio_control(L9110S_RIGHT_B_GPIO, 0);
-        }
-
-        unsigned int second_end_us = left_on_us;
-        if (right_on_us > second_end_us)
-            second_end_us = right_on_us;
-
-        if (second_end_us > first_end_us)
-            delay_us(second_end_us - first_end_us);
-
-        // 第二阶段结束，关掉剩下的那个
-        if (left_on_us == second_end_us && left_on_us < MOTOR_PWM_PERIOD_US) {
-            gpio_control(L9110S_LEFT_A_GPIO, 0);
-            gpio_control(L9110S_LEFT_B_GPIO, 0);
-        }
-        if (right_on_us == second_end_us && right_on_us < MOTOR_PWM_PERIOD_US) {
-            gpio_control(L9110S_RIGHT_A_GPIO, 0);
-            gpio_control(L9110S_RIGHT_B_GPIO, 0);
-        }
-
-        // 补齐剩余周期
-        if (second_end_us < MOTOR_PWM_PERIOD_US)
-            delay_us(MOTOR_PWM_PERIOD_US - second_end_us);
-    }
-    return NULL;
-}
-
-/**
- * @brief 初始化L9110S电机驱动
- */
 void l9110s_init(void)
 {
-    uapi_pin_set_mode(L9110S_LEFT_A_GPIO, 2); // 注意复用信号2才是GPIO
-    uapi_pin_set_mode(L9110S_LEFT_B_GPIO, 4); // 注意复用信号4才是GPIO
-    uapi_pin_set_mode(L9110S_RIGHT_A_GPIO, 0);
-    uapi_pin_set_mode(L9110S_RIGHT_B_GPIO, 0);
+    uapi_pwm_init(); // 初始化 PWM
 
-    uapi_gpio_set_dir(L9110S_LEFT_A_GPIO, GPIO_DIRECTION_OUTPUT);
-    uapi_gpio_set_dir(L9110S_LEFT_B_GPIO, GPIO_DIRECTION_OUTPUT);
-    uapi_gpio_set_dir(L9110S_RIGHT_A_GPIO, GPIO_DIRECTION_OUTPUT);
-    uapi_gpio_set_dir(L9110S_RIGHT_B_GPIO, GPIO_DIRECTION_OUTPUT);
-
-    // 初始状态停止
-    g_left_motor_speed = 0;
-    g_right_motor_speed = 0;
-
-    // 启动后台任务
-    if (g_diff_running == 0) {
-        g_diff_running = 1;
-        osal_task *task =
-            osal_kthread_create((osal_kthread_handler)motor_diff_daemon_task, NULL, "MotorDiffTask", 0x1000);
-        if (task != NULL)
-            osal_kthread_set_priority(task, 10);
+    for (int i = 0; i < 4; i++) {
+        uapi_pin_set_mode(MOTOR_CH[i], 1); // 设置为模式 1 （PWM）
+        pwm_update(MOTOR_CH[i], 0);        // 初始占空比 0
     }
+
+    uapi_pwm_set_group(0, (uint8_t *)MOTOR_CH, 4); // 设置 PWM 分组
+    uapi_pwm_start_group(0);                       // 启动分组
 }
 
-/**
- * @brief 设置双轮差速
- */
-void l9110s_set_differential(int8_t left_speed, int8_t right_speed)
+// 辅助内联：处理单边电机逻辑
+static inline void set_side(uint8_t idx_a, uint8_t idx_b, int8_t speed)
 {
-    g_left_motor_speed = left_speed;
-    g_right_motor_speed = right_speed;
+    // 1. 限幅
+    if (speed > 100)
+        speed = 100;
+    if (speed < -100)
+        speed = -100;
+        
+    // 设置占空比
+    uint32_t duty = (PWM_PERIOD * (speed < 0 ? -speed : speed)) / 100;
+
+    // 2. 根据方向设置 A/B 通道 (利用三元运算符)
+    // Speed > 0: A=0,    B=Duty (前进)
+    // Speed < 0: A=Duty, B=0    (后退)
+    pwm_update(MOTOR_CH[idx_a], (speed < 0) ? duty : 0);
+    pwm_update(MOTOR_CH[idx_b], (speed > 0) ? duty : 0);
+}
+
+void l9110s_set_differential(int8_t left, int8_t right)
+{
+    set_side(0, 1, left);    // 设置左轮
+    set_side(2, 3, right);   // 设置右轮
+    uapi_pwm_start_group(0); // 使能
 }
