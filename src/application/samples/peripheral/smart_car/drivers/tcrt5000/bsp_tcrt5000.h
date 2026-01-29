@@ -42,9 +42,9 @@
 
 // ADC阈值定义（mV）
 // ADC值 >= 阈值表示检测到黑线，ADC值 < 阈值表示检测到白线
-#define TCRT5000_LEFT_THRESHOLD 1700   // 左侧传感器阈值
-#define TCRT5000_MIDDLE_THRESHOLD 1300 // 中间传感器阈值
-#define TCRT5000_RIGHT_THRESHOLD 1500  // 右侧传感器阈值
+#define TCRT5000_LEFT_THRESHOLD 2000   // 左侧传感器阈值
+#define TCRT5000_MIDDLE_THRESHOLD 1900 // 中间传感器阈值
+#define TCRT5000_RIGHT_THRESHOLD 1900  // 右侧传感器阈值
 
 // ADC数据存储（使用自动扫描模式）
 extern uint32_t g_tcrt5000_adc_data[3];  // 存储左、中、右三个传感器的ADC电压值（mV）
