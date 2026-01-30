@@ -85,3 +85,6 @@ src/application/samples/peripheral/smart_car/proxy/node_modules/ws/wrapper.mjs
 src/application/samples/peripheral/smart_car/proxy/node_modules/ws/LICENSE
 src/application/samples/peripheral/smart_car/proxy/node_modules/ws/README.md
 src/application/samples/peripheral/smart_car/proxy/node_modules/ws/package.json
+src/.vscode/launch.json
+src/.vscode/.launchinit
+src/.vscode/.attachinit

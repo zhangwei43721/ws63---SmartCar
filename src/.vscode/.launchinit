@@ -1,20 +1,14 @@
 echo debug_tool = jlink\n
 echo Initializing remote target...\n
-define pio_reset_halt_target
-monitor halt
-monitor reset
-set var $pc=0x03000004
-end
-define pio_reset_run_target
-monitor clrbp
-monitor reset
-monitor go
-end
 target extended-remote :3333
 monitor clrbp
-pio_reset_halt_target
+monitor halt
+monitor reset
 load
-tbreak main
 define pio_restart_target
-pio_reset_halt_target
+monitor clrbp
+monitor halt
+monitor reset
+load
 echo Initialization completed\n
+end
