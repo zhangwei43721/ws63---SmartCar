@@ -14,7 +14,6 @@ choice SMART_CAR_RUN_MODE
         select SMART_CAR_DRIVER_L9110S
         select SMART_CAR_DRIVER_HCSR04
         select SMART_CAR_DRIVER_TCRT5000
-        select SMART_CAR_DRIVER_SG90
         select SMART_CAR_DRIVER_SSD1306
         select SMART_CAR_DRIVER_WIFI
         help
@@ -31,10 +30,6 @@ choice SMART_CAR_RUN_MODE
     config SMART_CAR_RUN_TCRT5000_TEST
         bool "Test: TCRT5000 Line Sensor"
         select SMART_CAR_DRIVER_TCRT5000
-
-    config SMART_CAR_RUN_SG90_TEST
-        bool "Test: SG90 Servo"
-        select SMART_CAR_DRIVER_SG90
 
     config SMART_CAR_RUN_SSD1306_TEST
         bool "Test: SSD1306 OLED"
@@ -60,9 +55,6 @@ menu "Drivers Status"
 
     config SMART_CAR_DRIVER_TCRT5000
         bool "TCRT5000 Driver"
-
-    config SMART_CAR_DRIVER_SG90
-        bool "SG90 Driver"
 
     config SMART_CAR_DRIVER_SSD1306
         bool "SSD1306 Driver"

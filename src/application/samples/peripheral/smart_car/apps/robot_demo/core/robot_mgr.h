@@ -24,7 +24,6 @@ void robot_mgr_tick(void);
 void robot_mgr_get_state_copy(RobotState *out);
 
 // 状态更新接口（线程安全）
-void robot_mgr_update_servo_angle(unsigned int angle);
 void robot_mgr_update_distance(float distance);
 void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right);
 

@@ -10,7 +10,6 @@
 
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../../drivers/l9110s/bsp_l9110s.h"
-#include "../../../drivers/sg90/bsp_sg90.h"
 #include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
 
 #include "securec.h"
@@ -22,7 +21,7 @@
 static CarStatus g_status = CAR_STOP_STATUS;      /* 当前小车运行模式 */
 static CarStatus g_last_status = CAR_STOP_STATUS; /* 上次小车运行模式（用于检测模式切换） */
 
-// 全局机器人状态（包含舵机角度、距离、传感器值等）
+// 全局机器人状态（包含距离、传感器值等）
 static RobotState g_robot_state = {0};
 
 // 互斥锁：保护 机器人状态，防止多个线程同时读写
@@ -91,17 +90,16 @@ static void robot_mgr_state_mutex_init(void)
 
 /**
  * @brief 初始化机器人管理器，包括所有硬件驱动和服务
- * @note 初始化电机、超声波、红外、舵机驱动，以及网络、UI、HTTP 服务
+ * @note 初始化电机、超声波、红外驱动，以及网络、UI、HTTP 服务
  */
 void robot_mgr_init(void)
 {
-    // 优先加载运行参数，供后续模式逻辑读取（避障阈值/舵机回中等）
+    // 优先加载运行参数，供后续模式逻辑读取（避障阈值等）
     storage_service_init();
 
     l9110s_init();
     hcsr04_init();
     tcrt5000_adc_init();  // 使用ADC模式初始化TCRT5000
-    sg90_init();
 
     ui_service_init();
     udp_service_init();
@@ -182,18 +180,6 @@ void robot_mgr_get_state_copy(RobotState *out)
     // 加锁保护状态读取
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
     *out = g_robot_state;
-    MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
-}
-
-/**
- * @brief 更新舵机角度到全局状态
- * @param angle 舵机角度值（0-180度）
- * @note 使用互斥锁保护，防止多个线程同时修改状态
- */
-void robot_mgr_update_servo_angle(unsigned int angle)
-{
-    MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
-    g_robot_state.servo_angle = angle;
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 

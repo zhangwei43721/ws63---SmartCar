@@ -12,16 +12,7 @@
 #define TASK_STACK_SIZE (1024 * 10) // 任务栈大小
 #define TASK_PRIO 25                // 任务优先级
 
-/* 舵机配置 */
-#define SERVO_LEFT 180  // 左转角度
-#define SERVO_RIGHT 0   // 右转角度
-#define SERVO_CENTER 90 // 中间角度
-
-/* 避障配置 */
-#define OBSTACLE_DISTANCE 20 // 避障阈值
-
 /* 时间配置 */
-#define SERVO_DELAY 350    // 舵机转动等待
 #define SENSOR_DELAY 50    // 传感器稳定等待
 #define BACKWARD_TIME 400  // 后退时间
 #define TURN_TIME 400      // 转向时间
