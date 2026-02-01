@@ -27,13 +27,13 @@
 
 // TCRT5000红外循迹传感器引脚定义
 // GPIO7/8/9支持ADC，分别对应通道0/1/2
-#define TCRT5000_LEFT_GPIO 9    // 左侧传感器 - ADC通道2
-#define TCRT5000_MIDDLE_GPIO 8  // 中间传感器 - ADC通道1
+#define TCRT5000_LEFT_GPIO 11    // 左侧传感器 - ADC通道2
+#define TCRT5000_MIDDLE_GPIO 10  // 中间传感器 - ADC通道1
 #define TCRT5000_RIGHT_GPIO 7   // 右侧传感器 - ADC通道0
 
 // ADC通道定义
-#define TCRT5000_LEFT_ADC_CHANNEL 2    // 左侧传感器ADC通道
-#define TCRT5000_MIDDLE_ADC_CHANNEL 1  // 中间传感器ADC通道
+#define TCRT5000_LEFT_ADC_CHANNEL 4    // 左侧传感器ADC通道
+#define TCRT5000_MIDDLE_ADC_CHANNEL 3  // 中间传感器ADC通道
 #define TCRT5000_RIGHT_ADC_CHANNEL 0   // 右侧传感器ADC通道
 
 // 传感器状态定义
