@@ -16,6 +16,7 @@ choice SMART_CAR_RUN_MODE
         select SMART_CAR_DRIVER_TCRT5000
         select SMART_CAR_DRIVER_SSD1306
         select SMART_CAR_DRIVER_WIFI
+        select SMART_CAR_DRIVER_UART
         help
             主要集成应用
 
@@ -64,4 +65,7 @@ menu "Drivers Status"
 
     config SMART_CAR_DRIVER_BT_SPP
         bool "Bluetooth SPP Driver"
+
+    config SMART_CAR_DRIVER_UART
+        bool "UART Driver"
 endmenu

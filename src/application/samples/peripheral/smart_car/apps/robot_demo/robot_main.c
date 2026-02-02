@@ -19,6 +19,7 @@
 #include "app_init.h"
 #include "core/robot_config.h"
 #include "core/robot_mgr.h"
+#include "services/uart_service.h"
 
 #define ROBOT_MODE_SWITCH_GPIO 3 // 按键 设置为GPIO 3
 
@@ -73,10 +74,12 @@ static void *robot_demo_task(const char *arg)
     UNUSED(arg);
 
     robot_mgr_init(); // 初始化底层驱动
+    uart_service_init(); // 初始化UART命令服务
     robot_key_init(); // 初始化按键控制
 
     while (1) {
         robot_mgr_tick();     // 执行小车逻辑
+        uart_service_tick();  // 执行UART命令服务
         uapi_watchdog_kick(); // 喂狗
         osal_msleep(20);      // 调度让权延时
     }

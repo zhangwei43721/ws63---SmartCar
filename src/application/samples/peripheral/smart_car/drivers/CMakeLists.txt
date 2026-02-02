@@ -47,6 +47,13 @@ if(CONFIG_SMART_CAR_DRIVER_BT_SPP)
     include_directories("${CMAKE_CURRENT_SOURCE_DIR}/bt_spp_server")
 endif()
 
+# --- UART ---
+if(CONFIG_SMART_CAR_DRIVER_UART)
+    file(GLOB_RECURSE CURRENT_DRIVER_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/uart/*.c")
+    list(APPEND DRIVER_SRCS ${CURRENT_DRIVER_SRCS})
+    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/uart")
+endif()
+
 # --- 汇总导出 ---
 # 将收集到的所有驱动源文件加入全局构建列表
 list(APPEND SOURCES ${DRIVER_SRCS})
