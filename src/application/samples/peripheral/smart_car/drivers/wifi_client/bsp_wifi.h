@@ -19,9 +19,20 @@
 
 #include <stdint.h>
 
-// WiFi配置
+// WiFi工作模式
+typedef enum {
+    BSP_WIFI_MODE_STA = 0,    // STA模式：连接路由器
+    BSP_WIFI_MODE_AP = 1,     // AP模式：作为热点
+} bsp_wifi_mode_t;
+
+// STA模式配置（连接路由器）
 #define BSP_WIFI_SSID "BSHZ-2.4G"
 #define BSP_WIFI_PASSWORD "BS666888"
+
+// AP模式配置（作为热点）
+#define BSP_WIFI_AP_SSID     "WS63_Robot"
+#define BSP_WIFI_AP_PASSWORD "12345678"
+#define BSP_WIFI_AP_CHANNEL  13
 
 // WiFi连接状态
 typedef enum {
@@ -78,5 +89,11 @@ int bsp_wifi_register_event_handler(void *handler);
  * @return 0成功，-1失败
  */
 int bsp_wifi_connect_default(void);
+
+/**
+ * @brief 获取当前WiFi工作模式
+ * @return WiFi工作模式 (STA/AP)
+ */
+bsp_wifi_mode_t bsp_wifi_get_mode(void);
 
 #endif /* __BSP_WIFI_H__ */

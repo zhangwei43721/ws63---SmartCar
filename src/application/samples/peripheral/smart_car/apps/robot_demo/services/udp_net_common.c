@@ -175,6 +175,7 @@ static int wifi_connect_from_nv(void)
  * @brief 确保 WiFi 已连接，并自动重连
  * @note 定期检查 WiFi 连接状态，如果断开则尝试重连
  *       连接成功后会更新 g_udp_net_ip 全局变量
+ *       AP模式下，WiFi始终被视为已连接状态
  */
 void udp_net_common_wifi_ensure_connected(void)
 {
@@ -189,6 +190,19 @@ void udp_net_common_wifi_ensure_connected(void)
         g_wifi_last_retry = 0;
     }
 
+    /* AP模式：直接认为已连接，不需要connect到其他AP */
+    if (bsp_wifi_get_mode() == BSP_WIFI_MODE_AP) {
+        g_udp_net_wifi_connected = true;
+        if (!g_udp_net_wifi_has_ip) {
+            if (bsp_wifi_get_ip(g_udp_net_ip, sizeof(g_udp_net_ip)) == 0) {
+                g_udp_net_wifi_has_ip = true;
+                printf("udp_net: AP模式 IP=%s\r\n", g_udp_net_ip);
+            }
+        }
+        return;
+    }
+
+    /* STA模式：需要连接到AP */
     if (!g_udp_net_wifi_connected) {
         if (g_wifi_last_retry == 0 || (now - g_wifi_last_retry >= 5000)) {
             g_wifi_last_retry = now;

@@ -33,7 +33,7 @@ const MODE_MAP = {
   standby: 0, // CAR_STOP_STATUS
   tracking: 1, // CAR_TRACE_STATUS
   avoid: 2, // CAR_OBSTACLE_AVOID_STATUS
-  remote: 3, // CAR_WIFI_CONTROL_STATUS (C代码里你是3)
+  remote: 3, // CAR_WIFI_CONTROL_STATUS
 };
 
 // --- 全局变量 ---

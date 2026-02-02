@@ -4,6 +4,7 @@
 #include "../core/mode_trace.h"
 #include "udp_net_common.h"
 #include "ota_service.h"
+#include "../../../drivers/wifi_client/bsp_wifi.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 
@@ -79,6 +80,11 @@ bool udp_service_is_connected(void)
 // WiFi连接状态返回
 WifiConnectStatus udp_service_get_wifi_status(void)
 {
+    /* AP模式：直接返回热点模式状态 */
+    if (bsp_wifi_get_mode() == BSP_WIFI_MODE_AP)
+        return WIFI_STATUS_AP_MODE;
+
+    /* STA模式 */
     if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip)
         return WIFI_STATUS_CONNECTED;
     if (g_udp_net_wifi_connected)

@@ -35,6 +35,7 @@
 
 static wifi_event_stru g_wifi_event_cb = {0};                  /* WiFi 事件回调结构体 */
 static bsp_wifi_status_t g_wifi_status = BSP_WIFI_STATUS_IDLE; /* WiFi 当前连接状态 */
+static bsp_wifi_mode_t g_wifi_mode = BSP_WIFI_MODE_STA;       /* WiFi 当前工作模式 */
 
 /**
  * @brief WiFi连接状态变化回调
@@ -116,19 +117,98 @@ static errcode_t get_match_network(const char *expected_ssid, const char *key, w
 }
 
 /**
- * @brief 初始化WiFi
+ * @brief 初始化WiFi AP模式（内部函数）
  */
-int bsp_wifi_init(void)
+static int bsp_wifi_init_ap_mode(void)
 {
-    printf("[BSP WiFi] Initializing...\r\n");
+    softap_config_stru hapd_conf = {0};
+    softap_config_advance_stru config = {0};
+    char ifname[WIFI_IFNAME_MAX_SIZE + 1] = "ap0";
+    struct netif *netif_p = NULL;
+    ip4_addr_t st_ipaddr, st_netmask, st_gw;
 
-    /* 注册WiFi事件回调 */
-    g_wifi_event_cb.wifi_event_scan_state_changed = wifi_scan_state_changed;
-    g_wifi_event_cb.wifi_event_connection_changed = wifi_connection_changed;
+    printf("[BSP WiFi] Initializing AP mode...\r\n");
 
-    if (wifi_register_event_cb(&g_wifi_event_cb) != 0) {
-        printf("[BSP WiFi] Failed to register event callback\r\n");
+    /* 配置SoftAP基本参数 */
+    memcpy_s(hapd_conf.ssid, sizeof(hapd_conf.ssid),
+             BSP_WIFI_AP_SSID, strlen(BSP_WIFI_AP_SSID));
+    memcpy_s(hapd_conf.pre_shared_key, WIFI_MAX_KEY_LEN,
+             BSP_WIFI_AP_PASSWORD, strlen(BSP_WIFI_AP_PASSWORD));
+    hapd_conf.security_type = 3;  /* WPA_WPA2_PSK */
+    hapd_conf.channel_num = BSP_WIFI_AP_CHANNEL;
+    hapd_conf.wifi_psk_type = 0;
+
+    /* 配置高级参数 */
+    config.beacon_interval = 100;
+    config.dtim_period = 2;
+    config.gi = 0;
+    config.group_rekey = 86400;
+    config.protocol_mode = 4;  /* 802.11b/g/n/ax */
+    config.hidden_ssid_flag = 1;  /* 不隐藏SSID */
+
+    if (wifi_set_softap_config_advance(&config) != 0) {
+        printf("[BSP WiFi] Failed to set advanced config\r\n");
         return -1;
+    }
+
+    /* 启动SoftAP */
+    if (wifi_softap_enable(&hapd_conf) != 0) {
+        printf("[BSP WiFi] Failed to enable SoftAP\r\n");
+        return -1;
+    }
+
+    /* 配置IP地址 */
+    netif_p = netif_find(ifname);
+    if (netif_p == NULL) {
+        printf("[BSP WiFi] netif_find ap0 failed\r\n");
+        wifi_softap_disable();
+        return -1;
+    }
+
+    IP4_ADDR(&st_ipaddr, 192, 168, 43, 1);
+    IP4_ADDR(&st_netmask, 255, 255, 255, 0);
+    IP4_ADDR(&st_gw, 192, 168, 43, 2);
+
+    if (netifapi_netif_set_addr(netif_p, &st_ipaddr, &st_netmask, &st_gw) != 0) {
+        printf("[BSP WiFi] Failed to set IP address\r\n");
+        wifi_softap_disable();
+        return -1;
+    }
+
+    /* 启动DHCP服务器 */
+    if (netifapi_dhcps_start(netif_p, NULL, 0) != 0) {
+        printf("[BSP WiFi] Failed to start DHCP server\r\n");
+        wifi_softap_disable();
+        return -1;
+    }
+
+    g_wifi_status = BSP_WIFI_STATUS_GOT_IP;  /* AP模式直接就绪 */
+    printf("[BSP WiFi] AP mode started: SSID=%s, IP=192.168.43.1\r\n", BSP_WIFI_AP_SSID);
+
+    return 0;
+}
+
+/**
+ * @brief 初始化WiFi（支持模式选择）
+ * @param mode WiFi工作模式（STA或AP）
+ * @return 0成功，-1失败
+ */
+int bsp_wifi_init_ex(bsp_wifi_mode_t mode)
+{
+    printf("[BSP WiFi] Initializing %s mode...\r\n",
+           mode == BSP_WIFI_MODE_AP ? "AP" : "STA");
+
+    g_wifi_mode = mode;
+
+    /* 注册WiFi事件回调（仅STA模式需要） */
+    if (mode == BSP_WIFI_MODE_STA) {
+        g_wifi_event_cb.wifi_event_scan_state_changed = wifi_scan_state_changed;
+        g_wifi_event_cb.wifi_event_connection_changed = wifi_connection_changed;
+
+        if (wifi_register_event_cb(&g_wifi_event_cb) != 0) {
+            printf("[BSP WiFi] Failed to register event callback\r\n");
+            return -1;
+        }
     }
 
     /* 等待WiFi初始化完成 */
@@ -136,16 +216,33 @@ int bsp_wifi_init(void)
         osDelay(10);
     }
 
-    /* 使能STA模式 */
-    if (wifi_sta_enable() != ERRCODE_SUCC) {
-        printf("[BSP WiFi] Failed to enable STA mode\r\n");
-        return -1;
+    /* 根据模式使能 */
+    if (mode == BSP_WIFI_MODE_STA) {
+        if (wifi_sta_enable() != ERRCODE_SUCC) {
+            printf("[BSP WiFi] Failed to enable STA mode\r\n");
+            return -1;
+        }
+        g_wifi_status = BSP_WIFI_STATUS_IDLE;
+    } else {
+        return bsp_wifi_init_ap_mode();
     }
 
-    g_wifi_status = BSP_WIFI_STATUS_IDLE;
     printf("[BSP WiFi] Initialized successfully\r\n");
-
     return 0;
+}
+
+/**
+ * @brief 初始化WiFi（使用默认配置的模式）
+ * @return 0成功，-1失败
+ */
+int bsp_wifi_init(void)
+{
+#ifdef CONFIG_SMART_CAR_WIFI_MODE
+    return bsp_wifi_init_ex(CONFIG_SMART_CAR_WIFI_MODE);
+#else
+    /* 默认使用STA模式 */
+    return bsp_wifi_init_ex(BSP_WIFI_MODE_STA);
+#endif
 }
 
 /**
@@ -278,7 +375,10 @@ bsp_wifi_status_t bsp_wifi_get_status(void)
  */
 int bsp_wifi_get_ip(char *ip_str, uint32_t len)
 {
-    struct netif *netif_p = netifapi_netif_find("wlan0");
+    struct netif *netif_p;
+    const char *ifname = (g_wifi_mode == BSP_WIFI_MODE_AP) ? "ap0" : "wlan0";
+
+    netif_p = netifapi_netif_find(ifname);
 
     if (netif_p == NULL || ip_str == NULL || len == 0) {
         return -1;
@@ -312,4 +412,12 @@ int bsp_wifi_register_event_handler(void *handler)
 int bsp_wifi_connect_default(void)
 {
     return bsp_wifi_connect_ap(BSP_WIFI_SSID, BSP_WIFI_PASSWORD);
+}
+
+/**
+ * @brief 获取当前WiFi工作模式
+ */
+bsp_wifi_mode_t bsp_wifi_get_mode(void)
+{
+    return g_wifi_mode;
 }
