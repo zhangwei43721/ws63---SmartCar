@@ -16,8 +16,9 @@
 #include "hal_dma.h"
 #endif
 
-#define UART_BAUDRATE                      115200
+#define UART_BAUDRATE                      9600
 #define CONFIG_UART_INT_WAIT_MS            5
+#define UART_HEX_MAX_LENGTH                32
 
 #define UART_TASK_PRIO                     24
 #define UART_TASK_STACK_SIZE               0x1000
@@ -94,25 +95,14 @@ static void app_uart_read_int_handler(const void *buffer, uint16_t length, bool 
     }
 
     uint8_t *buff = (uint8_t *)buffer;
-    if (memcpy_s(g_app_uart_rx_buff, length, buff, length) != EOK) {
+    if (memcpy_s(g_app_uart_int_rx_buff + g_app_uart_int_index, CONFIG_UART_TRANSFER_SIZE - g_app_uart_int_index,
+                 buff, length) != EOK) {
+        g_app_uart_int_index = 0;
         osal_printk("uart%d int mode data copy fail!\r\n", CONFIG_UART_BUS_ID);
         return;
     }
-    if (memcpy_s(g_app_uart_int_rx_buff + g_app_uart_int_index, length, g_app_uart_rx_buff, length) != EOK) {
-        g_app_uart_int_index = 0;
-        osal_printk("uart%d int mode data2 copy fail!\r\n", CONFIG_UART_BUS_ID);
-    }
     g_app_uart_int_index += length;
     g_app_uart_int_rx_flag = 1;
-}
-
-static void app_uart_write_int_handler(const void *buffer, uint32_t length, const void *params)
-{
-    unused(params);
-    uint8_t *buff = (void *)buffer;
-    for (uint8_t i = 0; i < length; i++) {
-        osal_printk("uart%d write data[%d] = %d\r\n", CONFIG_UART_BUS_ID, i, buff[i]);
-    }
 }
 
 static void app_uart_register_rx_callback(void)
@@ -124,6 +114,16 @@ static void app_uart_register_rx_callback(void)
     }
 }
 #endif
+
+static void print_hex_data(const uint8_t *data, uint16_t length)
+{
+    uint16_t print_len = (length > UART_HEX_MAX_LENGTH) ? UART_HEX_MAX_LENGTH : length;
+    osal_printk("uart%d received HEX (%d bytes): ", CONFIG_UART_BUS_ID, print_len);
+    for (uint16_t i = 0; i < print_len; i++) {
+        osal_printk("%02X", data[i]);
+    }
+    osal_printk("\r\n");
+}
 
 static void *uart_task(const char *arg)
 {
@@ -148,33 +148,28 @@ static void *uart_task(const char *arg)
 #if defined(CONFIG_UART_SUPPORT_INT_MODE)
         while (g_app_uart_int_rx_flag != 1) { osal_msleep(CONFIG_UART_INT_WAIT_MS); }
         g_app_uart_int_rx_flag = 0;
-        osal_printk("uart%d int mode send back!\r\n", CONFIG_UART_BUS_ID);
-        if (uapi_uart_write_int(CONFIG_UART_BUS_ID, g_app_uart_int_rx_buff, CONFIG_UART_TRANSFER_SIZE, 0,
-                                app_uart_write_int_handler) == ERRCODE_SUCC) {
-            osal_printk("uart%d int mode send back succ!\r\n", CONFIG_UART_BUS_ID);
-        }
+        osal_printk("uart%d int mode index: %d\r\n", CONFIG_UART_BUS_ID, g_app_uart_int_index);
+        print_hex_data(g_app_uart_int_rx_buff, g_app_uart_int_index);
+        memset_s(g_app_uart_int_rx_buff, CONFIG_UART_TRANSFER_SIZE, 0, CONFIG_UART_TRANSFER_SIZE);
+        g_app_uart_int_index = 0;
 #elif defined(CONFIG_UART_SUPPORT_DMA)
         osal_printk("uart%d dma mode receive start!\r\n", CONFIG_UART_BUS_ID);
+        memset_s(g_app_uart_rx_buff, CONFIG_UART_TRANSFER_SIZE, 0, CONFIG_UART_TRANSFER_SIZE);
         if (uapi_uart_read_by_dma(CONFIG_UART_BUS_ID, g_app_uart_rx_buff, CONFIG_UART_TRANSFER_SIZE,
             &g_app_dma_cfg) == ret) {
             osal_printk("uart%d dma mode receive succ!\r\n", CONFIG_UART_BUS_ID);
-        }
-        osal_printk("uart%d dma mode send back!\r\n", CONFIG_UART_BUS_ID);
-        if (uapi_uart_write_by_dma(CONFIG_UART_BUS_ID, g_app_uart_rx_buff, CONFIG_UART_TRANSFER_SIZE,
-            &g_app_dma_cfg) == ret) {
-            osal_printk("uart%d dma mode send back succ!\r\n", CONFIG_UART_BUS_ID);
+            print_hex_data(g_app_uart_rx_buff, CONFIG_UART_TRANSFER_SIZE);
+            memset_s(g_app_uart_rx_buff, CONFIG_UART_TRANSFER_SIZE, 0, CONFIG_UART_TRANSFER_SIZE);
         }
 #else
         //osal_printk("uart%d poll mode receive start!\r\n", CONFIG_UART_BUS_ID);
         (void)uapi_watchdog_kick();
+        memset_s(g_app_uart_rx_buff, CONFIG_UART_TRANSFER_SIZE, 0, CONFIG_UART_TRANSFER_SIZE);
         if (uapi_uart_read(CONFIG_UART_BUS_ID, g_app_uart_rx_buff, CONFIG_UART_TRANSFER_SIZE,
             0) == CONFIG_UART_TRANSFER_SIZE) {
             osal_printk("uart%d poll mode receive succ!\r\n", CONFIG_UART_BUS_ID);
-        }
-        osal_printk("uart%d poll mode send back!\r\n", CONFIG_UART_BUS_ID);
-        if (uapi_uart_write(CONFIG_UART_BUS_ID, g_app_uart_rx_buff, CONFIG_UART_TRANSFER_SIZE,
-            0) == CONFIG_UART_TRANSFER_SIZE) {
-            osal_printk("uart%d poll mode send back succ!\r\n", CONFIG_UART_BUS_ID); 
+            print_hex_data(g_app_uart_rx_buff, CONFIG_UART_TRANSFER_SIZE);
+            memset_s(g_app_uart_rx_buff, CONFIG_UART_TRANSFER_SIZE, 0, CONFIG_UART_TRANSFER_SIZE);
         }
 #endif
     }
