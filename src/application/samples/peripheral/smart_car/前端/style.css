@@ -519,16 +519,26 @@ header {
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(2px);
+  padding: 20px;
+  box-sizing: border-box;
 }
 
 .modal-card {
   background: #fff;
   width: 90%;
-  max-width: 320px;
+  max-width: 400px;
+  max-height: 90vh;
+  overflow-y: auto;
   border-radius: 16px;
   padding: 20px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
   animation: modal-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* 设备发现弹窗更大一些，以显示设备列表 */
+.modal-card .device-list {
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .modal-card.ota-modal {
@@ -612,6 +622,16 @@ header {
     flex-direction: row;
   }
 
+  /* 弹窗在桌面端也居中显示，保持合适大小 */
+  .modal-card {
+    max-width: 420px;
+  }
+
+  /* 设备列表在桌面端可以有更多空间 */
+  .modal-card .device-list {
+    max-height: 250px;
+  }
+
   header {
     flex-direction: column;
     width: 80px;
@@ -657,4 +677,127 @@ header {
   .ota-btn {
     width: 100%;
   }
+}
+
+/* --- 设备列表样式 --- */
+.device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.device-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 2px solid #e5e7eb;
+  transition: all 0.3s;
+}
+
+.device-item.selected {
+  border-color: var(--accent-success);
+  background: #ecfdf5;
+}
+
+.device-name {
+  font-weight: 600;
+  flex: 1;
+  color: var(--text-main);
+}
+
+.device-mac {
+  font-family: monospace;
+  color: var(--text-sub);
+  font-size: 11px;
+}
+
+.device-ip {
+  color: var(--text-sub);
+  font-size: 11px;
+}
+
+.btn-select {
+  padding: 6px 12px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.btn-select:hover {
+  background: #4338ca;
+}
+
+.device-item.selected .btn-select {
+  background: var(--accent-success);
+  cursor: default;
+}
+
+.device-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-sub);
+  font-size: 14px;
+}
+
+.form-section {
+  margin-bottom: 15px;
+}
+
+.form-section h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: var(--text-main);
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-primary {
+  flex: 1;
+  padding: 10px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  flex: 1;
+  padding: 10px;
+  background: #e5e7eb;
+  color: var(--text-main);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-sm:hover {
+  opacity: 0.9;
 }

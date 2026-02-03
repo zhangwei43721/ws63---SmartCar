@@ -27,6 +27,9 @@ extern char g_udp_net_ip[BUF_IP];
 // 简单累加校验（取低 8 位），用于 UDP 协议包校验。
 uint8_t udp_net_common_checksum8_add(const uint8_t *data, size_t len);
 
+// 获取本机 WiFi MAC 地址
+int udp_net_get_mac_address(uint8_t *mac_buf);
+
 // 向指定地址发送 UDP 数据（要求已 open_and_bind 成功）。
 int udp_net_common_send_to_addr(const void *buf, size_t len, const struct sockaddr_in *addr);
 

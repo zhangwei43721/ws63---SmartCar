@@ -19,12 +19,27 @@ const appState = {
   distance: 0,
   ir: [1, 1, 1], // 左中右红外
   connected: false,
-  carIP: "",
-  carFound: false,
+  // 设备管理（基于 MAC）
+  devices: new Map(), // mac -> {name, ip, lastSeen, status}
+  selectedMAC: "",  // 当前选中的设备 MAC
+  lastConnectedMAC: localStorage.getItem("lastConnectedMAC") || "", // 最后连接的设备
   // 上次发送的控制值（用于检测变化）
   lastSent: { motor1: 0, motor2: 0 },
   lastControlSendAt: 0,
 };
+
+// --- 辅助函数：获取当前选中设备的 IP ---
+function getSelectedDeviceIP() {
+  if (!appState.selectedMAC) return null;
+  const device = appState.devices.get(appState.selectedMAC);
+  return device ? device.ip : null;
+}
+
+// --- 辅助函数：获取当前选中设备 ---
+function getSelectedDevice() {
+  if (!appState.selectedMAC) return null;
+  return appState.devices.get(appState.selectedMAC);
+}
 
 // --- C语言固件定义的模式枚举 ---
 // 必须与 C 代码中的 CarStatus 枚举保持一致
@@ -77,9 +92,10 @@ function updatePidVal(id, val) {
 
 function sendPid(type) {
   console.log(`[Frontend] sendPid called with type: ${type}`);
-  if (!appState.carIP) {
-    console.warn("[Frontend] sendPid aborted: No carIP set");
-    alert("请先连接小车！");
+  const deviceIP = getSelectedDeviceIP();
+  if (!deviceIP) {
+    console.warn("[Frontend] sendPid aborted: No device selected");
+    alert("请先选择小车！");
     return;
   }
 
@@ -92,14 +108,14 @@ function sendPid(type) {
     val = parseInt(document.getElementById("pidSpeed").value);
 
   console.log(
-    `[Frontend] Sending PID: type=${type}, val=${val}, IP=${appState.carIP}`,
+    `[Frontend] Sending PID: type=${type}, val=${val}, IP=${deviceIP}`,
   );
 
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(
       JSON.stringify({
         type: "setPid",
-        deviceIP: appState.carIP,
+        deviceIP: deviceIP,
         paramType: type,
         value: val,
       }),
@@ -118,6 +134,9 @@ function sendPid(type) {
 function sendUDPControl() {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
+  const deviceIP = getSelectedDeviceIP();
+  if (!deviceIP) return;
+
   // 检查控制值是否变化
   const changed =
     appState.motor1 !== appState.lastSent.motor1 ||
@@ -135,7 +154,7 @@ function sendUDPControl() {
     // 代理服务器负责将其打包成 C 结构体所需的二进制
     const controlMsg = {
       type: "control", // 对应 C 代码 UDP 包 type=0x01
-      deviceIP: appState.carIP,
+      deviceIP: deviceIP,
       motor1: parseInt(appState.motor1), // 确保是整数
       motor2: parseInt(appState.motor2), // 确保是整数
     };
@@ -163,7 +182,8 @@ function startCommsLoop() {
 
   // 每 50ms 检查并发送一次，提高响应速度
   sendLoopTimer = setInterval(() => {
-    if (!socket || socket.readyState !== WebSocket.OPEN || !appState.carIP)
+    const deviceIP = getSelectedDeviceIP();
+    if (!socket || socket.readyState !== WebSocket.OPEN || !deviceIP)
       return;
 
     // 只有在遥控模式下才持续发送控制命令
@@ -196,17 +216,91 @@ function sendModeChange(mode) {
     return;
   }
 
+  const deviceIP = getSelectedDeviceIP();
+  if (!deviceIP) {
+    console.warn("未选择设备，无法发送模式切换");
+    return;
+  }
+
   try {
     const modeMsg = {
       type: "modeChange",
-      deviceIP: appState.carIP,
+      deviceIP: deviceIP,
       mode: mode,
     };
 
     socket.send(JSON.stringify(modeMsg));
-    console.log(`发送模式切换: ${mode} -> ${appState.carIP}`);
+    console.log(`发送模式切换: ${mode} -> ${deviceIP}`);
   } catch (error) {
     console.error("发送模式切换消息失败:", error);
+  }
+}
+
+/**
+ * 选择设备
+ * @param {string} mac - 要选择的设备 MAC 地址
+ */
+function selectDevice(mac) {
+  if (!appState.devices.has(mac)) {
+    console.warn(`设备不存在: ${mac}`);
+    return;
+  }
+
+  appState.selectedMAC = mac;
+  const device = appState.devices.get(mac);
+
+  // 保存到 localStorage
+  localStorage.setItem('lastConnectedMAC', mac);
+  appState.lastConnectedMAC = mac;
+
+  // 更新设备列表 UI 高亮
+  updateDeviceListUI();
+
+  // 更新连接状态显示
+  document.getElementById("discoveryStatus").textContent =
+    `已选择: ${device.name} (${device.ip})`;
+
+  // 启用控制界面
+  setConnectionStatus(true);
+  appState.connected = true;
+
+  console.log(`已选择设备: ${device.name} (${mac})`);
+}
+
+/**
+ * 更新设备列表 UI
+ */
+function updateDeviceListUI() {
+  const deviceList = document.getElementById("deviceList");
+  if (!deviceList) return;
+
+  // 清空列表
+  deviceList.innerHTML = "";
+
+  // 遍历设备并创建 UI 元素
+  for (const [mac, device] of appState.devices) {
+    const item = document.createElement("div");
+    item.className = "device-item";
+    if (mac === appState.selectedMAC) {
+      item.classList.add("selected");
+    }
+    item.dataset.mac = mac;
+
+    item.innerHTML = `
+      <span class="device-name">${device.name}</span>
+      <span class="device-mac">${mac}</span>
+      <span class="device-ip">${device.ip}</span>
+      <button class="btn-select" onclick="selectDevice('${mac}')">
+        ${mac === appState.selectedMAC ? "已连接" : "连接"}
+      </button>
+    `;
+
+    deviceList.appendChild(item);
+  }
+
+  // 如果没有设备，显示提示
+  if (appState.devices.size === 0) {
+    deviceList.innerHTML = '<div class="device-empty">等待设备发现...</div>';
   }
 }
 
@@ -270,46 +364,85 @@ function connectToProxy() {
  * 处理接收到的消息
  */
 function handleProxyMessage(msg) {
+  // 调试：输出所有消息类型
+  console.log(`[前端] 收到消息: type=${msg.type}`, msg);
+
   // 处理设备发现
   if (msg.type === "deviceDiscovered") {
-    // 如果是新发现或者IP变了
-    if (appState.carIP !== msg.device.ip) {
-      appState.carIP = msg.device.ip;
-      console.log(`发现小车: ${appState.carIP}`);
-      document.getElementById("discoveryStatus").textContent =
-        `已连接: ${appState.carIP}`;
-      document.getElementById("cfgIP").value = appState.carIP;
+    const { ip, mac, name, deviceId } = msg.device;
+    console.log(`[前端] 发现设备详情:`, { ip, mac, name, deviceId });
+
+    // 如果 MAC 为空，说明是旧格式广播包，使用 IP 作为 key
+    const deviceKey = mac || ip;
+    appState.devices.set(deviceKey, {
+      name: name || `Robot_${ip.split('.').pop()}`,
+      ip: ip,
+      lastSeen: Date.now(),
+      status: null,
+      mac: mac || "",
+    });
+
+    console.log(`发现设备: ${deviceId || ip}`);
+
+    // 自动选中上次连接的设备
+    if (mac && mac === appState.lastConnectedMAC && !appState.selectedMAC) {
+      selectDevice(mac);
     }
+
+    // 更新设备列表 UI
+    updateDeviceListUI();
 
     appState.connected = true;
     setConnectionStatus(true);
   }
   // 处理设备丢失
   else if (msg.type === "deviceLost") {
-    if (appState.carIP === msg.ip) {
-      appState.connected = false;
-      setConnectionStatus(false);
-      document.getElementById("discoveryStatus").textContent = "设备信号丢失";
+    // 通过 IP 找到对应的 MAC
+    let lostMAC = null;
+    for (const [mac, device] of appState.devices) {
+      if (device.ip === msg.ip) {
+        lostMAC = mac;
+        break;
+      }
+    }
+
+    if (lostMAC) {
+      appState.devices.delete(lostMAC);
+      console.log(`设备离线: ${lostMAC}`);
+
+      // 更新设备列表 UI
+      updateDeviceListUI();
+
+      // 如果是当前选中的设备丢失了
+      if (lostMAC === appState.selectedMAC) {
+        appState.selectedMAC = "";
+        document.getElementById("discoveryStatus").textContent = "设备离线";
+        setConnectionStatus(false);
+      }
     }
   }
   // 处理状态更新 (从车发回来的数据)
   else if (msg.type === "statusUpdate") {
-    if (appState.carIP === msg.ip) {
+    // 只处理当前选中设备的状态更新
+    if (msg.mac === appState.selectedMAC) {
+      // 更新设备 IP（可能变化）
+      const device = appState.devices.get(msg.mac);
+      if (device) {
+        device.ip = msg.ip;
+        device.status = msg.status;
+      }
+
       // 更新传感器数据
       appState.distance = msg.status.distance || 0;
       appState.ir = msg.status.ir || [1, 1, 1];
 
       // 更新模式状态 (反向映射：整数 -> 字符串)
-      // C代码发回来的是整数
       const serverModeId = msg.status.mode;
       const modeNames = ["standby", "tracking", "avoid", "remote"];
       const newModeStr = modeNames[serverModeId] || "standby";
 
       // 只有当模式真的变了，才更新UI
-      // 注意：如果在前端刚点了切换，还没收到回包，这里可能会短暂跳变，属于正常现象
       if (appState.mode !== newModeStr) {
-        // 如果当前正在遥控操作中，暂时不被动切换，防止冲突？
-        // 这里选择信任回包
         appState.mode = newModeStr;
         updateModeButtons(newModeStr);
         console.log(`同步设备模式: ${newModeStr} (${serverModeId})`);
@@ -318,7 +451,15 @@ function handleProxyMessage(msg) {
       renderVisuals();
     }
   } else if (msg.type === "wifiConfigResponse") {
-    if (appState.carIP === msg.ip) {
+    // WiFi 配置响应需要发送到当前选中设备
+    let deviceMAC = null;
+    for (const [mac, device] of appState.devices) {
+      if (device.ip === msg.ip) {
+        deviceMAC = mac;
+        break;
+      }
+    }
+    if (deviceMAC && deviceMAC === appState.selectedMAC) {
       const result = msg.result;
       if (result.cmd === 0xe0) {
         if (result.success) {
@@ -333,7 +474,6 @@ function handleProxyMessage(msg) {
           alert("WiFi连接失败");
         }
       } else if (result.cmd === 0xe2) {
-        // 更新WiFi配置显示
         document.getElementById("wifiSSID").value = result.ssid || "";
         document.getElementById("wifiPassword").value = result.password || "";
       }
@@ -453,11 +593,6 @@ function clamp(v, min, max) {
 }
 
 // --- WiFi配置函数 ---
-function toggleWifiPassword() {
-  const input = document.getElementById("wifiPassword");
-  input.type = input.type === "password" ? "text" : "password";
-}
-
 function saveWifiConfig() {
   const ssid = document.getElementById("wifiSSID").value.trim();
   const password = document.getElementById("wifiPassword").value;
@@ -467,8 +602,9 @@ function saveWifiConfig() {
     return;
   }
 
-  if (!appState.connected) {
-    alert("请先连接小车");
+  const deviceIP = getSelectedDeviceIP();
+  if (!deviceIP) {
+    alert("请先选择小车");
     return;
   }
 
@@ -476,7 +612,7 @@ function saveWifiConfig() {
     socket.send(
       JSON.stringify({
         type: "wifiConfigSet",
-        deviceIP: appState.carIP,
+        deviceIP: deviceIP,
         ssid: ssid,
         password: password,
       }),
@@ -494,8 +630,9 @@ function connectWifi() {
     return;
   }
 
-  if (!appState.connected) {
-    alert("请先连接小车");
+  const deviceIP = getSelectedDeviceIP();
+  if (!deviceIP) {
+    alert("请先选择小车");
     return;
   }
 
@@ -503,7 +640,7 @@ function connectWifi() {
     socket.send(
       JSON.stringify({
         type: "wifiConfigConnect",
-        deviceIP: appState.carIP,
+        deviceIP: deviceIP,
         ssid: ssid,
         password: password,
       }),
@@ -525,6 +662,15 @@ function saveConfig() {
 // --- 初始化 ---
 window.onload = function () {
   connectToProxy();
+
+  // 如果没有保存的设备，自动打开设置弹窗进行设备发现
+  if (!appState.lastConnectedMAC) {
+    setTimeout(() => {
+      const m = document.getElementById("configModal");
+      if (m) m.style.display = "flex";
+    }, 500);
+  }
+
   // 默认UI状态
   updateModeButtons("standby");
   bindHoldButton(document.getElementById("btnForward"), () =>

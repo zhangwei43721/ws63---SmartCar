@@ -39,13 +39,13 @@ const sendToCar = (buf, ip) => {
   );
 };
 
-// 通用车辆协议包构建 (6字节: Type, Cmd, Data*3, Checksum)
+// 通用车辆协议包构建 (5字节: Type, Cmd, Data*3) - 无校验和
 const buildCarPacket = (type, cmd, bytes = [0, 0, 0]) => {
-  const buf = Buffer.alloc(6);
+  const buf = Buffer.alloc(5);
   buf[0] = type;
   buf[1] = cmd;
   bytes.forEach((b, i) => (buf[2 + i] = b));
-  buf[5] = checksum8(buf, 5);
+  // 移除了校验和字段
   return buf;
 };
 
@@ -78,10 +78,14 @@ const updateDeviceState = (ip, newStatus = null) => {
   const dev = devices.get(ip);
   const isNew = !dev || now - dev.lastSeen > CONFIG.TIMEOUT;
 
+  // 保留现有的 mac、name、deviceId 信息，只更新 lastSeen 和 status
   devices.set(ip, {
     lastSeen: now,
     discovered: true,
     status: newStatus || dev?.status || null,
+    mac: dev?.mac || "",
+    name: dev?.name || "",
+    deviceId: dev?.deviceId || "",
   });
 
   if (isNew) {
@@ -99,7 +103,11 @@ udpClient.on("message", (msg, rinfo) => {
 
   // 1. 处理简化的心跳包 (2字节: Type=0xFE, Checksum)
   if (msg.length === 2 && type === 0xfe) {
-    updateDeviceState(ip);
+    // 心跳包：只更新时间戳，不触发 deviceDiscovered 广播
+    const dev = devices.get(ip);
+    if (dev) {
+      dev.lastSeen = Date.now();
+    }
     return;
   }
 
@@ -127,15 +135,58 @@ udpClient.on("message", (msg, rinfo) => {
     return;
   }
 
-  // 3. 处理普通协议 (校验和在第6字节)
-  if (msg.length < 6) return;
-  if (checksum8(msg, 5) !== msg[5]) return;
-
+  // 3. 处理设备发现包 (0xFF) - 23 字节格式（无校验和）
   if (type === 0xff) {
-    // 广播 (0xFF)
-    updateDeviceState(ip);
-  } else if (type === 0x02) {
-    // 状态数据 (0x02)
+    console.log(`[代理] 收到 0xFF 广播包，长度: ${msg.length}`);
+    if (msg.length >= 23) {
+      const macBytes = msg.subarray(1, 7);
+      console.log(`[代理] MAC 字节: [${Array.from(macBytes).join(", ")}]`);
+      const mac = Array.from(macBytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join(":")
+        .toUpperCase();
+
+      // 提取名称（移除空字符）
+      const nameBytes = msg.subarray(7, 23);
+      let name = "";
+      for (let i = 0; i < 16 && nameBytes[i] !== 0; i++) {
+        name += String.fromCharCode(nameBytes[i]);
+      }
+
+      // 默认名称（如果为空）使用 MAC 后四位
+      if (!name) {
+        name = `Robot_${macBytes[4].toString(16).padStart(2, "0")}${
+          macBytes[5].toString(16).padStart(2, "0")}`;
+      }
+
+      const deviceId = `${name} (${mac})`;
+
+      // 更新设备状态，包含 MAC 和名称
+      const dev = devices.get(ip);
+      devices.set(ip, {
+        lastSeen: Date.now(),
+        discovered: true,
+        status: dev?.status || null,
+        mac: mac,
+        name: name,
+        deviceId: deviceId,
+      });
+
+      console.log(`[代理] 发现设备: ${deviceId}`);
+      broadcast({ type: "deviceDiscovered", device: { ip, mac, name, deviceId } });
+    } else {
+      // 兼容旧格式（6 字节）
+      console.log(`[代理] 收到旧格式广播包 (${msg.length} 字节)，使用 IP 作为标识`);
+      updateDeviceState(ip);
+    }
+    return;
+  }
+
+  // 4. 处理普通协议 (状态包等) - 5 字节无校验和
+  if (msg.length < 5) return;
+
+  if (type === 0x02) {
+    // 状态数据 (0x02) - 5 字节格式
     const irRaw = msg[4];
     const status = {
       mode: msg[1],
@@ -143,7 +194,14 @@ udpClient.on("message", (msg, rinfo) => {
       ir: [irRaw & 1, (irRaw >> 1) & 1, (irRaw >> 2) & 1],
     };
     updateDeviceState(ip, status);
-    broadcast({ type: "statusUpdate", ip, status });
+
+    // 获取设备 MAC 并附加到状态消息中
+    const dev = devices.get(ip);
+    const mac = dev?.mac || "";
+    if (!mac) {
+      console.log(`[代理] 警告: 状态更新来自未发现的设备 ${ip}`);
+    }
+    broadcast({ type: "statusUpdate", ip, mac, status });
   }
 });
 

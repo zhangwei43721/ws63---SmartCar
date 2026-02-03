@@ -6,7 +6,9 @@
 
 #include "../../../drivers/wifi_client/bsp_wifi.h"
 #include "lwip/inet.h"
+#include "lwip/netifapi.h"
 #include "securec.h"
+#include "soc_osal.h"
 #include "storage_service.h"
 
 static osal_mutex g_net_mutex;
@@ -31,6 +33,29 @@ uint8_t udp_net_common_checksum8_add(const uint8_t* data, size_t len) {
     for (size_t i = 0; i < len; i++) sum += data[i];
   }
   return sum;
+}
+
+/**
+ * @brief 获取本机 WiFi MAC 地址
+ * @param mac_buf 输出的 MAC 地址缓冲区（至少 6 字节）
+ * @return 成功返回 0，失败返回 -1
+ * @note 优先从 wlan0 获取，失败则尝试 ap0（AP 模式）
+ */
+int udp_net_get_mac_address(uint8_t* mac_buf) {
+  if (!mac_buf) return -1;
+
+  /* 优先尝试 STA 接口 */
+  struct netif* netif_p = netifapi_netif_find("wlan0");
+  if (netif_p == NULL) {
+    /* AP 模式下尝试 ap0 */
+    netif_p = netifapi_netif_find("ap0");
+  }
+
+  if (netif_p && netif_p->hwaddr) {
+    memcpy_s(mac_buf, 6, netif_p->hwaddr, 6);
+    return 0;
+  }
+  return -1;
 }
 
 /* 内部辅助：发送数据到指定地址 */
@@ -128,6 +153,18 @@ void udp_net_common_wifi_ensure_connected(void) {
 
   /* STA模式：断线重连逻辑 */
   unsigned int now = (unsigned int)osal_get_jiffies();
+
+  /* 先检查实际 WiFi 状态，避免重复连接 */
+  bsp_wifi_status_t status = bsp_wifi_get_status();
+  if (status == BSP_WIFI_STATUS_GOT_IP || status == BSP_WIFI_STATUS_CONNECTED) {
+    g_udp_net_wifi_connected = true;
+    if (status == BSP_WIFI_STATUS_GOT_IP) {
+      bsp_wifi_get_ip(g_udp_net_ip, sizeof(g_udp_net_ip));
+      g_udp_net_wifi_has_ip = true;
+    }
+    return;
+  }
+
   if (!g_udp_net_wifi_connected) {
     if (g_wifi_last_retry == 0 || (now - g_wifi_last_retry >= 5000)) {
       g_wifi_last_retry = now;
