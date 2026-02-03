@@ -69,32 +69,3 @@ menu "Drivers Status"
     config SMART_CAR_DRIVER_UART
         bool "UART Driver"
 endmenu
-
-# --- 3. WiFi模式选择 ---
-choice SMART_CAR_WIFI_MODE
-    prompt "WiFi Working Mode"
-    default SMART_CAR_WIFI_MODE_AP
-    depends on SMART_CAR_DRIVER_WIFI
-    help
-        选择WiFi工作模式
-
-    config SMART_CAR_WIFI_MODE_STA
-        bool "STA Mode (Connect to Router)"
-        help
-            STA模式：连接到指定的路由器
-            SSID: BSHZ-2.4G
-            Password: BS666888
-
-    config SMART_CAR_WIFI_MODE_AP
-        bool "AP Mode (Hotspot)"
-        help
-            AP模式：开发板作为热点
-            SSID: WS63_Robot
-            Password: 12345678
-            IP: 192.168.43.1
-endchoice
-
-config SMART_CAR_WIFI_MODE
-    int
-    default 0 if SMART_CAR_WIFI_MODE_STA
-    default 1 if SMART_CAR_WIFI_MODE_AP

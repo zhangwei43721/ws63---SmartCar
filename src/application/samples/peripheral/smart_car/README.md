@@ -9,9 +9,8 @@
 - **L9110S 电机驱动** - 基础运动控制（PWM 线性调速、差速控制）
 - **HC-SR04 超声波传感器** - 测距与避障
 - **TCRT5000 红外循迹传感器** - 黑线识别与循迹
-- **SG90 舵机控制** - 角度控制与扫描
 - **SSD1306 OLED 显示屏** - 状态显示 (I2C，支持中文)
-- **WiFi UDP 通信** - WiFi 网络连接、遥控命令、OTA 升级
+- **WiFi UDP 通信** - 智能WiFi模式（STA/AP）、遥控命令
 - **NV 存储服务** - PID 参数和 WiFi 配置持久化存储
 
 ## 架构设计
@@ -31,7 +30,7 @@
 +------------------------------------------------------------------+
 |                      功能服务层 (Services)                        |
 |  - UI Service (OLED 显示、中文字体)                                |
-|  - UDP Service (遥控命令、状态上报、OTA)                            |
+|  - UDP Service (遥控命令、状态上报)                                |
 |  - Storage Service (NV 参数持久化)                                 |
 +------------------------------------------------------------------+
                        | 调用
@@ -62,8 +61,7 @@ apps/robot_demo/
     ├── ui_service.c/h         # OLED 显示服务
     ├── udp_service.c/h        # UDP 通信服务
     ├── udp_net_common.c/h     # UDP 网络公共层
-    ├── storage_service.c/h    # NV 存储服务（PID + WiFi 配置）
-    └── ota_service.c/h        # OTA 升级服务
+    └── storage_service.c/h    # NV 存储服务（PID + WiFi 配置）
 ```
 
 ### 3. 模式接口设计
@@ -97,7 +95,6 @@ application/samples/peripheral/smart_car/
 │   ├── l9110s/             # 电机驱动（支持差速控制）
 │   ├── hcsr04/             # 超声波驱动
 │   ├── tcrt5000/           # 红外循迹驱动
-│   ├── sg90/               # 舵机驱动
 │   └── ssd1306/            # OLED 驱动（支持中文）
 │
 └── apps/                   # 【应用业务层】
@@ -107,7 +104,6 @@ application/samples/peripheral/smart_car/
     │
     ├── test_l9110s/        # 单元测试：电机
     ├── test_hcsr04/        # 单元测试：超声波
-    ├── test_sg90/          # 单元测试：舵机
     ├── test_tcrt5000/      # 单元测试：红外循迹
     └── test_ssd1306/       # 单元测试：OLED显示
 ```
@@ -122,7 +118,6 @@ application/samples/peripheral/smart_car/
 | | 右轮 A/B | GPIO 0 / 2 | PWM 控制 |
 | **HC-SR04** | TRIG / ECHO | GPIO 11 / 12 | 超声波测距 |
 | **TCRT5000** | 左 / 中 / 右 | GPIO 4 / 2 / 0 | 循迹传感器 |
-| **SG90 舵机** | PWM 信号 | GPIO 13 | 头部舵机 |
 | **SSD1306** | SCL / SDA | GPIO 15 / 16 | I2C OLED 显示屏 |
 | **按键** | 模式切换 | GPIO 3 | KEY1 (低电平触发) |
 
@@ -170,16 +165,16 @@ application/samples/peripheral/smart_car/
 
 **4. WiFi 遥控模式 (Remote)**
 - **行为**：响应上位机 UDP 指令
-- **保护**：500ms 超时自动急停，舵机回中
-- **支持**：差速控制、舵机转向
+- **保护**：500ms 超时自动急停
+- **支持**：差速控制
 
 ## 文档
 
-- [UDP 通信协议文档](docs/UDP_PROTOCOL.md) - 详细的 UDP 接口协议说明
+- [UDP 通信协议文档](docs/UDP 通信协议文档.md) - 详细的 UDP 接口协议说明
 
 **简要说明**：
 
-上位机通过 WiFi 发送控制命令（7 字节格式）：
+上位机通过 WiFi 发送控制命令（6 字节格式）：
 
 | 字节 | 类型 | 含义 | 说明 |
 |:---|:---|:---|:---|
@@ -187,13 +182,17 @@ application/samples/peripheral/smart_car/
 | **Byte 1** | `uint8_t` | **命令** | 模式编号或参数类型 |
 | **Byte 2** | `int8_t` | **左电机** | `0`:停, `[1,100]`:前, `[-100,-1]`:后 |
 | **Byte 3** | `int8_t` | **右电机** | `0`:停, `[1,100]`:前, `[-100,-1]`:后 |
-| **Byte 4** | `int8_t` | **舵机** | `0~180`:角度 |
-| **Byte 5** | `int8_t` | **保留** | - |
-| **Byte 6** | `uint8_t` | **校验** | 累加和 |
+| **Byte 4** | `int8_t` | **扩展** | PID高位/保留 |
+| **Byte 5** | `uint8_t` | **校验** | 累加和 |
 
 **UDP 服务器配置**：
 - 端口：`8888`（控制命令接收）
 - 广播端口：`8889`（设备发现、状态上报）
+
+**WiFi 工作模式**：
+- 智能模式：启动时先尝试连接预设 WiFi（15 秒超时），失败后自动切换 AP 模式
+- STA 模式：固定连接到指定路由器
+- AP 模式：作为热点（SSID: WS63_Robot, 密码: 12345678）
 
 ### 3. 单元测试 (Unit Tests)
 
@@ -204,7 +203,6 @@ application/samples/peripheral/smart_car/
 | **test_l9110s** | 电机测试 | 观察"前进→后退→左转→右转→停止"循环 |
 | **test_hcsr04** | 超声波测试 | 串口查看距离日志 `Distance: xx cm` |
 | **test_tcrt5000** | 红外循迹测试 | 遮挡传感器观察电平变化 |
-| **test_sg90** | 舵机测试 | 观察 0°~180° 往复扫描 |
 | **test_ssd1306** | OLED 测试 | 显示测试图案、中文、数字 |
 
 ## 配置参数说明
@@ -219,10 +217,13 @@ application/samples/peripheral/smart_car/
 | `Kd` | 0.0 | 微分系数 |
 | `base_speed` | 40 | 基础速度 |
 | **WiFi 配置** | | 网络连接参数 |
-| `SSID` | "BSHZ-2.4G" | WiFi 名称 |
-| `Password` | "BS666888" | WiFi 密码 |
+| `SSID` | 空（首次需配置）| WiFi 名称，通过 UDP 命令配置 |
+| `Password` | 空（首次需配置）| WiFi 密码，通过 UDP 命令配置 |
 
-> 注：PID 参数可通过 UDP 命令实时调整，自动保存到 NV，重启后保持。
+> 注：
+> - 首次使用需要通过 UDP 命令 (0xE1) 配置 WiFi
+> - WiFi 配置会自动保存到 NV，重启后保持
+> - PID 参数可通过 UDP 命令实时调整，自动保存到 NV
 
 ## 开发者指南
 
@@ -275,6 +276,19 @@ application/samples/peripheral/smart_car/
 
 3. **在 robot_mgr 中初始化**
    在 `robot_mgr_init()` 中调用服务的初始化函数
+
+## 故障排查
+
+### WiFi 配置问题
+
+**Q: 设备启动后连接到错误网络？**
+A: 检查串口日志，确认启动时显示的 WiFi SSID 是否为预期值。
+
+**Q: UDP 配置后重启没有生效？**
+A:
+1. 检查 UDP 应答包，确认配置命令返回 0x00（成功）
+2. 检查串口日志中的 "[存储] 保存WiFi" 和 "[存储] NV写入" 输出
+3. 确认 NV Write 返回 ret=0（成功）
 
 ## 更新记录
 

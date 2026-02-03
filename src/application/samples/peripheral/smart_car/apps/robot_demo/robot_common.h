@@ -33,12 +33,11 @@ typedef enum {
  * 用于向 Web 前端提供实时状态数据
  */
 typedef struct {
-    CarStatus mode;           // 当前模式 (0:Standby, 1:Trace, 2:Avoid, 3:Remote)
-    unsigned int servo_angle; // 当前舵机角度 (0-180)
-    float distance;           // 当前超声波距离 (cm)
-    unsigned int ir_left;     // 左红外状态 (0:黑线, 1:白色)
-    unsigned int ir_middle;   // 中红外状态 (0:黑线, 1:白色)
-    unsigned int ir_right;    // 右红外状态 (0:黑线, 1:白色)
+    CarStatus mode;         // 当前模式 (0:Standby, 1:Trace, 2:Avoid, 3:Remote)
+    float distance;         // 当前超声波距离 (cm)
+    unsigned int ir_left;   // 左红外状态 (0:黑线, 1:白色)
+    unsigned int ir_middle; // 中红外状态 (0:黑线, 1:白色)
+    unsigned int ir_right;  // 右红外状态 (0:黑线, 1:白色)
 } RobotState;
 
 #endif

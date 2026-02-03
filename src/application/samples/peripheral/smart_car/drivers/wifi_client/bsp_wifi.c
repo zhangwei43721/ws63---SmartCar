@@ -2,8 +2,8 @@
  ****************************************************************************************************
  * @file        bsp_wifi.c
  * @author      SkyForever
- * @version     V1.1
- * @date        2025-01-13
+ * @version     V1.4
+ * @date        2025-02-03
  * @brief       WiFi连接BSP层实现
  * @license     Copyright (c) 2024-2034
  ****************************************************************************************************
@@ -15,409 +15,362 @@
  */
 
 #include "bsp_wifi.h"
-#include "wifi_hotspot.h"
-#include "wifi_hotspot_config.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#include "../../apps/robot_demo/services/storage_service.h"
+#include "cmsis_os2.h"
+#include "lwip/netifapi.h"
+#include "securec.h"
+#include "soc_osal.h"
+#include "td_type.h"
 #include "wifi_device.h"
 #include "wifi_event.h"
-#include "lwip/netifapi.h"
-#include "lwip/netif.h"
-#include "soc_osal.h"
-#include "cmsis_os2.h"
-#include "td_type.h"
-#include "std_def.h"
-#include <string.h>
-#include <stdio.h>
+#include "wifi_hotspot.h"
 
-#define WIFI_SCAN_AP_LIMIT 64
-#define WIFI_CONN_STATUS_MAX_GET_TIMES 5
-#define DHCP_BOUND_STATUS_MAX_GET_TIMES 20
-#define WIFI_STA_IP_MAX_GET_TIMES 5
-
-static wifi_event_stru g_wifi_event_cb = {0};                  /* WiFi 事件回调结构体 */
-static bsp_wifi_status_t g_wifi_status = BSP_WIFI_STATUS_IDLE; /* WiFi 当前连接状态 */
-static bsp_wifi_mode_t g_wifi_mode = BSP_WIFI_MODE_STA;       /* WiFi 当前工作模式 */
+/* 全局状态变量 */
+static bsp_wifi_status_t g_wifi_status = BSP_WIFI_STATUS_IDLE;  // WiFi 连接状态
+static bsp_wifi_mode_t g_wifi_mode = BSP_WIFI_MODE_STA;         // WiFi 工作模式
 
 /**
- * @brief WiFi连接状态变化回调
+ * @brief WiFi 连接事件回调函数
+ * @param state WiFi 状态变化
+ * @param info 连接信息（SSID、RSSI 等）
+ * @param reason 断开原因（未使用）
+ * @note 当 WiFi 连接状态改变时，由系统自动调用
  */
-static void wifi_connection_changed(td_s32 state, const wifi_linked_info_stru *info, td_s32 reason_code)
-{
-    UNUSED(reason_code);
+static void wifi_cb(td_s32 state, const wifi_linked_info_stru* info,
+                    td_s32 reason) {
+  (void)reason;
+  if (state == WIFI_STATE_AVALIABLE) {
+    printf("[WiFi] 已连接: %s, 信号强度: %d\r\n", info->ssid, info->rssi);
+    g_wifi_status = BSP_WIFI_STATUS_CONNECTED;
+  } else if (state == WIFI_STATE_NOT_AVALIABLE) {
+    g_wifi_status = BSP_WIFI_STATUS_DISCONNECTED;
+  }
+}
 
-    if (state == WIFI_STATE_AVALIABLE) {
-        printf("[WiFi] Connected: %s, RSSI: %d\r\n", info->ssid, info->rssi);
-        g_wifi_status = BSP_WIFI_STATUS_CONNECTED;
-    } else if (state == WIFI_STATE_NOT_AVALIABLE) {
-        printf("[WiFi] Disconnected\r\n");
-        g_wifi_status = BSP_WIFI_STATUS_DISCONNECTED;
+/* WiFi 事件回调结构体 */
+static wifi_event_stru g_wifi_event = {.wifi_event_connection_changed =
+                                           wifi_cb};
+
+/**
+ * @brief 等待并获取 DHCP 分配的 IP 地址
+ * @param ifname 网络接口名称（如 "wlan0"）
+ * @param timeout_ms 超时时间（毫秒）
+ * @return 成功返回 0，失败返回 -1
+ * @note 启动 DHCP 并等待获取有效 IP 地址
+ */
+static int wait_for_dhcp(const char* ifname, uint32_t timeout_ms) {
+  struct netif* netif_p = netifapi_netif_find(ifname);
+  if (!netif_p || netifapi_dhcp_start(netif_p) != ERR_OK) return -1;
+
+  /* 等待 DHCP 绑定 */
+  for (int i = 0; i < 20; i++) {
+    if (netifapi_dhcp_is_bound(netif_p) == ERR_OK) break;
+    osDelay(50);
+  }
+
+  /* 等待获取有效 IP 地址 */
+  unsigned long long start = osal_get_jiffies();
+  unsigned long long timeout_ticks = osal_msecs_to_jiffies(timeout_ms);
+
+  while ((osal_get_jiffies() - start) < timeout_ticks) {
+    if (netif_p->ip_addr.u_addr.ip4.addr != 0) {
+      g_wifi_status = BSP_WIFI_STATUS_GOT_IP;
+      return 0;
     }
+    osDelay(10);
+  }
+  return -1;
 }
 
 /**
- * @brief WiFi扫描状态变化回调
+ * @brief 扫描并查找指定的 AP
+ * @param ssid 目标 WiFi 名称
+ * @param key WiFi 密码
+ * @param cfg 输出的 WiFi 配置结构体
+ * @return 成功返回 ERRCODE_SUCC，失败返回错误码
+ * @note 扫描周围 WiFi，查找匹配的 SSID 并填充配置信息
  */
-static void wifi_scan_state_changed(td_s32 state, td_s32 size)
-{
-    UNUSED(state);
-    UNUSED(size);
-    printf("[WiFi] Scan done!\r\n");
+static errcode_t find_ap(const char* ssid, const char* key,
+                         wifi_sta_config_stru* cfg) {
+  uint32_t num = 32;
+
+  /* 在堆上申请内存（避免栈溢出） */
+  wifi_scan_info_stru* scan_res = (wifi_scan_info_stru*)osal_kmalloc(
+      sizeof(wifi_scan_info_stru) * num, OSAL_GFP_ATOMIC);
+  if (scan_res == NULL) {
+    printf("[WiFi] 扫描内存分配失败\r\n");
+    return ERRCODE_MALLOC;
+  }
+
+  /* 执行 WiFi 扫描 */
+  wifi_sta_scan();
+  osDelay(600);
+
+  /* 获取扫描结果 */
+  errcode_t ret = wifi_sta_get_scan_info(scan_res, &num);
+  if (ret != ERRCODE_SUCC) {
+    osal_kfree(scan_res);
+    return ret;
+  }
+
+  /* 查找目标 SSID */
+  errcode_t found = ERRCODE_FAIL;
+  for (uint32_t i = 0; i < num; i++) {
+    if (strcmp(scan_res[i].ssid, ssid) == 0) {
+      memcpy_s(cfg->ssid, WIFI_MAX_SSID_LEN, scan_res[i].ssid,
+               WIFI_MAX_SSID_LEN);
+      memcpy_s(cfg->bssid, WIFI_MAC_LEN, scan_res[i].bssid, WIFI_MAC_LEN);
+      cfg->security_type = scan_res[i].security_type;
+      memcpy_s(cfg->pre_shared_key, WIFI_MAX_KEY_LEN, key, strlen(key));
+      cfg->ip_type = DHCP;
+      found = ERRCODE_SUCC;
+      break;
+    }
+  }
+
+  /* 释放扫描结果内存 */
+  osal_kfree(scan_res);
+  return found;
 }
 
 /**
- * @brief 获取匹配的网络
+ * @brief 初始化 AP 模式（热点）
+ * @return 成功返回 0，失败返回 -1
+ * @note 将设备配置为 WiFi 热点，SSID: WS63_Robot
+ *       - 密码为空时使用开放网络（无密码）
+ *       - 密码非空时使用 WPA2 加密
  */
-static errcode_t get_match_network(const char *expected_ssid, const char *key, wifi_sta_config_stru *expected_bss)
-{
-    uint32_t num = WIFI_SCAN_AP_LIMIT;
-    uint32_t bss_index = 0;
-    uint32_t scan_len = sizeof(wifi_scan_info_stru) * WIFI_SCAN_AP_LIMIT;
-    wifi_scan_info_stru *result = osal_kmalloc(scan_len, OSAL_GFP_ATOMIC);
+static int init_ap_mode(void) {
+  printf("[WiFi] 正在启动 AP 热点模式...\r\n");
 
-    if (result == NULL) {
-        return ERRCODE_MALLOC;
-    }
+  softap_config_stru conf = {0};
+  memcpy_s(conf.ssid, sizeof(conf.ssid), BSP_WIFI_AP_SSID,
+           strlen(BSP_WIFI_AP_SSID));
+  memcpy_s(conf.pre_shared_key, WIFI_MAX_KEY_LEN, BSP_WIFI_AP_PASSWORD,
+           strlen(BSP_WIFI_AP_PASSWORD));
 
-    memset_s(result, scan_len, 0, scan_len);
-    if (wifi_sta_get_scan_info(result, &num) != ERRCODE_SUCC) {
-        osal_kfree(result);
-        return ERRCODE_FAIL;
-    }
+  /* 根据密码是否为空自动选择安全模式 */
+  if (strlen(BSP_WIFI_AP_PASSWORD) == 0) {
+    conf.security_type = 0; /* 开放网络（无密码） */
+    printf("[WiFi] 配置为开放网络（无密码）\r\n");
+  } else {
+    conf.security_type = 3; /* WPA2-PSK 加密 */
+    printf("[WiFi] 配置为 WPA2 加密网络\r\n");
+  }
+  conf.channel_num = BSP_WIFI_AP_CHANNEL;
 
-    /* 筛选扫描到的Wi-Fi网络 */
-    for (bss_index = 0; bss_index < num; bss_index++) {
-        if (strlen(expected_ssid) == strlen(result[bss_index].ssid)) {
-            if (memcmp(expected_ssid, result[bss_index].ssid, strlen(expected_ssid)) == 0) {
-                break;
-            }
-        }
-    }
+  /* 配置热点高级参数 */
+  softap_config_advance_stru adv = {0};
+  adv.beacon_interval = 100;
+  adv.protocol_mode = 4;
+  wifi_set_softap_config_advance(&adv);
 
-    if (bss_index >= num) {
-        osal_kfree(result);
-        return ERRCODE_FAIL;
-    }
-
-    /* 复制网络信息 */
-    if (memcpy_s(expected_bss->ssid, WIFI_MAX_SSID_LEN, result[bss_index].ssid, WIFI_MAX_SSID_LEN) != EOK) {
-        osal_kfree(result);
-        return ERRCODE_MEMCPY;
-    }
-    if (memcpy_s(expected_bss->bssid, WIFI_MAC_LEN, result[bss_index].bssid, WIFI_MAC_LEN) != EOK) {
-        osal_kfree(result);
-        return ERRCODE_MEMCPY;
-    }
-    expected_bss->security_type = result[bss_index].security_type;
-    if (memcpy_s(expected_bss->pre_shared_key, WIFI_MAX_KEY_LEN, key, strlen(key)) != EOK) {
-        osal_kfree(result);
-        return ERRCODE_MEMCPY;
-    }
-    expected_bss->ip_type = DHCP;
-    osal_kfree(result);
-    return ERRCODE_SUCC;
-}
-
-/**
- * @brief 初始化WiFi AP模式（内部函数）
- */
-static int bsp_wifi_init_ap_mode(void)
-{
-    softap_config_stru hapd_conf = {0};
-    softap_config_advance_stru config = {0};
-    char ifname[WIFI_IFNAME_MAX_SIZE + 1] = "ap0";
-    struct netif *netif_p = NULL;
-    ip4_addr_t st_ipaddr, st_netmask, st_gw;
-
-    printf("[BSP WiFi] Initializing AP mode...\r\n");
-
-    /* 配置SoftAP基本参数 */
-    memcpy_s(hapd_conf.ssid, sizeof(hapd_conf.ssid),
-             BSP_WIFI_AP_SSID, strlen(BSP_WIFI_AP_SSID));
-    memcpy_s(hapd_conf.pre_shared_key, WIFI_MAX_KEY_LEN,
-             BSP_WIFI_AP_PASSWORD, strlen(BSP_WIFI_AP_PASSWORD));
-    hapd_conf.security_type = 3;  /* WPA_WPA2_PSK */
-    hapd_conf.channel_num = BSP_WIFI_AP_CHANNEL;
-    hapd_conf.wifi_psk_type = 0;
-
-    /* 配置高级参数 */
-    config.beacon_interval = 100;
-    config.dtim_period = 2;
-    config.gi = 0;
-    config.group_rekey = 86400;
-    config.protocol_mode = 4;  /* 802.11b/g/n/ax */
-    config.hidden_ssid_flag = 1;  /* 不隐藏SSID */
-
-    if (wifi_set_softap_config_advance(&config) != 0) {
-        printf("[BSP WiFi] Failed to set advanced config\r\n");
-        return -1;
-    }
-
-    /* 启动SoftAP */
-    if (wifi_softap_enable(&hapd_conf) != 0) {
-        printf("[BSP WiFi] Failed to enable SoftAP\r\n");
-        return -1;
-    }
-
-    /* 配置IP地址 */
-    netif_p = netif_find(ifname);
-    if (netif_p == NULL) {
-        printf("[BSP WiFi] netif_find ap0 failed\r\n");
-        wifi_softap_disable();
-        return -1;
-    }
-
-    IP4_ADDR(&st_ipaddr, 192, 168, 43, 1);
-    IP4_ADDR(&st_netmask, 255, 255, 255, 0);
-    IP4_ADDR(&st_gw, 192, 168, 43, 2);
-
-    if (netifapi_netif_set_addr(netif_p, &st_ipaddr, &st_netmask, &st_gw) != 0) {
-        printf("[BSP WiFi] Failed to set IP address\r\n");
-        wifi_softap_disable();
-        return -1;
-    }
-
-    /* 启动DHCP服务器 */
-    if (netifapi_dhcps_start(netif_p, NULL, 0) != 0) {
-        printf("[BSP WiFi] Failed to start DHCP server\r\n");
-        wifi_softap_disable();
-        return -1;
-    }
-
-    g_wifi_status = BSP_WIFI_STATUS_GOT_IP;  /* AP模式直接就绪 */
-    printf("[BSP WiFi] AP mode started: SSID=%s, IP=192.168.43.1\r\n", BSP_WIFI_AP_SSID);
-
-    return 0;
-}
-
-/**
- * @brief 初始化WiFi（支持模式选择）
- * @param mode WiFi工作模式（STA或AP）
- * @return 0成功，-1失败
- */
-int bsp_wifi_init_ex(bsp_wifi_mode_t mode)
-{
-    printf("[BSP WiFi] Initializing %s mode...\r\n",
-           mode == BSP_WIFI_MODE_AP ? "AP" : "STA");
-
-    g_wifi_mode = mode;
-
-    /* 注册WiFi事件回调（仅STA模式需要） */
-    if (mode == BSP_WIFI_MODE_STA) {
-        g_wifi_event_cb.wifi_event_scan_state_changed = wifi_scan_state_changed;
-        g_wifi_event_cb.wifi_event_connection_changed = wifi_connection_changed;
-
-        if (wifi_register_event_cb(&g_wifi_event_cb) != 0) {
-            printf("[BSP WiFi] Failed to register event callback\r\n");
-            return -1;
-        }
-    }
-
-    /* 等待WiFi初始化完成 */
-    while (wifi_is_wifi_inited() == 0) {
-        osDelay(10);
-    }
-
-    /* 根据模式使能 */
-    if (mode == BSP_WIFI_MODE_STA) {
-        if (wifi_sta_enable() != ERRCODE_SUCC) {
-            printf("[BSP WiFi] Failed to enable STA mode\r\n");
-            return -1;
-        }
-        g_wifi_status = BSP_WIFI_STATUS_IDLE;
-    } else {
-        return bsp_wifi_init_ap_mode();
-    }
-
-    printf("[BSP WiFi] Initialized successfully\r\n");
-    return 0;
-}
-
-/**
- * @brief 初始化WiFi（使用默认配置的模式）
- * @return 0成功，-1失败
- */
-int bsp_wifi_init(void)
-{
-#ifdef CONFIG_SMART_CAR_WIFI_MODE
-    return bsp_wifi_init_ex(CONFIG_SMART_CAR_WIFI_MODE);
-#else
-    /* 默认使用STA模式 */
-    return bsp_wifi_init_ex(BSP_WIFI_MODE_STA);
-#endif
-}
-
-/**
- * @brief 连接到指定的AP
- */
-int bsp_wifi_connect_ap(const char *ssid, const char *password)
-{
-    char ifname[WIFI_IFNAME_MAX_SIZE + 1] = "wlan0";
-    wifi_sta_config_stru expected_bss = {0};
-    struct netif *netif_p = NULL;
-    wifi_linked_info_stru wifi_status;
-    uint8_t index = 0;
-    errcode_t ret;
-
-    if (ssid == NULL || password == NULL) {
-        printf("[BSP WiFi] Invalid parameters\r\n");
-        return -1;
-    }
-
-    printf("[BSP WiFi] Connecting to %s...\r\n", ssid);
-    g_wifi_status = BSP_WIFI_STATUS_CONNECTING;
-
-    /* 扫描并连接 */
-    do {
-        printf("[BSP WiFi] Start scan...\r\n");
-        osDelay(100);
-
-        if (wifi_sta_scan() != ERRCODE_SUCC) {
-            printf("[BSP WiFi] Scan failed, retry...\r\n");
-            continue;
-        }
-
-        osDelay(300);
-
-        ret = get_match_network(ssid, password, &expected_bss);
-        if (ret != ERRCODE_SUCC) {
-            printf("[BSP WiFi] Cannot find AP, retry...\r\n");
-            continue;
-        }
-
-        printf("[BSP WiFi] Connecting...\r\n");
-        if (wifi_sta_connect(&expected_bss) != ERRCODE_SUCC) {
-            continue;
-        }
-
-        /* 检查连接状态 */
-        for (index = 0; index < WIFI_CONN_STATUS_MAX_GET_TIMES; index++) {
-            osDelay(50);
-            memset_s(&wifi_status, sizeof(wifi_linked_info_stru), 0, sizeof(wifi_linked_info_stru));
-            if (wifi_sta_get_ap_info(&wifi_status) != ERRCODE_SUCC) {
-                continue;
-            }
-            if (wifi_status.conn_state == WIFI_CONNECTED) {
-                break;
-            }
-        }
-
-        if (wifi_status.conn_state == WIFI_CONNECTED) {
-            break;
-        }
-    } while (1);
-
-    /* DHCP获取IP */
-    netif_p = netifapi_netif_find(ifname);
-    if (netif_p == NULL) {
-        printf("[BSP WiFi] netif_find failed\r\n");
-        return -1;
-    }
-
-    if (netifapi_dhcp_start(netif_p) != ERR_OK) {
-        printf("[BSP WiFi] DHCP start failed\r\n");
-        return -1;
-    }
-
-    for (uint8_t i = 0; i < DHCP_BOUND_STATUS_MAX_GET_TIMES; i++) {
-        osDelay(50);
-        if (netifapi_dhcp_is_bound(netif_p) == ERR_OK) {
-            printf("[BSP WiFi] DHCP bound success\r\n");
-            break;
-        }
-    }
-
-    for (uint8_t i = 0; i < WIFI_STA_IP_MAX_GET_TIMES; i++) {
-        osDelay(1);
-        if (netif_p->ip_addr.u_addr.ip4.addr != 0) {
-            printf("[BSP WiFi] IP: %u.%u.%u.%u\r\n", (netif_p->ip_addr.u_addr.ip4.addr & 0x000000ff),
-                   (netif_p->ip_addr.u_addr.ip4.addr & 0x0000ff00) >> 8,
-                   (netif_p->ip_addr.u_addr.ip4.addr & 0x00ff0000) >> 16,
-                   (netif_p->ip_addr.u_addr.ip4.addr & 0xff000000) >> 24);
-
-            g_wifi_status = BSP_WIFI_STATUS_GOT_IP;
-            printf("[BSP WiFi] Connected successfully\r\n");
-            return 0;
-        }
-    }
-
-    printf("[BSP WiFi] Failed to get IP\r\n");
+  if (wifi_softap_enable(&conf) != 0) {
+    printf("[WiFi] AP 热点启动失败\r\n");
     return -1;
-}
+  }
 
-/**
- * @brief 断开WiFi连接
- */
-int bsp_wifi_disconnect(void)
-{
-    errcode_t ret;
+  /* 根据安全类型输出不同的日志 */
+  if (conf.security_type == 0) {
+    printf("[WiFi] AP 热点已启用: SSID=%s, 开放网络(无密码), 频道=%d\r\n",
+           BSP_WIFI_AP_SSID, BSP_WIFI_AP_CHANNEL);
+  } else {
+    printf("[WiFi] AP 热点已启用: SSID=%s, 密码=%s, 频道=%d\r\n",
+           BSP_WIFI_AP_SSID, BSP_WIFI_AP_PASSWORD, BSP_WIFI_AP_CHANNEL);
+  }
 
-    ret = wifi_sta_disconnect();
-    if (ret != ERRCODE_SUCC) {
-        printf("[BSP WiFi] Failed to disconnect\r\n");
-        return -1;
-    }
+  /* 设置静态 IP 地址 */
+  struct netif* netif_p = netifapi_netif_find("ap0");
+  if (netif_p) {
+    ip4_addr_t ip, mask, gw;
+    IP4_ADDR(&ip, 192, 168, 43, 1);
+    IP4_ADDR(&mask, 255, 255, 255, 0);
+    IP4_ADDR(&gw, 192, 168, 43, 1);
 
-    g_wifi_status = BSP_WIFI_STATUS_IDLE;
-    printf("[BSP WiFi] Disconnected\r\n");
-
+    netifapi_netif_set_addr(netif_p, &ip, &mask, &gw);
+    netifapi_dhcps_start(netif_p, NULL, 0);
+    g_wifi_status = BSP_WIFI_STATUS_GOT_IP;
+    printf("[WiFi] AP 热点 IP: 192.168.43.1\r\n");
     return 0;
+  }
+  printf("[WiFi] AP 热点网络接口配置失败\r\n");
+  return -1;
 }
 
 /**
- * @brief 获取WiFi连接状态
+ * @brief WiFi 模块通用初始化接口
+ * @param mode WiFi 工作模式（STA 或 AP）
+ * @return 成功返回 0，失败返回 -1
  */
-bsp_wifi_status_t bsp_wifi_get_status(void)
-{
-    return g_wifi_status;
+int bsp_wifi_init_ex(bsp_wifi_mode_t mode) {
+  g_wifi_mode = mode;
+  if (mode == BSP_WIFI_MODE_STA) wifi_register_event_cb(&g_wifi_event);
+  while (!wifi_is_wifi_inited()) osDelay(10);
+
+  if (mode == BSP_WIFI_MODE_STA) {
+    return (wifi_sta_enable() == ERRCODE_SUCC) ? 0 : -1;
+  } else {
+    return init_ap_mode();
+  }
 }
 
 /**
- * @brief 获取本机IP地址
+ * @brief 连接到指定的 STA 网络（带超时）
+ * @param ssid WiFi 名称
+ * @param password WiFi 密码
+ * @param timeout_ms 超时时间（毫秒）
+ * @return 成功返回 0，失败返回 -1
+ * @note 扫描并连接到指定的 AP，等待 DHCP 完成
  */
-int bsp_wifi_get_ip(char *ip_str, uint32_t len)
-{
-    struct netif *netif_p;
-    const char *ifname = (g_wifi_mode == BSP_WIFI_MODE_AP) ? "ap0" : "wlan0";
+int bsp_wifi_start_sta_with_timeout(const char* ssid, const char* password,
+                                    uint32_t timeout_ms) {
+  if (!ssid || !password) return -1;
+  g_wifi_status = BSP_WIFI_STATUS_CONNECTING;
+  g_wifi_mode = BSP_WIFI_MODE_STA;
 
-    netif_p = netifapi_netif_find(ifname);
+  wifi_sta_config_stru cfg = {0};
+  unsigned long long start = osal_get_jiffies();
+  unsigned long long timeout_ticks = osal_msecs_to_jiffies(timeout_ms);
 
-    if (netif_p == NULL || ip_str == NULL || len == 0) {
-        return -1;
+  printf("[WiFi] 正在连接 %s (超时=%dms)...\r\n", ssid, timeout_ms);
+
+  /* 循环尝试连接直到超时 */
+  while ((osal_get_jiffies() - start) < timeout_ticks) {
+    if (find_ap(ssid, password, &cfg) == ERRCODE_SUCC) {
+      if (wifi_sta_connect(&cfg) == ERRCODE_SUCC) {
+        /* 等待连接成功 */
+        for (int i = 0; i < 40; i++) {
+          if (g_wifi_status == BSP_WIFI_STATUS_CONNECTED) goto connected;
+          osDelay(50);
+        }
+      }
     }
+    osDelay(500);
+  }
+  return -1;
 
-    if (netif_p->ip_addr.u_addr.ip4.addr == 0) {
-        strncpy_s(ip_str, len, "0.0.0.0", strlen("0.0.0.0"));
-        return -1;
+connected:
+  return wait_for_dhcp("wlan0", 5000);
+}
+
+/**
+ * @brief 兼容旧接口的连接函数
+ * @param ssid WiFi 名称
+ * @param password WiFi 密码
+ * @return 成功返回 0，失败返回 -1
+ * @note 默认超时时间为 20 秒
+ */
+int bsp_wifi_connect_ap(const char* ssid, const char* password) {
+  return bsp_wifi_start_sta_with_timeout(ssid, password, 20000);
+}
+
+/**
+ * @brief 智能启动模式：先尝试 STA，失败后自动切换 AP
+ * @return 成功返回 0，失败返回 -1
+ * @note 从 NV 读取 WiFi 配置，尝试连接；超时后切换为 AP 模式
+ */
+int bsp_wifi_smart_init(void) {
+  char ssid[32] = {0}, pass[64] = {0};
+  storage_service_get_wifi_config(ssid, pass);
+
+  printf("[WiFi] 智能模式启动...\r\n");
+  if (ssid[0] == '\0') {
+    printf("[WiFi] NV 中无 WiFi 配置，直接启动 AP 模式\r\n");
+    bsp_wifi_init_ex(BSP_WIFI_MODE_AP);
+    return 0;
+  }
+
+  printf("[WiFi] NV 配置: SSID='%s'，尝试 STA 连接...\r\n", ssid);
+  bsp_wifi_init_ex(BSP_WIFI_MODE_STA);
+
+  /* 如果有配置的 SSID，尝试连接 */
+  if (bsp_wifi_start_sta_with_timeout(ssid, pass, 15000) == 0) {
+    printf("[WiFi] STA 连接成功\r\n");
+    return 0;
+  }
+
+  /* STA 连接失败，切换到 AP 模式 */
+  printf("[WiFi] STA 连接失败（密码错误或网络不可达），切换到 AP 模式\r\n");
+  wifi_sta_disable();
+  osDelay(200); /* 等待 STA 完全关闭 */
+  g_wifi_mode = BSP_WIFI_MODE_AP;
+  return init_ap_mode();
+}
+
+/**
+ * @brief 从 AP 模式切换到 STA 模式
+ * @param ssid 目标 WiFi 名称
+ * @param password WiFi 密码
+ * @return 成功返回 0，失败返回 -1
+ * @note 关闭 AP 热点，切换为 STA 客户端模式并连接
+ */
+int bsp_wifi_switch_from_ap_to_sta(const char* ssid, const char* password) {
+  /* 关闭 AP 热点 */
+  wifi_softap_disable();
+  struct netif* ap = netifapi_netif_find("ap0");
+  if (ap) netifapi_dhcps_stop(ap);
+
+  /* 启用 STA 模式 */
+  if (wifi_sta_enable() != ERRCODE_SUCC) {
+    bsp_wifi_smart_init();
+    return -1;
+  }
+
+  /* 连接到指定 WiFi */
+  if (bsp_wifi_start_sta_with_timeout(ssid, password, 15000) != 0) {
+    /* 连接失败，回滚到 AP 模式 */
+    wifi_sta_disable();
+    init_ap_mode();
+    return -1;
+  }
+  return 0;
+}
+
+/**
+ * @brief 获取当前 WiFi 状态
+ * @return WiFi 连接状态枚举值
+ */
+bsp_wifi_status_t bsp_wifi_get_status(void) { return g_wifi_status; }
+
+/**
+ * @brief 获取当前 WiFi 工作模式
+ * @return WiFi 模式枚举值（STA 或 AP）
+ */
+bsp_wifi_mode_t bsp_wifi_get_mode(void) { return g_wifi_mode; }
+
+/**
+ * @brief 获取当前设备的 IP 地址字符串
+ * @param ip_str 输出的 IP 地址字符串缓冲区
+ * @param len 缓冲区长度
+ * @return 成功返回 0，失败返回 -1
+ * @note 根据当前模式返回对应网口的 IP（ap0 或 wlan0）
+ */
+int bsp_wifi_get_ip(char* ip_str, uint32_t len) {
+  if (ip_str == NULL || len < 16) return -1;
+
+  /* 初始化默认值 */
+  strncpy_s(ip_str, len, "0.0.0.0", 7);
+
+  /* 根据模式选择网络接口 */
+  const char* name = (g_wifi_mode == BSP_WIFI_MODE_AP) ? "ap0" : "wlan0";
+
+  /* 使用线程安全的 API 获取 netif */
+  struct netif* netif_p = netifapi_netif_find(name);
+
+  if (netif_p != NULL) {
+    /* 读取 IP 地址（确保地址有效） */
+    uint32_t addr = netif_p->ip_addr.u_addr.ip4.addr;
+    if (addr != 0) {
+      snprintf(ip_str, len, "%u.%u.%u.%u", (unsigned int)(addr & 0xFF),
+               (unsigned int)((addr >> 8) & 0xFF),
+               (unsigned int)((addr >> 16) & 0xFF),
+               (unsigned int)((addr >> 24) & 0xFF));
+      return 0;
     }
-
-    snprintf(ip_str, len, "%u.%u.%u.%u", (netif_p->ip_addr.u_addr.ip4.addr & 0x000000ff),
-             (netif_p->ip_addr.u_addr.ip4.addr & 0x0000ff00) >> 8,
-             (netif_p->ip_addr.u_addr.ip4.addr & 0x00ff0000) >> 16,
-             (netif_p->ip_addr.u_addr.ip4.addr & 0xff000000) >> 24);
-
-    return 0;
-}
-
-/**
- * @brief 注册WiFi事件回调（已废弃，事件在初始化时注册）
- */
-int bsp_wifi_register_event_handler(void *handler)
-{
-    UNUSED(handler);
-    return 0;
-}
-
-/**
- * @brief 使用默认配置连接WiFi
- */
-int bsp_wifi_connect_default(void)
-{
-    return bsp_wifi_connect_ap(BSP_WIFI_SSID, BSP_WIFI_PASSWORD);
-}
-
-/**
- * @brief 获取当前WiFi工作模式
- */
-bsp_wifi_mode_t bsp_wifi_get_mode(void)
-{
-    return g_wifi_mode;
+  }
+  return -1;
 }

@@ -19,7 +19,6 @@
     </div>
     <div class="header-right">
       <div class="status-indicator" id="statusConn" title="连接状态"></div>
-      <div class="btn-icon" onclick="toggleOtaModal()" title="固件升级">⬆️</div>
       <div class="btn-icon" onclick="toggleConfig()">⚙️</div>
     </div>
   </header>
@@ -29,12 +28,10 @@
     <div class="car-wrapper">
       <!-- 车辆模型容器 -->
       <div class="car-model">
-        <!-- 1. 舵机云台与超声波 -->
-        <div class="servo-assembly" id="servoHead">
-          <div class="ultrasonic-sensor">
-            <div class="eye left"></div>
-            <div class="eye right"></div>
-          </div>
+        <!-- 1. 超声波传感器 -->
+        <div class="ultrasonic-sensor">
+          <div class="eye left"></div>
+          <div class="eye right"></div>
           <!-- 雷达扫描波束 -->
           <div class="radar-beam" id="radarBeam"></div>
         </div>
@@ -70,11 +67,6 @@
           <span class="label">距离</span>
           <span class="value" id="statusDist">--</span>
           <span class="unit">cm</span>
-        </div>
-        <div class="stat-item">
-          <span class="label">舵机</span>
-          <span class="value" id="statusAngle">90</span>
-          <span class="unit">°</span>
         </div>
       </div>
     </div>
@@ -141,51 +133,41 @@
   <div class="modal-backdrop" id="configModal">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>UDP连接配置</h3>
+        <h3>设置</h3>
         <span class="close-btn" onclick="toggleConfig()">×</span>
       </div>
       <div class="modal-body">
-        <div class="form-group">
-          <label>小车 IP 地址</label>
-          <input type="text" id="cfgIP" placeholder="自动发现" readonly />
+        <!-- WiFi配置区域 -->
+        <div class="form-section">
+          <h4>WiFi 配置</h4>
+          <div class="form-group">
+            <label>网络名称 (SSID)</label>
+            <input type="text" id="wifiSSID" placeholder="输入WiFi名称" maxlength="32" />
+          </div>
+          <div class="form-group">
+            <label>密码</label>
+            <input type="password" id="wifiPassword" placeholder="输入WiFi密码" maxlength="64" />
+            <button class="btn-icon" onclick="toggleWifiPassword()" style="margin-left: 8px;">👁️</button>
+          </div>
+          <div class="button-group">
+            <button class="btn-secondary" onclick="saveWifiConfig()">保存配置</button>
+            <button class="btn-primary" onclick="connectWifi()">保存并连接</button>
+          </div>
         </div>
-        <div class="form-group">
-          <label>控制端口</label>
-          <input type="number" id="cfgPort" value="8888" readonly />
-        </div>
-        <div class="form-group">
-          <label>广播端口</label>
-          <input type="number" id="cfgBCast" value="8889" readonly />
-        </div>
-        <div class="form-group">
-          <label>连接状态</label>
-          <div id="discoveryStatus">正在搜索设备...</div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-save" onclick="connectToProxy()">重新连接</button>
-      </div>
-    </div>
-  </div>
 
-  <!-- OTA 升级弹窗 -->
-  <div class="modal-backdrop" id="otaModal">
-    <div class="modal-card ota-modal">
-      <div class="modal-header">
-        <h3>固件升级 (OTA)</h3>
-        <span class="close-btn" onclick="toggleOtaModal()">×</span>
-      </div>
-      <div class="modal-body">
-        <div class="ota-panel">
-          <div class="ota-row">
-            <input type="file" id="otaFile" accept=".fwpkg" />
-            <button class="ota-btn" id="btnOtaStart">开始升级</button>
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+        <!-- 连接信息区域 -->
+        <div class="form-section">
+          <h4>连接信息</h4>
+          <div class="form-group">
+            <label>小车 IP 地址</label>
+            <input type="text" id="cfgIP" placeholder="自动发现" readonly />
           </div>
-          <div class="ota-hint">建议选择 ws63-liteos-app_all.fwpkg</div>
-          <div class="ota-progress">
-            <div class="ota-progress-bar" id="otaProgressBar"></div>
+          <div class="form-group">
+            <label>状态</label>
+            <div id="discoveryStatus" style="padding: 8px 12px; background: #f3f4f6; border-radius: 4px;">正在搜索设备...</div>
           </div>
-          <div class="ota-meta" id="otaStatusText">OTA: --</div>
         </div>
       </div>
     </div>

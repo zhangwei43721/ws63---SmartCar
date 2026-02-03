@@ -1,6 +1,6 @@
 /**
  * UDP Control App for Smart Car (Modified)
- * 修复了摇杆混控逻辑和模式切换协议
+ * 修复了摇杆混控逻辑和模式切换协议，删除OTA功能
  */
 
 // --- 配置管理 ---
@@ -15,7 +15,6 @@ const appState = {
   mode: "standby", // 界面显示用的模式字符串
   motor1: 0, // 左电机 -100~100
   motor2: 0, // 右电机 -100~100
-  servo: 90, // 舵机角度 0~180
   // 传感器数据
   distance: 0,
   ir: [1, 1, 1], // 左中右红外
@@ -23,7 +22,7 @@ const appState = {
   carIP: "",
   carFound: false,
   // 上次发送的控制值（用于检测变化）
-  lastSent: { motor1: 0, motor2: 0, servo: 90 },
+  lastSent: { motor1: 0, motor2: 0 },
   lastControlSendAt: 0,
 };
 
@@ -32,7 +31,7 @@ const appState = {
 const MODE_MAP = {
   standby: 0, // CAR_STOP_STATUS
   tracking: 1, // CAR_TRACE_STATUS
-  avoid: 2, // CAR_OBSTACLE_AVOID_STATUS
+  avoid: 2, // CAR_OBSTACLE_AVOIDANCE_STATUS
   remote: 3, // CAR_WIFI_CONTROL_STATUS
 };
 
@@ -42,35 +41,6 @@ let sendLoopTimer = null;
 let reconnectTimer = null;
 let isManualClose = false;
 const DPAD_SPEED = 100;
-
-const otaState = {
-  active: false,
-  phase: "idle",
-  file: null,
-  data: null,
-  total: 0,
-  offset: 0,
-  chunkSize: 1400,
-  fallbackChunkSize: 200,
-  fallbackTried: false,
-  ackTimeoutMs: 600,
-  maxRetries: 8,
-  waitingForOffset: null,
-  waitingForLen: 0,
-  retries: 0,
-  ackTimer: null,
-};
-
-function isFwpkg(u8) {
-  return !!(
-    u8 &&
-    u8.length >= 4 &&
-    u8[0] === 0xdf &&
-    u8[1] === 0xad &&
-    u8[2] === 0xbe &&
-    u8[3] === 0xef
-  );
-}
 
 function setDrive(m1, m2) {
   appState.motor1 = clamp(m1, -100, 100);
@@ -151,8 +121,7 @@ function sendUDPControl() {
   // 检查控制值是否变化
   const changed =
     appState.motor1 !== appState.lastSent.motor1 ||
-    appState.motor2 !== appState.lastSent.motor2 ||
-    appState.servo !== appState.lastSent.servo;
+    appState.motor2 !== appState.lastSent.motor2;
 
   const now = Date.now();
   // 如果没有变化，但距离上次发送超过200ms，也发送一次（作为心跳/保活）
@@ -169,7 +138,6 @@ function sendUDPControl() {
       deviceIP: appState.carIP,
       motor1: parseInt(appState.motor1), // 确保是整数
       motor2: parseInt(appState.motor2), // 确保是整数
-      servo: parseInt(appState.servo), // 确保是整数
     };
 
     socket.send(JSON.stringify(controlMsg));
@@ -178,7 +146,6 @@ function sendUDPControl() {
     appState.lastSent = {
       motor1: appState.motor1,
       motor2: appState.motor2,
-      servo: appState.servo,
     };
     appState.lastControlSendAt = now;
   } catch (error) {
@@ -329,7 +296,6 @@ function handleProxyMessage(msg) {
   else if (msg.type === "statusUpdate") {
     if (appState.carIP === msg.ip) {
       // 更新传感器数据
-      appState.servo = msg.status.servo || 90;
       appState.distance = msg.status.distance || 0;
       appState.ir = msg.status.ir || [1, 1, 1];
 
@@ -351,9 +317,26 @@ function handleProxyMessage(msg) {
 
       renderVisuals();
     }
-  } else if (msg.type === "otaResponse") {
+  } else if (msg.type === "wifiConfigResponse") {
     if (appState.carIP === msg.ip) {
-      handleOtaResponse(msg);
+      const result = msg.result;
+      if (result.cmd === 0xe0) {
+        if (result.success) {
+          alert("WiFi配置已保存");
+        } else {
+          alert("WiFi配置保存失败");
+        }
+      } else if (result.cmd === 0xe1) {
+        if (result.success) {
+          alert("正在连接WiFi，请稍候...");
+        } else {
+          alert("WiFi连接失败");
+        }
+      } else if (result.cmd === 0xe2) {
+        // 更新WiFi配置显示
+        document.getElementById("wifiSSID").value = result.ssid || "";
+        document.getElementById("wifiPassword").value = result.password || "";
+      }
     }
   }
 }
@@ -410,13 +393,6 @@ function changeMode(modeStr) {
 function renderVisuals() {
   document.getElementById("statusDist").innerText =
     appState.distance.toFixed(1);
-  document.getElementById("statusAngle").innerText = appState.servo;
-
-  // 舵机角度修正：前端显示可能需要根据实际安装调整
-  // 假设 90度是正前
-  const rotation = appState.servo - 90;
-  document.getElementById("servoHead").style.transform =
-    `translateX(-50%) rotate(${rotation}deg)`;
 
   // 雷达波束
   const beam = document.getElementById("radarBeam");
@@ -476,280 +452,65 @@ function clamp(v, min, max) {
   return Math.min(Math.max(v, min), max);
 }
 
-function setOtaUi(text, percent) {
-  const meta = document.getElementById("otaStatusText");
-  if (meta) meta.textContent = `OTA: ${text || "--"}`;
-  const bar = document.getElementById("otaProgressBar");
-  if (bar) {
-    const p = clamp(Number.isFinite(percent) ? percent : 0, 0, 100);
-    bar.style.width = `${p}%`;
-  }
+// --- WiFi配置函数 ---
+function toggleWifiPassword() {
+  const input = document.getElementById("wifiPassword");
+  input.type = input.type === "password" ? "text" : "password";
 }
 
-function setOtaButtonEnabled(enabled) {
-  const btn = document.getElementById("btnOtaStart");
-  if (btn) btn.disabled = !enabled;
-}
+function saveWifiConfig() {
+  const ssid = document.getElementById("wifiSSID").value.trim();
+  const password = document.getElementById("wifiPassword").value;
 
-function ipv4ToBytes(ip) {
-  const parts = String(ip || "")
-    .trim()
-    .split(".");
-  if (parts.length !== 4) return null;
-  const out = new Uint8Array(4);
-  for (let i = 0; i < 4; i++) {
-    const n = Number(parts[i]);
-    if (!Number.isFinite(n) || n < 0 || n > 255) return null;
-    out[i] = n & 0xff;
-  }
-  return out;
-}
-
-function sendOtaStart(size) {
-  if (!socket || socket.readyState !== WebSocket.OPEN || !appState.carIP)
-    return false;
-  socket.send(
-    JSON.stringify({
-      type: "otaStart",
-      deviceIP: appState.carIP,
-      size: size >>> 0,
-    }),
-  );
-  return true;
-}
-
-function sendOtaData(offset, len) {
-  if (!socket || socket.readyState !== WebSocket.OPEN || !appState.carIP)
-    return false;
-  if (!otaState.data) return false;
-  const ipBytes = ipv4ToBytes(appState.carIP);
-  if (!ipBytes) return false;
-  const start = offset >>> 0;
-  const end = (start + (len >>> 0)) >>> 0;
-  const chunk = otaState.data.subarray(start, end);
-  const msg = new Uint8Array(9 + chunk.length);
-  msg[0] = 0xf0;
-  msg[1] = (start >>> 24) & 0xff;
-  msg[2] = (start >>> 16) & 0xff;
-  msg[3] = (start >>> 8) & 0xff;
-  msg[4] = (start >>> 0) & 0xff;
-  msg[5] = ipBytes[0];
-  msg[6] = ipBytes[1];
-  msg[7] = ipBytes[2];
-  msg[8] = ipBytes[3];
-  msg.set(chunk, 9);
-  socket.send(msg);
-  return true;
-}
-
-function sendOtaEnd() {
-  if (!socket || socket.readyState !== WebSocket.OPEN || !appState.carIP)
-    return false;
-  socket.send(JSON.stringify({ type: "otaEnd", deviceIP: appState.carIP }));
-  return true;
-}
-
-function clearOtaAckTimer() {
-  if (otaState.ackTimer) {
-    clearTimeout(otaState.ackTimer);
-    otaState.ackTimer = null;
-  }
-}
-
-function scheduleOtaRetry() {
-  clearOtaAckTimer();
-  otaState.ackTimer = setTimeout(() => {
-    if (!otaState.active) return;
-    const fastFail =
-      otaState.phase === "data" &&
-      otaState.waitingForOffset === 0 &&
-      otaState.chunkSize > otaState.fallbackChunkSize &&
-      !otaState.fallbackTried;
-    const maxRetries = fastFail ? 2 : otaState.maxRetries;
-
-    if (otaState.retries >= maxRetries) {
-      if (
-        !otaState.fallbackTried &&
-        otaState.chunkSize > otaState.fallbackChunkSize
-      ) {
-        otaState.fallbackTried = true;
-        otaState.chunkSize = otaState.fallbackChunkSize;
-        otaState.phase = "start";
-        otaState.offset = 0;
-        otaState.waitingForOffset = null;
-        otaState.waitingForLen = 0;
-        otaState.retries = 0;
-        setOtaUi("降级分片重试", 0);
-        sendOtaStart(otaState.total);
-        scheduleOtaRetry();
-        return;
-      }
-      otaFail("超时");
-      return;
-    }
-    otaState.retries += 1;
-    if (otaState.phase === "start") {
-      sendOtaStart(otaState.total);
-    } else if (
-      otaState.phase === "data" &&
-      otaState.waitingForOffset !== null
-    ) {
-      sendOtaData(otaState.waitingForOffset, otaState.waitingForLen);
-    } else if (otaState.phase === "end") {
-      sendOtaEnd();
-    }
-    scheduleOtaRetry();
-  }, otaState.ackTimeoutMs);
-}
-
-function otaFail(reason) {
-  otaState.active = false;
-  otaState.phase = "idle";
-  otaState.waitingForOffset = null;
-  otaState.waitingForLen = 0;
-  otaState.retries = 0;
-  clearOtaAckTimer();
-  setOtaButtonEnabled(true);
-  setOtaUi(`失败(${reason || "错误"})`, 0);
-}
-
-function otaFinish() {
-  otaState.active = false;
-  otaState.phase = "idle";
-  otaState.waitingForOffset = null;
-  otaState.waitingForLen = 0;
-  otaState.retries = 0;
-  clearOtaAckTimer();
-  setOtaButtonEnabled(true);
-  setOtaUi("完成", 100);
-}
-
-function otaSendNextChunk() {
-  if (!otaState.active || otaState.phase !== "data") return;
-  if (!otaState.data || otaState.total === 0) {
-    otaFail("文件为空");
-    return;
-  }
-  if (otaState.offset >= otaState.total) {
-    otaState.phase = "end";
-    otaState.waitingForOffset = null;
-    otaState.waitingForLen = 0;
-    otaState.retries = 0;
-    sendOtaEnd();
-    setOtaUi("提交", 100);
-    scheduleOtaRetry();
+  if (!ssid || !password) {
+    alert("请输入WiFi名称和密码");
     return;
   }
 
-  const start = otaState.offset;
-  const end = Math.min(start + otaState.chunkSize, otaState.total);
-  const chunk = otaState.data.subarray(start, end);
-
-  otaState.waitingForOffset = start;
-  otaState.waitingForLen = chunk.length;
-  otaState.retries = 0;
-
-  sendOtaData(start, chunk.length);
-  const percent = Math.floor((end * 100) / otaState.total);
-  setOtaUi(`上传中 ${percent}%`, percent);
-  scheduleOtaRetry();
-}
-
-function handleOtaResponse(msg) {
-  const code = msg.code;
-  const status = msg.status || null;
-  const progress =
-    status && Number.isFinite(status.progress) ? status.progress : null;
-
-  if (code !== 0) {
-    otaFail(`code=${code}`);
+  if (!appState.connected) {
+    alert("请先连接小车");
     return;
   }
 
-  otaState.retries = 0;
-  clearOtaAckTimer();
-
-  if (progress !== null) {
-    setOtaUi("设备处理中", progress);
-  }
-
-  if (!otaState.active) return;
-
-  if (otaState.phase === "start") {
-    otaState.phase = "data";
-    otaState.offset = 0;
-    otaSendNextChunk();
-    return;
-  }
-
-  if (otaState.phase === "data") {
-    if (otaState.waitingForOffset === null) return;
-    if (msg.offset !== otaState.waitingForOffset) {
-      scheduleOtaRetry();
-      return;
-    }
-    otaState.offset = otaState.waitingForOffset + otaState.waitingForLen;
-    otaState.waitingForOffset = null;
-    otaState.waitingForLen = 0;
-    otaSendNextChunk();
-    return;
-  }
-
-  if (otaState.phase === "end") {
-    otaFinish();
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(
+      JSON.stringify({
+        type: "wifiConfigSet",
+        deviceIP: appState.carIP,
+        ssid: ssid,
+        password: password,
+      }),
+    );
+    console.log("[Frontend] WiFi配置已发送");
   }
 }
 
-async function startOtaFromSelectedFile() {
-  if (
-    !appState.connected ||
-    !socket ||
-    socket.readyState !== WebSocket.OPEN ||
-    !appState.carIP
-  ) {
-    setOtaUi("未连接", 0);
-    return;
-  }
-  const input = document.getElementById("otaFile");
-  const file = input && input.files && input.files[0] ? input.files[0] : null;
-  if (!file) {
-    setOtaUi("未选择文件", 0);
+function connectWifi() {
+  const ssid = document.getElementById("wifiSSID").value.trim();
+  const password = document.getElementById("wifiPassword").value;
+
+  if (!ssid || !password) {
+    alert("请输入WiFi名称和密码");
     return;
   }
 
-  setOtaButtonEnabled(false);
-  setOtaUi("读取文件", 0);
-
-  let buf;
-  try {
-    buf = await file.arrayBuffer();
-  } catch (e) {
-    otaFail("读取失败");
+  if (!appState.connected) {
+    alert("请先连接小车");
     return;
   }
 
-  const u8 = new Uint8Array(buf);
-  if (!isFwpkg(u8)) {
-    otaFail("请选择 .fwpkg");
-    return;
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(
+      JSON.stringify({
+        type: "wifiConfigConnect",
+        deviceIP: appState.carIP,
+        ssid: ssid,
+        password: password,
+      }),
+    );
+    console.log("[Frontend] WiFi连接请求已发送");
+    toggleConfig();
   }
-  otaState.active = true;
-  otaState.phase = "start";
-  otaState.file = file;
-  otaState.data = u8;
-  otaState.total = u8.length >>> 0;
-  otaState.offset = 0;
-  otaState.fallbackTried = false;
-  otaState.waitingForOffset = null;
-  otaState.waitingForLen = 0;
-  otaState.retries = 0;
-
-  if (!sendOtaStart(otaState.total)) {
-    otaFail("发送失败");
-    return;
-  }
-  setOtaUi("准备", 0);
-  scheduleOtaRetry();
 }
 
 // --- 设置面板 ---
@@ -759,19 +520,6 @@ function toggleConfig() {
 }
 function saveConfig() {
   toggleConfig();
-}
-
-function toggleOtaModal(force) {
-  const m = document.getElementById("otaModal");
-  if (!m) return;
-
-  const shouldOpen =
-    force === true
-      ? true
-      : force === false
-        ? false
-        : m.style.display !== "flex";
-  m.style.display = shouldOpen ? "flex" : "none";
 }
 
 // --- 初始化 ---
@@ -793,28 +541,10 @@ window.onload = function () {
   );
   bindHoldButton(document.getElementById("btnStop"), () => setDrive(0, 0));
 
-  setOtaUi("--", 0);
-  const btnOta = document.getElementById("btnOtaStart");
-  if (btnOta) {
-    btnOta.addEventListener("click", (e) => {
-      e.preventDefault();
-      startOtaFromSelectedFile();
-    });
-  }
-
-  const otaModal = document.getElementById("otaModal");
-  if (otaModal) {
-    otaModal.addEventListener("click", (e) => {
-      if (e.target === otaModal) toggleOtaModal(false);
-    });
-  }
-
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     const cm = document.getElementById("configModal");
     if (cm && cm.style.display === "flex") cm.style.display = "none";
-    const om = document.getElementById("otaModal");
-    if (om && om.style.display === "flex") om.style.display = "none";
   });
 
   startCommsLoop();

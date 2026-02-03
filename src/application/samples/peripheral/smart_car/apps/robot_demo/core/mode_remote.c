@@ -19,7 +19,7 @@ void mode_remote_enter(void) {
 }
 
 void mode_remote_tick(void) {
-  int8_t m1 = 0, m2 = 0, servo_val;
+  int8_t m1 = 0, m2 = 0;
   bool has_new_cmd = false;
 
   // 1. 先看串口有没有命令
@@ -29,7 +29,7 @@ void mode_remote_tick(void) {
   } else {
     // 2. 再看 WiFi 有没有命令
     // 把缓冲区里的旧数据全部扔掉，只保留最后一次的 m1,m2
-    while (udp_service_pop_cmd(&m1, &m2, &servo_val)) has_new_cmd = true;
+    while (udp_service_pop_cmd(&m1, &m2)) has_new_cmd = true;
   }
 
   if (has_new_cmd) {  // 1: 收到新指令 -> 刷新时间，执行动作
