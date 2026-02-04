@@ -17,6 +17,7 @@ choice SMART_CAR_RUN_MODE
         select SMART_CAR_DRIVER_SSD1306
         select SMART_CAR_DRIVER_WIFI
         select SMART_CAR_DRIVER_UART
+        select SMART_CAR_DRIVER_SLE
         help
             主要集成应用
 
@@ -44,6 +45,12 @@ choice SMART_CAR_RUN_MODE
         bool "Test: Bluetooth SPP"
         select SMART_CAR_DRIVER_BT_SPP
 
+    config SMART_CAR_RUN_SLE_TEST
+        bool "Test: SLE (Star Flash) Remote"
+        select SMART_CAR_DRIVER_SLE
+        help
+            SLE 星闪遥控测试应用
+
 endchoice
 
 # --- 2. 驱动开关定义 (被上面自动选中) ---
@@ -68,4 +75,7 @@ menu "Drivers Status"
 
     config SMART_CAR_DRIVER_UART
         bool "UART Driver"
+
+    config SMART_CAR_DRIVER_SLE
+        bool "SLE (Star Flash) Driver"
 endmenu

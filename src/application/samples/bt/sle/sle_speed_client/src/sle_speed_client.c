@@ -74,11 +74,17 @@ void sle_sample_seek_disable_cbk(errcode_t status)
 void sle_sample_seek_result_info_cbk(sle_seek_result_info_t *seek_result_data)
 {
     if (seek_result_data != NULL) {
-        uint8_t mac[SLE_ADDR_LEN] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
-        if (memcmp(seek_result_data->addr.addr, mac, SLE_ADDR_LEN) == 0) {
-            (void)memcpy_s(&g_remote_addr, sizeof(sle_addr_t), &seek_result_data->addr, sizeof(sle_addr_t));
-            sle_stop_seek();
-        }
+        // 打印发现的设备
+        osal_printk("[SLE客户端] 发现设备: %02X:XX:XX:XX:%02X:%02X, RSSI=%d\r\n",
+                    seek_result_data->addr.addr[0],
+                    seek_result_data->addr.addr[4],
+                    seek_result_data->addr.addr[5],
+                    seek_result_data->rssi);
+
+        // 连接到第一个发现的设备（SmartCar_SLE 小车）
+        (void)memcpy_s(&g_remote_addr, sizeof(sle_addr_t), &seek_result_data->addr, sizeof(sle_addr_t));
+        sle_stop_seek();
+        osal_printk("[SLE客户端] 找到小车，准备连接...\r\n");
     }
 }
 
@@ -136,26 +142,32 @@ void sle_sample_seek_cbk_register(void)
 void sle_sample_connect_state_changed_cbk(uint16_t conn_id, const sle_addr_t *addr,
     sle_acb_state_t conn_state, sle_pair_state_t pair_state, sle_disc_reason_t disc_reason)
 {
-    osal_printk("[ssap client] conn state changed conn_id:%d, addr:%02x***%02x%02x\n", conn_id, addr->addr[0],
+    osal_printk("[SLE客户端] 连接状态变化 conn_id:%d, addr:%02x***%02x%02x\n", conn_id, addr->addr[0],
         addr->addr[4], addr->addr[5]); /* 0 4 5: addr index */
-    osal_printk("[ssap client] conn state changed disc_reason:0x%x\n", disc_reason);
+    osal_printk("[SLE客户端] 断开原因:0x%x\n", disc_reason);
     if (conn_state == SLE_ACB_STATE_CONNECTED) {
+        osal_printk("[SLE客户端] 已连接设备！\n");
         if (pair_state == SLE_PAIR_NONE) {
             sle_pair_remote_device(&g_remote_addr);
         }
         g_conn_id = conn_id;
+    } else if (conn_state == SLE_ACB_STATE_DISCONNECTED) {
+        osal_printk("[SLE客户端] 已断开连接\n");
     }
 }
 
 void sle_sample_pair_complete_cbk(uint16_t conn_id, const sle_addr_t *addr, errcode_t status)
 {
-    osal_printk("[ssap client] pair complete conn_id:%d, addr:%02x***%02x%02x\n", conn_id, addr->addr[0],
-        addr->addr[4], addr->addr[5]); /* 0 4 5: addr index */
+    osal_printk("[SLE客户端] 配对完成 conn_id:%d, addr:%02x***%02x%02x, status:%d\n", conn_id, addr->addr[0],
+        addr->addr[4], addr->addr[5], status); /* 0 4 5: addr index */
     if (status == 0) {
+        osal_printk("[SLE客户端] 配对成功，交换 MTU...\n");
         ssap_exchange_info_t info = {0};
         info.mtu_size = SLE_MTU_SIZE_DEFAULT;
         info.version = 1;
         ssapc_exchange_info_req(1, g_conn_id, &info);
+    } else {
+        osal_printk("[SLE客户端] 配对失败！\n");
     }
 }
 
@@ -198,10 +210,11 @@ void sle_sample_connect_cbk_register(void)
 void sle_sample_exchange_info_cbk(uint8_t client_id, uint16_t conn_id, ssap_exchange_info_t *param,
     errcode_t status)
 {
-    osal_printk("[ssap client] pair complete client id:%d status:%d\n", client_id, status);
-    osal_printk("[ssap client] exchange mtu, mtu size: %d, version: %d.\n",
+    osal_printk("[SLE客户端] MTU 交换完成 client_id:%d status:%d\n", client_id, status);
+    osal_printk("[SLE客户端] MTU 大小: %d, 版本: %d\n",
         param->mtu_size, param->version);
 
+    osal_printk("[SLE客户端] 开始发现服务...\n");
     ssapc_find_structure_param_t find_param = {0};
     find_param.type = SSAP_FIND_TYPE_PRIMARY_SERVICE;
     find_param.start_hdl = 1;
@@ -212,16 +225,16 @@ void sle_sample_exchange_info_cbk(uint8_t client_id, uint16_t conn_id, ssap_exch
 void sle_sample_find_structure_cbk(uint8_t client_id, uint16_t conn_id, ssapc_find_service_result_t *service,
     errcode_t status)
 {
-    osal_printk("[ssap client] find structure cbk client: %d conn_id:%d status: %d \n",
+    osal_printk("[SLE客户端] 发现服务回调 client:%d conn_id:%d status:%d\n",
         client_id, conn_id, status);
-    osal_printk("[ssap client] find structure start_hdl:[0x%02x], end_hdl:[0x%02x], uuid len:%d\r\n",
+    osal_printk("[SLE客户端] 服务句柄 start_hdl:[0x%02x], end_hdl:[0x%02x], uuid len:%d\r\n",
         service->start_hdl, service->end_hdl, service->uuid.len);
     if (service->uuid.len == UUID_16BIT_LEN) {
-        osal_printk("[ssap client] structure uuid:[0x%02x][0x%02x]\r\n",
+        osal_printk("[SLE客户端] 服务 UUID:[0x%02x][0x%02x]\r\n",
             service->uuid.uuid[14], service->uuid.uuid[15]); /* 14 15: uuid index */
     } else {
         for (uint8_t idx = 0; idx < UUID_128BIT_LEN; idx++) {
-            osal_printk("[ssap client] structure uuid[%d]:[0x%02x]\r\n", idx, service->uuid.uuid[idx]);
+            osal_printk("[SLE客户端] 服务 uuid[%d]:[0x%02x]\r\n", idx, service->uuid.uuid[idx]);
         }
     }
     g_find_service_result.start_hdl = service->start_hdl;
@@ -232,19 +245,25 @@ void sle_sample_find_structure_cbk(uint8_t client_id, uint16_t conn_id, ssapc_fi
 void sle_sample_find_structure_cmp_cbk(uint8_t client_id, uint16_t conn_id,
     ssapc_find_structure_result_t *structure_result, errcode_t status)
 {
-    osal_printk("[ssap client] find structure cmp cbk client id:%d status:%d type:%d uuid len:%d \r\n",
+    osal_printk("[SLE客户端] 发现特征完成 client_id:%d status:%d type:%d uuid len:%d \r\n",
         client_id, status, structure_result->type, structure_result->uuid.len);
     if (structure_result->uuid.len == UUID_16BIT_LEN) {
-        osal_printk("[ssap client] find structure cmp cbk structure uuid:[0x%02x][0x%02x]\r\n",
+        osal_printk("[SLE客户端] 特征 UUID:[0x%02x][0x%02x]\r\n",
             structure_result->uuid.uuid[14], structure_result->uuid.uuid[15]); /* 14 15: uuid index */
     } else {
         for (uint8_t idx = 0; idx < UUID_128BIT_LEN; idx++) {
-            osal_printk("[ssap client] find structure cmp cbk structure uuid[%d]:[0x%02x]\r\n", idx,
+            osal_printk("[SLE客户端] 特征 uuid[%d]:[0x%02x]\r\n", idx,
                 structure_result->uuid.uuid[idx]);
         }
     }
-    uint8_t data[] = {0x11, 0x22, 0x33, 0x44};
+
+    // 发送遥控命令数据（复用 UDP 协议格式）
+    // type=0x01, cmd=0x00, motor1=50, motor2=50
+    uint8_t data[] = {0x01, 0x00, 50, 50, 0x00};
     uint8_t len = sizeof(data);
+    osal_printk("[SLE客户端] 发送遥控命令: type=0x%02x, cmd=0x%02x, m1=%d, m2=%d\r\n",
+                data[0], data[1], data[2], data[3]);
+
     ssapc_write_param_t param = {0};
     param.handle = g_find_service_result.start_hdl;
     param.type = SSAP_PROPERTY_TYPE_VALUE;
@@ -256,40 +275,37 @@ void sle_sample_find_structure_cmp_cbk(uint8_t client_id, uint16_t conn_id,
 void sle_sample_find_property_cbk(uint8_t client_id, uint16_t conn_id,
     ssapc_find_property_result_t *property, errcode_t status)
 {
-    osal_printk("[ssap client] find property cbk, client id: %d, conn id: %d, operate ind: %d, "
-        "descriptors count: %d status:%d.\n", client_id, conn_id, property->operate_indication,
-        property->descriptors_count, status);
-    for (uint16_t idx = 0; idx < property->descriptors_count; idx++) {
-        osal_printk("[ssap client] find property cbk, descriptors type [%d]: 0x%02x.\n",
-            idx, property->descriptors_type[idx]);
-    }
-    if (property->uuid.len == UUID_16BIT_LEN) {
-        osal_printk("[ssap client] find property cbk, uuid: %02x %02x.\n",
-            property->uuid.uuid[14], property->uuid.uuid[15]); /* 14 15: uuid index */
-    } else if (property->uuid.len == UUID_128BIT_LEN) {
-        for (uint16_t idx = 0; idx < UUID_128BIT_LEN; idx++) {
-            osal_printk("[ssap client] find property cbk, uuid [%d]: %02x.\n",
-                idx, property->uuid.uuid[idx]);
-        }
-    }
+    unused(property);
+    osal_printk("[SLE客户端] 发现特征回调 client_id:%d conn_id:%d status:%d\n",
+        client_id, conn_id, status);
 }
 
 void sle_sample_write_cfm_cbk(uint8_t client_id, uint16_t conn_id, ssapc_write_result_t *write_result,
     errcode_t status)
 {
-    osal_printk("[ssap client] write cfm cbk, client id: %d status:%d.\n", client_id, status);
-    ssapc_read_req(0, conn_id, write_result->handle, write_result->type);
+    unused(client_id);
+    osal_printk("[SLE客户端] 写入确认回调 status:%d\n", status);
+    if (status == 0) {
+        osal_printk("[SLE客户端] 写入成功！读取验证...\n");
+        ssapc_read_req(0, conn_id, write_result->handle, write_result->type);
+    } else {
+        osal_printk("[SLE客户端] 写入失败！错误码:%d\n", status);
+    }
 }
 
 void sle_sample_read_cfm_cbk(uint8_t client_id, uint16_t conn_id, ssapc_handle_value_t *read_data,
     errcode_t status)
 {
-    osal_printk("[ssap client] read cfm cbk client id: %d conn id: %d status: %d\n",
-        client_id, conn_id, status);
-    osal_printk("[ssap client] read cfm cbk handle: %d, type: %d , len: %d\n",
-        read_data->handle, read_data->type, read_data->data_len);
-    for (uint16_t idx = 0; idx < read_data->data_len; idx++) {
-        osal_printk("[ssap client] read cfm cbk[%d] 0x%02x\r\n", idx, read_data->data[idx]);
+    unused(client_id);
+    osal_printk("[SLE客户端] 读取确认回调 conn_id:%d status:%d\n", conn_id, status);
+    if (status == 0) {
+        osal_printk("[SLE客户端] 读取成功！handle:%d, len:%d\n",
+                    read_data->handle, read_data->data_len);
+        for (uint16_t idx = 0; idx < read_data->data_len; idx++) {
+            osal_printk("[SLE客户端] data[%d] = 0x%02x\r\n", idx, read_data->data[idx]);
+        }
+    } else {
+        osal_printk("[SLE客户端] 读取失败！错误码:%d\n", status);
     }
 }
 

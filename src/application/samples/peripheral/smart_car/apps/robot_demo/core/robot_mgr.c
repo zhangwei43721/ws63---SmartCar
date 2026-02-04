@@ -5,6 +5,7 @@
 #include "mode_trace.h"
 
 #include "../services/ui_service.h"
+#include "../services/sle_service.h"
 #include "../services/udp_service.h"
 #include "../services/storage_service.h"
 
@@ -103,6 +104,7 @@ void robot_mgr_init(void)
 
     ui_service_init();
     udp_service_init();
+    sle_service_init();
     robot_mgr_state_mutex_init();
     robot_mgr_set_status(CAR_STOP_STATUS);
     g_last_status = CAR_STOP_STATUS;

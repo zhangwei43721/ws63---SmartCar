@@ -3,8 +3,9 @@
 #include <stdio.h>
 
 #include "../../../drivers/l9110s/bsp_l9110s.h"
-#include "../services/voice_service.h"
+#include "../services/sle_service.h"
 #include "../services/udp_service.h"
+#include "../services/voice_service.h"
 #include "robot_config.h"
 #include "soc_osal.h"
 
@@ -22,12 +23,16 @@ void mode_remote_tick(void) {
   int8_t m1 = 0, m2 = 0;
   bool has_new_cmd = false;
 
+  // 优先级: 语音 > SLE > WiFi UDP
   // 1. 先看串口有没有命令
   if (voice_service_is_cmd_active()) {
     voice_service_get_motor_cmd(&m1, &m2);
     has_new_cmd = true;
+  } else if (sle_service_is_connected() && sle_service_pop_cmd(&m1, &m2)) {
+    // 2. 再看 SLE 有没有命令
+    has_new_cmd = true;
   } else {
-    // 2. 再看 WiFi 有没有命令
+    // 3. 最后看 WiFi 有没有命令
     // 把缓冲区里的旧数据全部扔掉，只保留最后一次的 m1,m2
     while (udp_service_pop_cmd(&m1, &m2)) has_new_cmd = true;
   }

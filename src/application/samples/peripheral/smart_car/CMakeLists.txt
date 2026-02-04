@@ -18,6 +18,8 @@ elseif(CONFIG_SMART_CAR_RUN_WIFI_TEST)
     add_subdirectory(apps/test_wifi)
 elseif(CONFIG_SMART_CAR_RUN_BT_SPP_TEST)
     add_subdirectory(apps/test_bt_spp)
+elseif(CONFIG_SMART_CAR_RUN_SLE_TEST)
+    add_subdirectory(apps/sle_test)
 endif()
 
 # 3. 关键步骤：将下层收集上来的变量暴露给 SDK 顶层

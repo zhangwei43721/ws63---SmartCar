@@ -54,6 +54,13 @@ if(CONFIG_SMART_CAR_DRIVER_UART)
     include_directories("${CMAKE_CURRENT_SOURCE_DIR}/uart")
 endif()
 
+# --- SLE (Star Flash) ---
+if(CONFIG_SMART_CAR_DRIVER_SLE)
+    file(GLOB_RECURSE CURRENT_DRIVER_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/sle/*.c")
+    list(APPEND DRIVER_SRCS ${CURRENT_DRIVER_SRCS})
+    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/sle")
+endif()
+
 # --- 汇总导出 ---
 # 将收集到的所有驱动源文件加入全局构建列表
 list(APPEND SOURCES ${DRIVER_SRCS})
