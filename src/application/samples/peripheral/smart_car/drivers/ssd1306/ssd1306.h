@@ -18,6 +18,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include "ssd1306_fonts.h"
 
 // SSD1306 OLED height in pixels
@@ -61,7 +62,7 @@ typedef struct {
 } SSD1306_VERTEX;
 
 // Procedure definitions
-void ssd1306_Init(void);
+bool ssd1306_Init(void);  // 返回 true 表示初始化成功，false 表示失败
 void ssd1306_Fill(SSD1306_COLOR color);
 void ssd1306_SetCursor(uint8_t x, uint8_t y);
 void ssd1306_UpdateScreen(void);

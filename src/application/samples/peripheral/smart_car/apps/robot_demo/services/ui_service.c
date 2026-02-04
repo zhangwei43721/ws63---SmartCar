@@ -6,14 +6,15 @@ static bool g_oled_ready = false; /* OLED 是否已初始化并可用 */
  * @brief 模式显示信息结构体
  */
 typedef struct {
-    const char *line0; // 第 0 行显示文本（顶部）
-    const char *line1; // 第 1 行显示文本（中部）
-    const char *line2; // 第 2 行显示文本（底部）
+  const char* line0;  // 第 0 行显示文本（顶部）
+  const char* line1;  // 第 1 行显示文本（中部）
+  const char* line2;  // 第 2 行显示文本（底部）
 } ModeDisplayInfo;
 
 /*
  * 支持的字符:
- * 模, 式, 停, 止, 循, 迹, 避, 障, 遥, 控, 连, 接, 中, 成, 功, 失, 败, 等, 待, 热, 点, 配, 置
+ * 模, 式, 停, 止, 循, 迹, 避, 障, 遥, 控, 连, 接, 中, 成, 功, 失, 败, 等, 待,
+ * 热, 点, 配, 置
  */
 
 /**
@@ -36,43 +37,50 @@ static const ModeDisplayInfo g_mode_display[] = {
  * @brief 初始化 UI 服务（OLED 显示屏）
  * @note 初始化 I2C 总线和 SSD1306 显示屏
  */
-void ui_service_init(void)
-{
-    if (g_oled_ready)
-        return;
+void ui_service_init(void) {
+  static bool init_attempted = false;  // 是否已经尝试过初始化
 
-    uapi_pin_set_mode(ROBOT_I2C_SCL_PIN, ROBOT_I2C_PIN_MODE);
-    uapi_pin_set_mode(ROBOT_I2C_SDA_PIN, ROBOT_I2C_PIN_MODE);
+  if (g_oled_ready) return;
 
-    errcode_t ret = uapi_i2c_master_init(ROBOT_I2C_BUS_ID, ROBOT_I2C_BAUDRATE, ROBOT_I2C_HS_CODE);
-    if (ret != ERRCODE_SUCC) {
-        printf("OLED: I2C 初始化失败，返回值=0x%x\r\n", ret);
-        return;
-    }
+  // 如果已经尝试过但失败了，不再重复尝试
+  if (init_attempted) return;
 
-    ssd1306_Init();
-    g_oled_ready = true;
+  init_attempted = true;
+
+  uapi_pin_set_mode(ROBOT_I2C_SCL_PIN, ROBOT_I2C_PIN_MODE);
+  uapi_pin_set_mode(ROBOT_I2C_SDA_PIN, ROBOT_I2C_PIN_MODE);
+
+  errcode_t ret = uapi_i2c_master_init(ROBOT_I2C_BUS_ID, ROBOT_I2C_BAUDRATE,
+                                       ROBOT_I2C_HS_CODE);
+  if (ret != ERRCODE_SUCC) {
+    printf("[OLED] I2C 初始化失败，跳过显示屏功能\r\n");
+    return;
+  }
+  if (!ssd1306_Init()) {
+    printf("[OLED] 屏幕初始化失败，跳过显示屏功能\r\n");
+    return;
+  }
+  printf("[OLED] 显示屏初始化成功\r\n");
+  g_oled_ready = true;
 }
 
 /**
  * @brief 在 OLED 上显示当前模式页面
  * @param status 小车当前状态
  */
-void ui_show_mode_page(CarStatus status)
-{
-    ui_service_init();
-    if (!g_oled_ready)
-        return;
+void ui_show_mode_page(CarStatus status) {
+  ui_service_init();
+  if (!g_oled_ready) return;
 
-    // 直接使用枚举值作为索引（更简单，不需要循环查找）
-    int mode_count = (int)(sizeof(g_mode_display) / sizeof(g_mode_display[0]));
-    if (status >= 0 && status < mode_count) {
-        ssd1306_Fill(Black);
-        ssd1306_DrawString16(0, 0, g_mode_display[status].line0, White);
-        ssd1306_DrawString16(0, 16, g_mode_display[status].line1, White);
-        ssd1306_DrawString16(0, 32, g_mode_display[status].line2, White);
-        ssd1306_UpdateScreen();
-    }
+  // 直接使用枚举值作为索引（更简单，不需要循环查找）
+  int mode_count = (int)(sizeof(g_mode_display) / sizeof(g_mode_display[0]));
+  if (status >= 0 && status < mode_count) {
+    ssd1306_Fill(Black);
+    ssd1306_DrawString16(0, 0, g_mode_display[status].line0, White);
+    ssd1306_DrawString16(0, 16, g_mode_display[status].line1, White);
+    ssd1306_DrawString16(0, 32, g_mode_display[status].line2, White);
+    ssd1306_UpdateScreen();
+  }
 }
 
 /**
@@ -80,28 +88,30 @@ void ui_show_mode_page(CarStatus status)
  * @param wifi_state WiFi 连接状态描述
  * @param ip_addr IP 地址字符串
  */
-void ui_render_standby(WifiConnectStatus wifi_state, const char *ip_addr)
-{
-    ui_service_init();
+void ui_render_standby(WifiConnectStatus wifi_state, const char* ip_addr) {
+  ui_service_init();
 
-    if (!g_oled_ready)
-        return;
+  if (!g_oled_ready) return;
 
-    // WiFi 状态字符串查找表（按 WifiConnectStatus 枚举值索引）
-    static const char *wifi_state_str[] = {
-        "WiFi: 未连接",   // WIFI_STATUS_DISCONNECTED (0)
-        "WiFi: 连接中",   // WIFI_STATUS_CONNECTING (1)
-        "WiFi: 连接成功", // WIFI_STATUS_CONNECTED (2)
-        "热点模式"        // WIFI_STATUS_AP_MODE (3)
-    };
+  // WiFi 状态字符串查找表（按 WifiConnectStatus 枚举值索引）
+  static const char* wifi_state_str[] = {
+      "WiFi: 未连接",    // WIFI_STATUS_DISCONNECTED (0)
+      "WiFi: 连接中",    // WIFI_STATUS_CONNECTING (1)
+      "WiFi: 连接成功",  // WIFI_STATUS_CONNECTED (2)
+      "热点模式"         // WIFI_STATUS_AP_MODE (3)
+  };
 
-    const char *state_str = (wifi_state >= 0 && wifi_state < 4) ? wifi_state_str[wifi_state] : "WiFi: 未知状态";
+  const char* state_str = (wifi_state >= 0 && wifi_state < 4)
+                              ? wifi_state_str[wifi_state]
+                              : "WiFi: 未知状态";
 
-    ssd1306_Fill(Black);
-    ssd1306_DrawString16(0, 0, "模式: 停止", White);
-    ssd1306_DrawString16(0, 16, state_str, White);
+  ssd1306_Fill(Black);
+  ssd1306_DrawString16(0, 0, "模式: 停止", White);
+  ssd1306_DrawString16(0, 16, state_str, White);
 
-    // IP string is ASCII, but DrawString16 handles ASCII too
-    ssd1306_DrawString16(0, 32, ip_addr, White);
-    ssd1306_UpdateScreen();
+  // IP string is ASCII, but DrawString16 handles ASCII too
+  ssd1306_DrawString16(0, 32, ip_addr, White);
+  ssd1306_UpdateScreen();
 }
+
+bool ui_service_is_ready(void) { return g_oled_ready; }

@@ -23,5 +23,6 @@
 void ui_service_init(void);
 void ui_show_mode_page(CarStatus status);
 void ui_render_standby(WifiConnectStatus wifi_state, const char *ip_addr);
+bool ui_service_is_ready(void);  // 查询 OLED 是否就绪
 
 #endif
