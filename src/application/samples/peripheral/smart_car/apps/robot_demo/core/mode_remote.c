@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "../../../drivers/l9110s/bsp_l9110s.h"
-#include "../services/uart_service.h"
+#include "../services/voice_service.h"
 #include "../services/udp_service.h"
 #include "robot_config.h"
 #include "soc_osal.h"
@@ -23,8 +23,8 @@ void mode_remote_tick(void) {
   bool has_new_cmd = false;
 
   // 1. 先看串口有没有命令
-  if (uart_service_is_cmd_active()) {
-    uart_service_get_motor_cmd(&m1, &m2);
+  if (voice_service_is_cmd_active()) {
+    voice_service_get_motor_cmd(&m1, &m2);
     has_new_cmd = true;
   } else {
     // 2. 再看 WiFi 有没有命令
