@@ -21,7 +21,6 @@ typedef enum {
   VOICE_CMD_BACKWARD = 0x02,  // 后退
   VOICE_CMD_LEFT = 0x03,      // 左转
   VOICE_CMD_RIGHT = 0x04,     // 右转
-  VOICE_CMD_EMERGENCY_STOP = 0x05,  // 停车
 
   /* 模式切换 */
   VOICE_CMD_STANDBY = 0x10,   // 待机模式

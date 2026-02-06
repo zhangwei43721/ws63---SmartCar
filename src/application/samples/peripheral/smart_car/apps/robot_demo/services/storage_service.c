@@ -74,10 +74,10 @@ static void nv_set_defaults(robot_nv_config_t* cfg) {
   cfg->version = ROBOT_NV_CONFIG_VERSION;
 
   // PID 默认值
-  cfg->pid_kp_x1000 = 16000;  // Kp = 16.0
+  cfg->pid_kp_x1000 = 24000;  // Kp = 16.0
   cfg->pid_ki_x10000 = 0;     // Ki = 0.0
   cfg->pid_kd_x500 = 0;       // Kd = 0.0
-  cfg->pid_base_speed = 40;
+  cfg->pid_base_speed = 80;
 
   // WiFi 默认值
   strncpy(cfg->wifi_ssid, "BSHZ-2.4G", 31);
