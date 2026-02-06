@@ -6,15 +6,15 @@
 #ifndef BSP_UART_H
 #define BSP_UART_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 /**
  * @brief 数据接收回调函数类型
  * @param data 接收到的数据指针
  * @param length 数据长度
  */
-typedef void (*uart_data_callback_t)(const uint8_t *data, uint16_t length);
+typedef void (*uart_data_callback_t)(const uint8_t* data, uint16_t length);
 
 /**
  * @brief 初始化UART串口接收
@@ -30,6 +30,6 @@ int bsp_uart_init(uart_data_callback_t callback);
  * @param length 数据长度
  * @return 实际发送长度，负数表示失败
  */
-int bsp_uart_send(const uint8_t *data, uint16_t length);
+int bsp_uart_send(const uint8_t* data, uint16_t length);
 
 #endif /* BSP_UART_H */

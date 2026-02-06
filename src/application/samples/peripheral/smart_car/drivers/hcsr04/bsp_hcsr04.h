@@ -21,22 +21,23 @@
 #define __BSP_HCSR04_H__
 
 #include <stdint.h>
-#include "pinctrl.h"
-#include "gpio.h"
-#include "soc_osal.h"
-#include "hal_gpio.h"
-#include "tcxo.h"
 #include <stdio.h>
 
+#include "gpio.h"
+#include "hal_gpio.h"
+#include "pinctrl.h"
+#include "soc_osal.h"
+#include "tcxo.h"
+
 // HC-SR04引脚定义
-#define HCSR04_TRIG_GPIO 6 // 触发信号引脚
-#define HCSR04_ECHO_GPIO 12 // 回响信号引脚
+#define HCSR04_TRIG_GPIO 6   // 触发信号引脚
+#define HCSR04_ECHO_GPIO 11  // 回响信号引脚
 
 // GPIO功能号
 #define HCSR04_GPIO_FUNC HAL_PIO_FUNC_GPIO
 
 // 测距参数
-#define HCSR04_TIMEOUT_US 40000 // 超时时间 (us)
+#define HCSR04_TIMEOUT_US 40000  // 超时时间 (us)
 
 // HC-SR04 有效测量范围: 2cm ~ 500cm
 #define HCSR04_MIN_DISTANCE_CM 2.0f

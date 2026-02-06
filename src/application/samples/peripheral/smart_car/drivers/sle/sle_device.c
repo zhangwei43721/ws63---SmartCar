@@ -17,14 +17,13 @@
 
 #include "common_def.h"
 #include "securec.h"
-#include "soc_osal.h"
-
 #include "sle_common.h"
 #include "sle_connection_manager.h"
 #include "sle_device_discovery.h"
 #include "sle_errcode.h"
 #include "sle_ssap_server.h"
 #include "sle_transmition_manager.h"
+#include "soc_osal.h"
 
 /* ==================== 配置参数 ==================== */
 
@@ -50,25 +49,25 @@
 #define SLE_MTU_SIZE 247  // 默认 MTU 大小
 
 /* SLE 广播常量定义（从示例代码复制） */
-#define SLE_ADV_HANDLE_DEFAULT        1    // 默认广播句柄
+#define SLE_ADV_HANDLE_DEFAULT 1  // 默认广播句柄
 
 /* 广播信道映射 */
-#define SLE_ADV_CHANNEL_MAP_77       0x01
-#define SLE_ADV_CHANNEL_MAP_78       0x02
-#define SLE_ADV_CHANNEL_MAP_79       0x04
-#define SLE_ADV_CHANNEL_MAP_DEFAULT  0x07
+#define SLE_ADV_CHANNEL_MAP_77 0x01
+#define SLE_ADV_CHANNEL_MAP_78 0x02
+#define SLE_ADV_CHANNEL_MAP_79 0x04
+#define SLE_ADV_CHANNEL_MAP_DEFAULT 0x07
 
 /* 广播数据类型 */
-#define SLE_ADV_DATA_TYPE_DISCOVERY_LEVEL              0x01
-#define SLE_ADV_DATA_TYPE_ACCESS_MODE                    0x02
-#define SLE_ADV_DATA_TYPE_COMPLETE_LOCAL_NAME           0x0B
-#define SLE_ADV_DATA_TYPE_TX_POWER_LEVEL                0x0C
+#define SLE_ADV_DATA_TYPE_DISCOVERY_LEVEL 0x01
+#define SLE_ADV_DATA_TYPE_ACCESS_MODE 0x02
+#define SLE_ADV_DATA_TYPE_COMPLETE_LOCAL_NAME 0x0B
+#define SLE_ADV_DATA_TYPE_TX_POWER_LEVEL 0x0C
 
 /* SLE 广播数据结构（从示例代码复制） */
 struct sle_adv_common_value {
-    uint8_t length;
-    uint8_t type;
-    uint8_t value;
+  uint8_t length;
+  uint8_t type;
+  uint8_t value;
 };
 
 /* ==================== 内部状态 ==================== */

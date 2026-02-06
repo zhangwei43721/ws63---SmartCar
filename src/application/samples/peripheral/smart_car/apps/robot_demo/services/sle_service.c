@@ -21,14 +21,13 @@
 
 #include "sle_service.h"
 
+#include "../../../drivers/sle/sle_device.h"
+#include "../core/robot_mgr.h"
+#include "../robot_common.h"
 #include "common_def.h"
 #include "errcode.h"
 #include "soc_osal.h"
 #include "stdio.h"
-
-#include "../../../drivers/sle/sle_device.h"
-#include "../core/robot_mgr.h"
-#include "../robot_common.h"
 
 /* ==================== 协议定义（与 UDP 保持一致） ==================== */
 

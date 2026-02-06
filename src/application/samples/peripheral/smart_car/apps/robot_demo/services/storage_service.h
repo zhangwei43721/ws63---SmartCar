@@ -2,6 +2,7 @@
 #define STORAGE_SERVICE_H
 
 #include <stdint.h>
+
 #include "errcode.h"
 
 /**
@@ -16,7 +17,8 @@ void storage_service_init(void);
  * @param kd 输出 Kd 值
  * @param speed 输出基础速度
  */
-void storage_service_get_pid_params(float *kp, float *ki, float *kd, int16_t *speed);
+void storage_service_get_pid_params(float* kp, float* ki, float* kd,
+                                    int16_t* speed);
 
 /**
  * @brief 保存 PID 参数到 NV
@@ -26,14 +28,15 @@ void storage_service_get_pid_params(float *kp, float *ki, float *kd, int16_t *sp
  * @param speed 基础速度
  * @return 错误码
  */
-errcode_t storage_service_save_pid_params(float kp, float ki, float kd, int16_t speed);
+errcode_t storage_service_save_pid_params(float kp, float ki, float kd,
+                                          int16_t speed);
 
 /**
  * @brief 获取 WiFi 配置
  * @param ssid 输出 SSID 缓冲区（至少 32 字节）
  * @param password 输出密码缓冲区（至少 64 字节）
  */
-void storage_service_get_wifi_config(char *ssid, char *password);
+void storage_service_get_wifi_config(char* ssid, char* password);
 
 /**
  * @brief 保存 WiFi 配置到 NV
@@ -41,6 +44,7 @@ void storage_service_get_wifi_config(char *ssid, char *password);
  * @param password 密码
  * @return 错误码
  */
-errcode_t storage_service_save_wifi_config(const char *ssid, const char *password);
+errcode_t storage_service_save_wifi_config(const char* ssid,
+                                           const char* password);
 
 #endif

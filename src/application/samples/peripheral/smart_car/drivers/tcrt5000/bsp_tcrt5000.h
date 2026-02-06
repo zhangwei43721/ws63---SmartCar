@@ -21,20 +21,20 @@
 #define __BSP_TCRT5000_H__
 
 #include <stdint.h>
-#include "pinctrl.h"
+
 #include "gpio.h"
+#include "pinctrl.h"
 #include "soc_osal.h"
 
 // TCRT5000红外循迹传感器引脚定义
-// GPIO7/8/9支持ADC，分别对应通道0/1/2
-#define TCRT5000_LEFT_GPIO 11    // 左侧传感器 - ADC通道2
-#define TCRT5000_MIDDLE_GPIO 10  // 中间传感器 - ADC通道1
-#define TCRT5000_RIGHT_GPIO 9   // 右侧传感器 - ADC通道0
+#define TCRT5000_LEFT_GPIO 12    // 左侧传感器
+#define TCRT5000_MIDDLE_GPIO 10  // 中间传感器
+#define TCRT5000_RIGHT_GPIO 9    // 右侧传感器
 
-// ADC通道定义
-#define TCRT5000_LEFT_ADC_CHANNEL 4    // 左侧传感器ADC通道
-#define TCRT5000_MIDDLE_ADC_CHANNEL 3  // 中间传感器ADC通道
-#define TCRT5000_RIGHT_ADC_CHANNEL 2   // 右侧传感器ADC通道
+// ADC通道定义 (各GPIO对应的ADC通道)
+#define TCRT5000_LEFT_ADC_CHANNEL 5    // GPIO12 -> ADC通道5
+#define TCRT5000_MIDDLE_ADC_CHANNEL 3  // GPIO10 -> ADC通道3
+#define TCRT5000_RIGHT_ADC_CHANNEL 2   // GPIO9  -> ADC通道2
 
 // 传感器状态定义
 #define TCRT5000_ON_BLACK 0  // 检测到黑线
@@ -42,12 +42,13 @@
 
 // ADC阈值定义（mV）
 // ADC值 >= 阈值表示检测到黑线，ADC值 < 阈值表示检测到白线
-#define TCRT5000_LEFT_THRESHOLD 2000   // 左侧传感器阈值
-#define TCRT5000_MIDDLE_THRESHOLD 1900 // 中间传感器阈值
-#define TCRT5000_RIGHT_THRESHOLD 1900  // 右侧传感器阈值
+#define TCRT5000_LEFT_THRESHOLD 2000    // 左侧传感器阈值
+#define TCRT5000_MIDDLE_THRESHOLD 1900  // 中间传感器阈值
+#define TCRT5000_RIGHT_THRESHOLD 1900   // 右侧传感器阈值
 
 // ADC数据存储（使用自动扫描模式）
-extern uint32_t g_tcrt5000_adc_data[3];  // 存储左、中、右三个传感器的ADC电压值（mV）
+extern uint32_t
+    g_tcrt5000_adc_data[3];  // 存储左、中、右三个传感器的ADC电压值（mV）
 
 /**
  * @brief ADC自动扫描回调函数
@@ -56,7 +57,8 @@ extern uint32_t g_tcrt5000_adc_data[3];  // 存储左、中、右三个传感器
  * @param length 数据长度
  * @param next 继续扫描标志
  */
-void tcrt5000_adc_callback(uint8_t channel, uint32_t *buffer, uint32_t length, bool *next);
+void tcrt5000_adc_callback(uint8_t channel, uint32_t* buffer, uint32_t length,
+                           bool* next);
 
 /**
  * @brief 初始化TCRT5000红外循迹传感器

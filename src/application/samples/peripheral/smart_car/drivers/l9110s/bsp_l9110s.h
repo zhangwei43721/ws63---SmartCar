@@ -24,7 +24,7 @@
 
 // 驱动电机GPIO口:  4, 5, 0, 2
 static const uint8_t MOTOR_CH[] = {4, 5, 0, 2};
-#define PWM_PERIOD 50 // 20kHz (50us)
+#define PWM_PERIOD 50  // 20kHz (50us)
 
 /**
  * @brief 初始化L9110S电机驱动

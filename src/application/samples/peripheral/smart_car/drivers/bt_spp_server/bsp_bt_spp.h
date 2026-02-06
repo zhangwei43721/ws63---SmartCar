@@ -26,31 +26,32 @@
 
 /* 蓝牙SPP连接状态 */
 typedef enum {
-    BSP_BT_SPP_STATUS_IDLE = 0,     /* 空闲：未连接状态 */
-    BSP_BT_SPP_STATUS_CONNECTING,   /* 连接中：正在等待客户端连接 */
-    BSP_BT_SPP_STATUS_CONNECTED,    /* 已连接：客户端已连接，可进行数据传输 */
-    BSP_BT_SPP_STATUS_DISCONNECTED, /* 已断开：连接已断开 */
+  BSP_BT_SPP_STATUS_IDLE = 0,     /* 空闲：未连接状态 */
+  BSP_BT_SPP_STATUS_CONNECTING,   /* 连接中：正在等待客户端连接 */
+  BSP_BT_SPP_STATUS_CONNECTED,    /* 已连接：客户端已连接，可进行数据传输 */
+  BSP_BT_SPP_STATUS_DISCONNECTED, /* 已断开：连接已断开 */
 } bsp_bt_spp_status_t;
 
 /* 蓝牙SPP事件类型 */
 typedef enum {
-    BSP_BT_SPP_EVENT_CONNECTED = 0, /* 已连接：客户端成功建立连接 */
-    BSP_BT_SPP_EVENT_DISCONNECTED,  /* 已断开：客户端断开连接 */
-    BSP_BT_SPP_EVENT_DATA_RECEIVED, /* 接收到数据：收到客户端发送的数据 */
+  BSP_BT_SPP_EVENT_CONNECTED = 0, /* 已连接：客户端成功建立连接 */
+  BSP_BT_SPP_EVENT_DISCONNECTED,  /* 已断开：客户端断开连接 */
+  BSP_BT_SPP_EVENT_DATA_RECEIVED, /* 接收到数据：收到客户端发送的数据 */
 } bsp_bt_spp_event_t;
 
 /* 蓝牙SPP数据接收回调函数类型 */
-typedef void (*bsp_bt_spp_data_handler_t)(const uint8_t *data, uint32_t len);
+typedef void (*bsp_bt_spp_data_handler_t)(const uint8_t* data, uint32_t len);
 
 /* 蓝牙SPP事件回调函数类型 */
-typedef void (*bsp_bt_spp_event_handler_t)(bsp_bt_spp_event_t event, void *data);
+typedef void (*bsp_bt_spp_event_handler_t)(bsp_bt_spp_event_t event,
+                                           void* data);
 
 /**
  * @brief 初始化蓝牙SPP
  * @param device_name 蓝牙设备名称
  * @return 0成功，-1失败
  */
-int bsp_bt_spp_init(const char *device_name);
+int bsp_bt_spp_init(const char* device_name);
 
 /**
  * @brief 发送数据 (通过Notify发送，客户端需先启用Notify)
@@ -58,7 +59,7 @@ int bsp_bt_spp_init(const char *device_name);
  * @param len 数据长度
  * @return 实际发送的长度，-1表示失败，-2表示未启用Notify
  */
-int bsp_bt_spp_send(const uint8_t *data, uint32_t len);
+int bsp_bt_spp_send(const uint8_t* data, uint32_t len);
 
 /**
  * @brief 获取SPP连接状态
