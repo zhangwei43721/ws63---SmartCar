@@ -22,7 +22,7 @@ typedef struct __attribute__((packed)) {
     uint8_t cmd;      // 命令/模式编号
     int8_t  data1;    // 左轮速度或参数高字节
     int8_t  data2;    // 右轮速度或参数低字节
-    uint8_t ext;      // 扩展字段/保留
+    int8_t  ext;      // 扩展字段/保留
 } udp_packet_t;
 ```
 

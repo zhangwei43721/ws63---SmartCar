@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../../../drivers/l9110s/bsp_l9110s.h"
 #include "../../../drivers/uart/bsp_uart.h"
 #include "../core/robot_mgr.h"
 #include "soc_osal.h"
@@ -15,7 +16,7 @@
 #define VOICE_CMD_TIMEOUT_MS 1000
 #define MOTOR_SPEED_HIGH 100
 #define MOTOR_SPEED_TURN 50
-#define TURN_DURATION_MS 400
+#define TURN_DURATION_MS 400  // 转向持续时间
 
 typedef struct {
   int8_t l, r;
@@ -26,8 +27,8 @@ static VoiceCtx g_ctx = {0};
 
 // 统一设置动作：速度(l, r)，持续时间(ms)
 static void set_motion(int8_t l, int8_t r, uint32_t ms) {
-  g_ctx.l = l;
-  g_ctx.r = r;
+  g_ctx.l = l;  // 左轮速度
+  g_ctx.r = r;  // 右轮速度
   g_ctx.expire = osal_get_jiffies() + osal_msecs_to_jiffies(ms);
 }
 
@@ -85,10 +86,18 @@ void voice_service_init(void) {
 }
 
 void voice_service_tick(void) {
-  // 只要有速度，就检查是否到期
-  if ((g_ctx.l != 0 || g_ctx.r != 0) && osal_get_jiffies() >= g_ctx.expire) {
-    g_ctx.l = 0;
-    g_ctx.r = 0;
+  // 检查是否有有效的语音命令
+  if (g_ctx.l != 0 || g_ctx.r != 0) {
+    // 检查是否到期
+    if (osal_get_jiffies() >= g_ctx.expire) {
+      g_ctx.l = 0;
+      g_ctx.r = 0;
+      // 语音命令到期，立即停车
+      l9110s_set_differential(0, 0);
+    } else {
+      // 命令有效期内，持续执行电机驱动
+      l9110s_set_differential(g_ctx.l, g_ctx.r);
+    }
   }
 }
 
