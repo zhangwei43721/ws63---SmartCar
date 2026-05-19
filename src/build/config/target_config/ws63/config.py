@@ -88,7 +88,8 @@ target = {
             'xo_trim_port',
             "mqtt",
             "coap",
-            "sle_chba_user","sle_netdev"
+            "sle_chba_user","sle_netdev",
+            'little_fs', 'littlefs_adapt_ws63',
         ],
         'ccflags': [
             "-DBOARD_ASIC", '-DPRE_ASIC',

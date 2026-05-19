@@ -6,6 +6,7 @@
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../../drivers/l9110s/bsp_l9110s.h"
 #include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
+#include "../services/ota_service.h"
 #include "../services/sle_service.h"
 #include "../services/storage_service.h"
 #include "../services/udp_service.h"
@@ -98,12 +99,14 @@ void robot_mgr_init(void) {
 
   ui_service_init();
   udp_service_init();
+  ota_service_init();
   sle_service_init();
   robot_mgr_state_mutex_init();
   robot_mgr_set_status(CAR_STOP_STATUS);
   g_last_status = CAR_STOP_STATUS;
 
   printf("RobotMgr: 初始化完成\r\n");
+  printf("[FIRMWARE] OTA_TEST_BUILD_20250519_V2\r\n");
 }
 
 /**

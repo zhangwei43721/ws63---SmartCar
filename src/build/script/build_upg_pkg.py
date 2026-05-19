@@ -264,13 +264,13 @@ def lzma_compress_bin(src_file, dst_file, lzma_tool):
         cmd_list0.append('755')
         cmd_list0.append(lzma_tool)
     elif platform.system().lower() == "windows":
-        cmd_list0.append('cacls')
-        cmd_list0.append(lzma_tool)
-        cmd_list0.append('/p everyone:f /e')
-    str_cmd=' '.join(cmd_list0)
-    ret = subprocess.run(str_cmd, shell=True)
-    if ret.returncode != 0:
-        sys.exit("chmod lzma tool failed: %s" % ret)
+        # Windows .exe 无需 chmod
+        pass
+    if cmd_list0:
+        str_cmd=' '.join(cmd_list0)
+        ret = subprocess.run(str_cmd, shell=True)
+        if ret.returncode != 0:
+            sys.exit("chmod lzma tool failed: %s" % ret)
 
     cmd_list = []
     cmd_list.append(lzma_tool)

@@ -14,6 +14,7 @@
 #include "../core/robot_mgr.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
+#include "ota_service.h"
 #include "securec.h"
 #include "storage_service.h"
 #include "udp_net_common.h"
@@ -173,6 +174,25 @@ static void process_packet(uint8_t* data, size_t len,
       case 0xFE:  // 心跳包
         // 仅用于刷新超时时间，无其他业务逻辑
         break;
+
+      case 0x05: {  // OTA 远程烧录
+        udp_packet_t ack = {0};
+        ack.type = 0x05;
+        if (pkt->cmd == 0x01) {  // 启动 OTA
+          if (ota_service_start(0)) {
+            ack.cmd = 0x00;  // OK
+          } else {
+            ack.cmd = 0x01;  // Busy 或 Error
+          }
+        } else if (pkt->cmd == 0x02) {  // 取消 OTA
+          ota_service_cancel();
+          ack.cmd = 0x00;
+        } else {
+          ack.cmd = 0x02;  // 未知子命令
+        }
+        udp_net_common_send_to_addr(&ack, sizeof(ack), &g_server_addr);
+        break;
+      }
     }
   }
 }

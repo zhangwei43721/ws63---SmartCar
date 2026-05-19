@@ -15,6 +15,7 @@ set(PUBLIC_HEADER
 )
 
 set(PRIVATE_HEADER
+    ${ROOT_DIR}/middleware/chips/ws63/littlefs
 )
 
 set(PRIVATE_DEFINES
