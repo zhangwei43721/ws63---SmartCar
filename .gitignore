@@ -4,6 +4,7 @@ src/output/
 src/interim_binary/
 src/build.log
 src/analyzerJson/
-__pycache__/
+**/__pycache__/
+*.pyc
 src/application/samples/peripheral/smart_car/proxy/node_modules/
 src/application/samples/peripheral/smart_car/proxy/package-lock.json
