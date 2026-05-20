@@ -138,9 +138,9 @@ static void ota_set_state(ota_state_t s)
 static void ota_set_progress(uint8_t pct)
 {
   g_ota_progress = pct;
-  /* 仅在有显著变化时更新 UI（避免 I2C 总线饱和） */
+  /* OLED 通过 I2C@400KHz 全屏刷写 ~50ms，刷太频繁会卡死接收 */
   static uint8_t last_ui_pct = 0xFF;
-  if (pct != last_ui_pct) {
+  if (last_ui_pct == 0xFF || pct == 100 || (pct / 10) != (last_ui_pct / 10)) {
     last_ui_pct = pct;
     ota_update_ui();
   }
@@ -261,6 +261,12 @@ static void *ota_tcp_server_task(const char *arg)
   }
   printf("[OTA] Client connected: %s\r\n", inet_ntoa(cli_addr.sin_addr));
 
+  /* 关闭 Nagle：避免 1 字节 ACK 与小报文被合并延迟 */
+  {
+    int nodelay = 1;
+    (void)lwip_setsockopt(conn_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+  }
+
   /* 3. 接收 8 字节 Header */
   n = recv_all(conn_fd, header, sizeof(header), 10000);
   if (n != sizeof(header)) {
@@ -340,9 +346,6 @@ static void *ota_tcp_server_task(const char *arg)
     if (offset % 32768 == 0 || offset == total_size) {
       printf("[OTA] received %u/%u bytes (%u%%)\r\n", offset, total_size, pct);
     }
-
-    /* 回复 ACK */
-    tcp_send_ack(conn_fd, 0x00);
   }
 
   printf("[OTA] All %u bytes received\r\n", offset);

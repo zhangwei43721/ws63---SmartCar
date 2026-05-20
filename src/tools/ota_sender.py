@@ -20,7 +20,7 @@ import time
 UDP_PORT = 8888           # OTA 触发端口
 UDP_BROADCAST_PORT = 8889 # 小车发现广播端口
 TCP_PORT = 8890
-CHUNK_SIZE = 4096
+CHUNK_SIZE = 32768
 
 DISCOVERY_TYPE = 0xFF
 DISCOVERY_PKT_SIZE = 1 + 6 + 16  # type + mac + name
@@ -110,7 +110,8 @@ def send_firmware(ip: str, fw_path: str) -> bool:
     try:
         print(f"[TCP] 连接 {ip}:{TCP_PORT} ...")
         sock.connect((ip, TCP_PORT))
-        print("[TCP] 已连接")
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        print("[TCP] 已连接 (TCP_NODELAY=1)")
 
         # 1. 发送 8 字节 Header
         header = b"OTAx" + struct.pack(">I", total_size)
@@ -124,18 +125,12 @@ def send_firmware(ip: str, fw_path: str) -> bool:
             return False
         print("[TCP] Header ACK OK")
 
-        # 3. 分块发送固件
+        # 3. 流式发送固件（无逐块 ACK，固件侧边收边写）
         offset = 0
         start_time = time.time()
         while offset < total_size:
             chunk = fw_data[offset:offset + CHUNK_SIZE]
             sock.sendall(chunk)
-
-            ack = sock.recv(1)
-            if not ack or ack[0] != 0x00:
-                print(f"[TCP] 数据块 ACK 错误 @ offset={offset}")
-                return False
-
             offset += len(chunk)
             pct = offset * 100 // total_size
             elapsed = time.time() - start_time
@@ -143,10 +138,10 @@ def send_firmware(ip: str, fw_path: str) -> bool:
             print(f"\r[TCP] 进度: {offset}/{total_size} bytes ({pct}%)  {speed:.1f} KB/s", end="", flush=True)
 
         print()  # 换行
-        print("[TCP] 固件发送完成，等待设备校验和重启...")
+        print("[TCP] 已写入本地发送缓冲，等待设备接收/校验/重启...")
 
         # 4. 等待最终 ACK（校验成功后设备会发 0x00，然后重启）
-        sock.settimeout(10.0)
+        sock.settimeout(60.0)
         try:
             final_ack = sock.recv(1)
             if final_ack and final_ack[0] == 0x00:

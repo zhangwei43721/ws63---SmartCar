@@ -15,8 +15,8 @@
 #define OTA_TCP_STACK_SIZE   (1024 * 16)  /* 16KB 栈，TCP+UPG 操作需要较大空间 */
 #define OTA_TCP_TASK_PRIORITY 23
 
-#define OTA_RECV_CHUNK_SIZE  4096         /* 每次 recv 缓冲大小 */
-#define OTA_WRITE_CHUNK_SIZE 4096         /* 每次写入 UPG 的块大小 */
+#define OTA_RECV_CHUNK_SIZE  32768        /* 每次 recv 缓冲大小 */
+#define OTA_WRITE_CHUNK_SIZE 32768        /* 每次写入 UPG 的块大小 */
 
 #define OTA_MAGIC_STR        "OTAx"
 #define OTA_MAGIC_LEN        4
