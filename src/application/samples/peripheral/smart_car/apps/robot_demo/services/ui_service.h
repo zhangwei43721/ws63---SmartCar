@@ -33,4 +33,13 @@ bool ui_service_is_ready(void);  // 查询 OLED 是否就绪
  */
 void ui_show_ota_progress(uint8_t percent, const char* status_line);
 
+/**
+ * @brief 独占/释放 OLED（OTA 等场景使用）
+ * @note 独占期间 ui_show_mode_page/ui_render_standby 会被忽略，
+ *       避免与 OTA 进度页交替刷新导致屏幕闪烁
+ */
+void ui_service_acquire(void);
+void ui_service_release(void);
+bool ui_service_is_busy(void);
+
 #endif

@@ -1,6 +1,7 @@
 #include "ui_service.h"
 
 static bool g_oled_ready = false; /* OLED 是否已初始化并可用 */
+static bool g_ui_busy = false;    /* OLED 是否被独占（OTA 等高优场景） */
 
 /**
  * @brief 模式显示信息结构体
@@ -71,6 +72,7 @@ void ui_service_init(void) {
 void ui_show_mode_page(CarStatus status) {
   ui_service_init();
   if (!g_oled_ready) return;
+  if (g_ui_busy) return; /* OTA 等场景独占屏幕时跳过 */
 
   // 直接使用枚举值作为索引（更简单，不需要循环查找）
   int mode_count = (int)(sizeof(g_mode_display) / sizeof(g_mode_display[0]));
@@ -92,6 +94,7 @@ void ui_render_standby(WifiConnectStatus wifi_state, const char* ip_addr) {
   ui_service_init();
 
   if (!g_oled_ready) return;
+  if (g_ui_busy) return; /* OTA 等场景独占屏幕时跳过 */
 
   // WiFi 状态字符串查找表（按 WifiConnectStatus 枚举值索引）
   static const char* wifi_state_str[] = {
@@ -133,3 +136,9 @@ void ui_show_ota_progress(uint8_t percent, const char* status_line) {
   ssd1306_DrawString16(0, 16, line2, White);
   ssd1306_UpdateScreen();
 }
+
+void ui_service_acquire(void) { g_ui_busy = true; }
+
+void ui_service_release(void) { g_ui_busy = false; }
+
+bool ui_service_is_busy(void) { return g_ui_busy; }

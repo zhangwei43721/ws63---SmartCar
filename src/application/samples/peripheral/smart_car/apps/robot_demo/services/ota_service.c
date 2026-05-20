@@ -126,6 +126,12 @@ static void ota_set_state(ota_state_t s)
 {
   g_ota_state = s;
   printf("[OTA] state -> %s\r\n", OTA_STATE_TO_STR(s));
+  /* OTA 活跃阶段独占 OLED，IDLE 时释放，避免与 standby/mode 页面交替刷屏 */
+  if (s == OTA_STATE_IDLE) {
+    ui_service_release();
+  } else {
+    ui_service_acquire();
+  }
   ota_update_ui();
 }
 
