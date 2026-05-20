@@ -1,8 +1,8 @@
 /**
  * @file        captive_portal_service.c
  * @brief       AP 配网服务（Captive Portal）实现
- * @details     在 AP 模式下启动轻量级 HTTP 服务器，提供 Web 配网页面。
- *              用户连接小车热点后访问 http://192.168.1.1/ 即可配置 WiFi。
+ * @details     在 AP 模式下启动轻量级 HTTP 服务器 + DNS 劫持服务器。
+ *              用户连接小车热点后自动弹出（或访问任意网址跳转到）Web 配网页面。
  */
 
 #include "captive_portal_service.h"
@@ -19,12 +19,14 @@
 #include "storage_service.h"
 
 /* ---------- 配置常量 ---------- */
-#define CAPTIVE_PORTAL_HTTP_PORT    80
-#define CAPTIVE_PORTAL_STACK_SIZE   8192
-#define CAPTIVE_PORTAL_TASK_PRIO    23
+#define CAPTIVE_PORTAL_HTTP_PORT     80
+#define CAPTIVE_PORTAL_DNS_PORT      53
+#define CAPTIVE_PORTAL_STACK_SIZE    8192
+#define CAPTIVE_PORTAL_TASK_PRIO     23
 #define CAPTIVE_HTTP_RECV_TIMEOUT_MS 2000
-#define CAPTIVE_HTTP_BUF_SIZE       1536
-#define CAPTIVE_HTTP_MAX_BODY       512
+#define CAPTIVE_HTTP_BUF_SIZE        1536
+#define CAPTIVE_HTTP_MAX_BODY        512
+#define CAPTIVE_DNS_BUF_SIZE         512
 
 /* ---------- 状态枚举 ---------- */
 typedef enum {
@@ -43,7 +45,16 @@ static bool      g_task_should_exit = false;
 static char      g_ap_ip_str[BUF_IP] = "0.0.0.0";
 static char      g_status_text[32]   = "等待配网";
 
-/* ---------- 内嵌配网页面（精简版） ---------- */
+/* DNS 与 HTTP 套接字 */
+static int       g_http_fd = -1;
+static int       g_dns_fd  = -1;
+
+/* 后台 WiFi 切换任务 */
+static osal_task *g_switch_task = NULL;
+static char      g_switch_ssid[32] = {0};
+static char      g_switch_password[64] = {0};
+
+/* ---------- 内嵌配网页面 ---------- */
 static const char s_html_page[] =
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html; charset=utf-8\r\n"
@@ -90,17 +101,46 @@ static const char s_html_success[] =
     "<!DOCTYPE html><html><head>"
     "<meta charset=\"utf-8\">"
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-    "<title>配网成功</title>"
+    "<title>配网中</title>"
     "<style>"
     "body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f2f3f5;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}"
     ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.08);padding:32px;width:100%;max-width:320px;text-align:center}"
-    "h1{font-size:22px;color:#34c759;margin-bottom:8px}"
+    "h1{font-size:22px;color:#007aff;margin-bottom:8px}"
     "p{color:#555;font-size:15px;line-height:1.6}"
+    ".spin{display:inline-block;width:24px;height:24px;border:3px solid #ddd;border-top-color:#007aff;border-radius:50%;animation:s 1s linear infinite;margin-bottom:12px}"
+    "@keyframes s{to{transform:rotate(360deg)}}"
+    "a{display:inline-block;margin-top:16px;padding:10px 20px;background:#007aff;color:#fff;text-decoration:none;border-radius:8px;font-size:15px}"
     "</style></head><body>"
     "<div class=\"card\">"
-    "<h1>配网成功!</h1>"
-    "<p>小车正在连接WiFi...<br>请稍候，热点即将关闭。</p>"
-    "</div></body></html>";
+    "<div class=\"spin\"></div>"
+    "<h1 id=\"t\">正在连接WiFi...</h1>"
+    "<p id=\"m\">请稍候，正在尝试连接网络</p>"
+    "</div>"
+    "<script>"
+    "function c(){"
+    "var x=new XMLHttpRequest();"
+    "x.open('GET','/status',true);"
+    "x.onreadystatechange=function(){"
+    "if(x.readyState==4){"
+    "if(x.status==200){"
+    "var d=JSON.parse(x.responseText);"
+    "if(d.status=='connected'){"
+    "document.getElementById('t').innerHTML='配网成功!';"
+    "document.getElementById('t').style.color='#34c759';"
+    "document.getElementById('m').innerHTML='IP: '+d.ip+'<br>热点即将关闭';"
+    "}else if(d.status=='failed'){"
+    "document.getElementById('t').innerHTML='配网失败';"
+    "document.getElementById('t').style.color='#ff3b30';"
+    "document.getElementById('m').innerHTML='无法连接到WiFi<br><a href=\"/\">返回重试</a>';"
+    "}else{setTimeout(c,2000);}"
+    "}else{setTimeout(c,2000);}"
+    "}"
+    "};"
+    "x.send();"
+    "}"
+    "c();"
+    "</script>"
+    "</body></html>";
 
 static const char s_html_fail[] =
     "HTTP/1.1 200 OK\r\n"
@@ -141,6 +181,8 @@ static const char s_html_busy[] =
     "<h1>正在处理...</h1>"
     "<p>上一条配网请求正在执行中<br>请稍候</p>"
     "</div></body></html>";
+
+/* 302 重定向响应（动态 IP，在 handle_http_client 中生成） */
 
 /* ---------- 内部函数 ---------- */
 
@@ -225,6 +267,63 @@ static void send_response_and_close(int client_fd, const char *response)
 }
 
 /**
+ * @brief 处理 /status 请求，返回 JSON 状态
+ */
+static void handle_status_request(int client_fd)
+{
+    const char *status_str = "idle";
+    char ip[BUF_IP] = {0};
+
+    switch (g_portal_status) {
+        case PORTAL_STATUS_RUNNING:      status_str = "running";    break;
+        case PORTAL_STATUS_CONFIG_RECEIVED:
+        case PORTAL_STATUS_SWITCHING:    status_str = "connecting"; break;
+        case PORTAL_STATUS_SUCCESS:      status_str = "connected";  break;
+        case PORTAL_STATUS_FAILED:       status_str = "failed";     break;
+        default:                         status_str = "idle";       break;
+    }
+
+    if (g_portal_status == PORTAL_STATUS_SUCCESS) {
+        (void)bsp_wifi_get_ip(ip, sizeof(ip));
+    }
+
+    char json[256];
+    (void)snprintf(json, sizeof(json),
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Connection: close\r\n\r\n"
+        "{\"status\":\"%s\",\"ip\":\"%s\"}\r\n",
+        status_str, ip);
+
+    send_response_and_close(client_fd, json);
+}
+
+/**
+ * @brief 后台 WiFi 切换任务
+ */
+static void *wifi_switch_task(const char *arg)
+{
+    (void)arg;
+
+    g_portal_status = PORTAL_STATUS_SWITCHING;
+    strncpy(g_status_text, "切换STA", sizeof(g_status_text));
+
+    printf("[Portal] 正在从 AP 切换到 STA 模式...\r\n");
+    if (bsp_wifi_switch_from_ap_to_sta(g_switch_ssid, g_switch_password) == 0) {
+        g_portal_status = PORTAL_STATUS_SUCCESS;
+        strncpy(g_status_text, "配网成功", sizeof(g_status_text));
+        printf("[Portal] 切换到 STA 成功\r\n");
+    } else {
+        g_portal_status = PORTAL_STATUS_FAILED;
+        strncpy(g_status_text, "配网失败", sizeof(g_status_text));
+        printf("[Portal] 切换到 STA 失败\r\n");
+    }
+
+    g_switch_task = NULL;
+    return NULL;
+}
+
+/**
  * @brief 处理单个 HTTP 连接
  */
 static void handle_http_client(int client_fd)
@@ -273,14 +372,46 @@ static void handle_http_client(int client_fd)
         }
     }
 
-    /* GET 请求返回配网页面 */
-    if (is_get) {
+    /* ========== 核心修复：检查 Host ========== */
+    /* 判断浏览器请求的域名是不是小车自己的 IP */
+    bool is_direct_ip = false;
+    char target_host[64];
+    (void)snprintf(target_host, sizeof(target_host), "Host: %s", g_ap_ip_str);
+    if (strstr(buf, target_host) != NULL) {
+        is_direct_ip = true;
+    }
+
+    /* 如果是通过 DNS 劫持过来的（Host 不是小车 IP），
+       无论请求什么路径，全部 302 强制跳转到小车的真实 IP */
+    if (!is_direct_ip) {
+        char redirect_resp[256];
+        (void)snprintf(redirect_resp, sizeof(redirect_resp),
+            "HTTP/1.1 302 Found\r\n"
+            "Location: http://%s/\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n\r\n",
+            g_ap_ip_str);
+        send_response_and_close(client_fd, redirect_resp);
+        return;
+    }
+    /* ======================================== */
+
+    /* 只有真正访问 http://192.168.1.1/ 的，才往下走 */
+
+    /* GET /status -> 返回 JSON */
+    if (is_get && strcmp(path, "/status") == 0) {
+        handle_status_request(client_fd);
+        return;
+    }
+
+    /* GET / -> 返回真正的配网页面 */
+    if (is_get && strcmp(path, "/") == 0) {
         send_response_and_close(client_fd, s_html_page);
         return;
     }
 
     /* POST /config 处理配网 */
-    if (is_post && strncmp(path, "/config", 7) == 0) {
+    if (is_post && strcmp(path, "/config") == 0) {
         /* 检查是否正在处理其他配网请求 */
         if (g_portal_status == PORTAL_STATUS_CONFIG_RECEIVED ||
             g_portal_status == PORTAL_STATUS_SWITCHING) {
@@ -331,23 +462,26 @@ static void handle_http_client(int client_fd)
             g_portal_status = PORTAL_STATUS_CONFIG_RECEIVED;
             strncpy(g_status_text, "配网中...", sizeof(g_status_text));
 
+            /* 保存配置 */
+            storage_service_save_wifi_config(ssid, password);
+
+            /* 保存到全局变量供后台任务使用 */
+            strncpy(g_switch_ssid, ssid, sizeof(g_switch_ssid));
+            strncpy(g_switch_password, password, sizeof(g_switch_password));
+
             /* 先返回成功页面 */
             send_response_and_close(client_fd, s_html_success);
 
-            /* 保存配置并切换 */
-            storage_service_save_wifi_config(ssid, password);
-            g_portal_status = PORTAL_STATUS_SWITCHING;
-            strncpy(g_status_text, "切换STA", sizeof(g_status_text));
-
-            printf("[Portal] 正在从 AP 切换到 STA 模式...\r\n");
-            if (bsp_wifi_switch_from_ap_to_sta(ssid, password) == 0) {
-                g_portal_status = PORTAL_STATUS_SUCCESS;
-                strncpy(g_status_text, "配网成功", sizeof(g_status_text));
-                printf("[Portal] 切换到 STA 成功\r\n");
-            } else {
-                g_portal_status = PORTAL_STATUS_FAILED;
-                strncpy(g_status_text, "配网失败", sizeof(g_status_text));
-                printf("[Portal] 切换到 STA 失败\r\n");
+            /* 启动后台 WiFi 切换任务 */
+            if (g_switch_task == NULL) {
+                osal_kthread_lock();
+                g_switch_task = osal_kthread_create(
+                    (osal_kthread_handler)wifi_switch_task, NULL,
+                    "wifi_switch", 4096);
+                if (g_switch_task != NULL) {
+                    osal_kthread_set_priority(g_switch_task, CAPTIVE_PORTAL_TASK_PRIO);
+                }
+                osal_kthread_unlock();
             }
             return;
         } else {
@@ -356,8 +490,15 @@ static void handle_http_client(int client_fd)
         }
     }
 
-    /* 其他请求也返回配网页面 */
-    send_response_and_close(client_fd, s_html_page);
+    /* 访问了 IP 的其他不存在路径，也跳回根目录 */
+    char redirect_root[256];
+    (void)snprintf(redirect_root, sizeof(redirect_root),
+        "HTTP/1.1 302 Found\r\n"
+        "Location: http://%s/\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n\r\n",
+        g_ap_ip_str);
+    send_response_and_close(client_fd, redirect_root);
 }
 
 /**
@@ -367,7 +508,7 @@ static int http_server_start(void)
 {
     int fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
-        printf("[Portal] socket 创建失败\r\n");
+        printf("[Portal] HTTP socket 创建失败\r\n");
         return -1;
     }
 
@@ -380,13 +521,13 @@ static int http_server_start(void)
     addr.sin_addr.s_addr = INADDR_ANY;
 
     if (lwip_bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        printf("[Portal] bind 失败\r\n");
+        printf("[Portal] HTTP bind 失败\r\n");
         lwip_close(fd);
         return -1;
     }
 
     if (lwip_listen(fd, 2) < 0) {
-        printf("[Portal] listen 失败\r\n");
+        printf("[Portal] HTTP listen 失败\r\n");
         lwip_close(fd);
         return -1;
     }
@@ -407,65 +548,225 @@ static void http_server_stop(int fd)
 }
 
 /**
+ * @brief 启动 DNS 劫持服务器（UDP 端口 53）
+ * @note 将所有 A 记录查询重定向到 192.168.1.1
+ */
+static int dns_server_start(void)
+{
+    int fd = lwip_socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        printf("[Portal] DNS socket 创建失败\r\n");
+        return -1;
+    }
+
+    int opt = 1;
+    lwip_setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    struct sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_port = lwip_htons(CAPTIVE_PORTAL_DNS_PORT);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (lwip_bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        printf("[Portal] DNS bind 失败\r\n");
+        lwip_close(fd);
+        return -1;
+    }
+
+    /* 设置接收超时，使轮询可以定期检查退出标志 */
+    struct timeval tv = {0, 100000}; /* 100ms */
+    lwip_setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    printf("[Portal] DNS 服务器已启动: port=%d\r\n", CAPTIVE_PORTAL_DNS_PORT);
+    return fd;
+}
+
+/**
+ * @brief 关闭 DNS 服务器
+ */
+static void dns_server_stop(int fd)
+{
+    if (fd >= 0) {
+        lwip_close(fd);
+        printf("[Portal] DNS 服务器已停止\r\n");
+    }
+}
+
+/**
+ * @brief 处理单个 DNS 查询
+ * @note 解析 DNS 请求，对所有 A 记录查询返回 192.168.1.1
+ */
+/**
+ * @brief 从 DNS 查询包中提取域名（调试用）
+ */
+static void dns_extract_name(const unsigned char *buf, int pos, char *out, size_t out_len)
+{
+    size_t j = 0;
+    while (buf[pos] != 0 && j + 1 < out_len) {
+        int len = buf[pos];
+        if ((len & 0xC0) == 0xC0) break; /* 压缩指针，停止 */
+        pos++;
+        for (int i = 0; i < len && j + 1 < out_len; i++) {
+            out[j++] = (char)buf[pos++];
+        }
+        if (buf[pos] != 0 && j + 1 < out_len) out[j++] = '.';
+    }
+    out[j] = '\0';
+}
+
+static void dns_server_handle(int fd)
+{
+    struct sockaddr_in client_addr;
+    socklen_t addr_len = sizeof(client_addr);
+    unsigned char buf[CAPTIVE_DNS_BUF_SIZE];
+    unsigned char resp[CAPTIVE_DNS_BUF_SIZE];
+
+    int n = lwip_recvfrom(fd, buf, sizeof(buf), 0,
+                          (struct sockaddr *)&client_addr, &addr_len);
+    if (n < 12) return;
+
+    /* 解析 DNS 头部 */
+    unsigned int flags = ((unsigned int)buf[2] << 8) | buf[3];
+    unsigned int questions = ((unsigned int)buf[4] << 8) | buf[5];
+
+    /* 只处理标准查询（QR=0），且至少有一个问题 */
+    if ((flags & 0x8000) != 0) return;
+    if (questions == 0) return;
+
+    /* 提取域名用于调试 */
+    char qname[128] = {0};
+    dns_extract_name(buf, 12, qname, sizeof(qname));
+
+    /* 构建响应头部：复制事务ID和Questions，设置响应标志 */
+    memcpy(resp, buf, 2);                   /* Transaction ID */
+    resp[2] = 0x81; resp[3] = 0x80;         /* Flags: Standard response, No error */
+    memcpy(resp + 4, buf + 4, 2);           /* Questions */
+    resp[6] = 0x00; resp[7] = 0x01;         /* Answer RRs: 1 */
+    resp[8] = 0x00; resp[9] = 0x00;         /* Authority RRs: 0 */
+    resp[10] = 0x00; resp[11] = 0x00;       /* Additional RRs: 0 */
+    int resp_len = 12;
+
+    /* 复制问题部分 */
+    int pos = 12;
+    while (pos < n && buf[pos] != 0) {
+        if ((buf[pos] & 0xC0) == 0xC0) {
+            /* 查询中不应出现压缩指针，直接丢弃 */
+            return;
+        }
+        pos += 1 + buf[pos];
+    }
+    if (pos >= n || buf[pos] != 0) return;
+    pos++; /* 跳过域名结束符 \0 */
+    if (pos + 4 > n) return; /* 需要 QTYPE + QCLASS */
+
+    int q_len = pos + 4 - 12;
+    if (resp_len + q_len > (int)sizeof(resp)) return;
+    memcpy(resp + 12, buf + 12, q_len);
+    resp_len += q_len;
+
+    /* 解析当前 AP IP */
+    unsigned int ap_ip = inet_addr(g_ap_ip_str);
+    if (ap_ip == 0 || ap_ip == (unsigned int)(-1)) {
+        /* 回退到默认 IP */
+        ap_ip = inet_addr("192.168.1.1");
+    }
+
+    /* 添加 A 记录回答 */
+    if (resp_len + 16 > (int)sizeof(resp)) return;
+
+    resp[resp_len++] = 0xC0; resp[resp_len++] = 0x0C; /* Name: 指针指向问题域名（偏移 12） */
+    resp[resp_len++] = 0x00; resp[resp_len++] = 0x01; /* Type: A */
+    resp[resp_len++] = 0x00; resp[resp_len++] = 0x01; /* Class: IN */
+    resp[resp_len++] = 0x00; resp[resp_len++] = 0x00; /* TTL: 300 秒 */
+    resp[resp_len++] = 0x01; resp[resp_len++] = 0x2C;
+    resp[resp_len++] = 0x00; resp[resp_len++] = 0x04; /* Data length: 4 */
+    memcpy(&resp[resp_len], &ap_ip, 4);
+    resp_len += 4;
+
+    (void)lwip_sendto(fd, resp, resp_len, 0,
+                      (struct sockaddr *)&client_addr, addr_len);
+
+    printf("[Portal] DNS 劫持: %s -> %s\r\n", qname, g_ap_ip_str);
+}
+
+/**
  * @brief 配网服务主任务
+ * @note 使用 lwip_select 同时监听 HTTP (TCP/80) 和 DNS (UDP/53) 端口，
+ *       避免串行轮询导致的 DNS 查询漏接问题。
  */
 static void *captive_portal_task(const char *arg)
 {
     (void)arg;
     bool server_running = false;
-    int fd = -1;
 
     while (!g_task_should_exit) {
         bsp_wifi_mode_t mode = bsp_wifi_get_mode();
 
         if (mode == BSP_WIFI_MODE_AP) {
-            /* AP 模式下维持服务器 */
+            /* AP 模式下启动服务器 */
             if (!server_running) {
-                fd = http_server_start();
-                if (fd >= 0) {
+                g_http_fd = http_server_start();
+                g_dns_fd  = dns_server_start();
+                if (g_http_fd >= 0 && g_dns_fd >= 0) {
                     server_running = true;
                     g_portal_status = PORTAL_STATUS_RUNNING;
                     strncpy(g_status_text, "等待配网", sizeof(g_status_text));
 
                     /* 更新 IP 显示 */
-                    bsp_wifi_get_ip(g_ap_ip_str, sizeof(g_ap_ip_str));
+                    (void)bsp_wifi_get_ip(g_ap_ip_str, sizeof(g_ap_ip_str));
                     printf("[Portal] AP IP: %s, 请用手机连接 %s 后访问 http://%s/\r\n",
                            g_ap_ip_str, BSP_WIFI_AP_SSID, g_ap_ip_str);
                 }
             }
 
-            if (server_running && fd >= 0) {
-                struct sockaddr_in client_addr;
-                socklen_t addr_len = sizeof(client_addr);
+            if (server_running && g_http_fd >= 0 && g_dns_fd >= 0) {
+                fd_set readset;
+                FD_ZERO(&readset);
+                FD_SET(g_http_fd, &readset);
+                FD_SET(g_dns_fd, &readset);
 
-                /* accept 带 1 秒超时，使任务可以定期检查退出标志 */
-                struct timeval tv = {1, 0};
-                lwip_setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+                int max_fd = (g_http_fd > g_dns_fd) ? g_http_fd : g_dns_fd;
 
-                int client_fd = lwip_accept(fd, (struct sockaddr *)&client_addr, &addr_len);
-                if (client_fd >= 0) {
-                    printf("[Portal] 客户端连接: %s\r\n",
-                           inet_ntoa(client_addr.sin_addr));
-                    handle_http_client(client_fd);
+                /* select 500ms 超时，既能及时响应又能定期检查退出标志 */
+                struct timeval tv = {0, 500000};
+                int ret = lwip_select(max_fd + 1, &readset, NULL, NULL, &tv);
+
+                if (ret > 0) {
+                    /* 优先处理 DNS 查询（低延迟） */
+                    if (FD_ISSET(g_dns_fd, &readset)) {
+                        dns_server_handle(g_dns_fd);
+                    }
+                    /* 处理 HTTP 连接 */
+                    if (FD_ISSET(g_http_fd, &readset)) {
+                        struct sockaddr_in client_addr;
+                        socklen_t addr_len = sizeof(client_addr);
+                        int client_fd = lwip_accept(g_http_fd,
+                                                    (struct sockaddr *)&client_addr, &addr_len);
+                        if (client_fd >= 0) {
+                            printf("[Portal] 客户端连接: %s\r\n",
+                                   inet_ntoa(client_addr.sin_addr));
+                            handle_http_client(client_fd);
+                        }
+                    }
                 }
             }
         } else {
-            /* 非 AP 模式关闭服务器 */
+            /* 非 AP 模式关闭所有服务器 */
             if (server_running) {
-                http_server_stop(fd);
-                fd = -1;
+                http_server_stop(g_http_fd);
+                dns_server_stop(g_dns_fd);
+                g_http_fd = -1;
+                g_dns_fd  = -1;
                 server_running = false;
                 g_portal_status = PORTAL_STATUS_IDLE;
             }
-            /* 休眠更长，减少 CPU 占用 */
             osal_msleep(500);
         }
-
-        osal_msleep(10);
     }
 
     if (server_running) {
-        http_server_stop(fd);
+        http_server_stop(g_http_fd);
+        dns_server_stop(g_dns_fd);
     }
     g_portal_task = NULL;
     return NULL;
@@ -489,7 +790,7 @@ void captive_portal_service_init(void)
     osal_kthread_unlock();
 
     if (g_portal_task != NULL) {
-        printf("[Portal] 配网服务已初始化\r\n");
+        printf("[Portal] Captive Portal 配网服务已初始化\r\n");
     } else {
         printf("[Portal] 配网服务任务创建失败\r\n");
     }
@@ -505,7 +806,7 @@ bool captive_portal_service_is_running(void)
 const char* captive_portal_service_get_ap_ip(void)
 {
     if (bsp_wifi_get_mode() == BSP_WIFI_MODE_AP) {
-        bsp_wifi_get_ip(g_ap_ip_str, sizeof(g_ap_ip_str));
+        (void)bsp_wifi_get_ip(g_ap_ip_str, sizeof(g_ap_ip_str));
     }
     return g_ap_ip_str;
 }

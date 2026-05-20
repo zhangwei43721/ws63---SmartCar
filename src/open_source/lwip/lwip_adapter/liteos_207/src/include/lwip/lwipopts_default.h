@@ -33,6 +33,9 @@
 #ifndef __LWIPOPTS_H__
 #define __LWIPOPTS_H__
 
+/* 启用 DHCP 网关下发，确保 AP 模式的客户端能拿到网关 IP */
+#define CONFIG_DHCPS_GW 1
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
