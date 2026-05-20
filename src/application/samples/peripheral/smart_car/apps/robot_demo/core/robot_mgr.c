@@ -6,6 +6,7 @@
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../../drivers/l9110s/bsp_l9110s.h"
 #include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
+#include "../services/captive_portal_service.h"
 #include "../services/ota_service.h"
 #include "../services/sle_service.h"
 #include "../services/storage_service.h"
@@ -40,21 +41,23 @@ static void mode_standby_enter(void) {
  * @note 每 500ms 更新一次 OLED 显示，展示 WiFi 连接状态和 IP 地址
  */
 static void mode_standby_tick(void) {
-  static unsigned long long last_ui_update = 0;  // 上次 UI 更新时间戳
-  unsigned long long now = osal_get_jiffies();   // 当前时间戳
+  static unsigned long long last_ui_update = 0;
+  unsigned long long now = osal_get_jiffies();
 
-  // 每 STANDBY_DELAY (500ms) 更新一次 UI，避免频繁刷新影响性能
   if (now - last_ui_update >= osal_msecs_to_jiffies(STANDBY_DELAY)) {
-    char ip_line[BUF_IP] = {0};             // IP 地址显示缓冲区
-    const char* ip = udp_service_get_ip();  // 从 UDP 服务获取 IP 地址
+    char ip_line[BUF_IP] = {0};
+    WifiConnectStatus wifi_status = udp_service_get_wifi_status();
 
-    // 格式化 IP 地址字符串（如果有 IP 就显示，否则显示 "Pending"）
-    (void)snprintf(ip_line, sizeof(ip_line), "IP: %s", ip ? ip : "Pending");
+    if (wifi_status == WIFI_STATUS_AP_MODE) {
+      const char* ap_ip = captive_portal_service_get_ap_ip();
+      (void)snprintf(ip_line, sizeof(ip_line), "IP: %s", ap_ip);
+    } else {
+      const char* ip = udp_service_get_ip();
+      (void)snprintf(ip_line, sizeof(ip_line), "IP: %s", ip ? ip : "Pending");
+    }
 
-    WifiConnectStatus wifi_status =
-        udp_service_get_wifi_status();        // 获取 WiFi 连接状态
-    ui_render_standby(wifi_status, ip_line);  // 在 OLED 显示状态和 IP 地址
-    last_ui_update = now;                     // 更新上次刷新时间戳
+    ui_render_standby(wifi_status, ip_line);
+    last_ui_update = now;
   }
 }
 
@@ -101,6 +104,7 @@ void robot_mgr_init(void) {
   udp_service_init();
   ota_service_init();
   sle_service_init();
+  captive_portal_service_init();
   robot_mgr_state_mutex_init();
   robot_mgr_set_status(CAR_STOP_STATUS);
   g_last_status = CAR_STOP_STATUS;

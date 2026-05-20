@@ -5,7 +5,7 @@ WS63 智能小车局域网 OTA 固件推送工具
 用法:
     python ota_sender.py <firmware.pkg> [device_ip]
     python ota_sender.py firmware.pkg                # 自动发现小车
-    python ota_sender.py firmware.pkg 192.168.43.1   # 指定 IP
+    python ota_sender.py firmware.pkg 192.168.1.1   # 指定 IP
 
 工作机制:
     小车在未连接控制器时会以 500ms 的频率向 UDP 8889 端口广播发现包
@@ -165,8 +165,8 @@ def parse_args():
 
     支持两种形式（保持向后兼容）:
         python ota_sender.py firmware.pkg
-        python ota_sender.py firmware.pkg 192.168.43.1
-        python ota_sender.py 192.168.43.1 firmware.pkg   # 旧风格
+        python ota_sender.py firmware.pkg 192.168.1.1
+        python ota_sender.py 192.168.1.1 firmware.pkg   # 旧风格
     """
     args = sys.argv[1:]
     if not args:
