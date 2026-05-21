@@ -17,6 +17,7 @@
 #include "securec.h"
 #include "soc_osal.h"
 #include "storage_service.h"
+#include "captive_portal_control.h"
 
 /* ---------- 配置常量 ---------- */
 #define CAPTIVE_PORTAL_HTTP_PORT     80
@@ -91,6 +92,10 @@ static const char s_html_page[] =
     "</div>"
     "<button type=\"submit\">保存并连接</button>"
     "</form>"
+    "<div style=\"margin-top:18px;text-align:center\">"
+    "<a href=\"/control\" style=\"display:inline-block;padding:10px 20px;background:#34c759;color:#fff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600\">点击控制小车</a>"
+    "<p style=\"margin-top:8px;font-size:12px;color:#999\">无需配网也可直接遥控</p>"
+    "</div>"
     "<p class=\"tip\">提示：密码为空表示连接开放网络<br>配网成功后页面将自动跳转</p>"
     "</div></body></html>";
 
@@ -358,8 +363,9 @@ static void handle_http_client(int client_fd)
     bool is_get  = (strncmp(buf, "GET ", 4) == 0);
     bool is_post = (strncmp(buf, "POST ", 5) == 0);
 
-    /* 解析路径 */
+    /* 解析路径（含 query string 分离） */
     char path[32] = {0};
+    const char *query = NULL;
     const char *path_start = strchr(buf, ' ');
     if (path_start != NULL) {
         path_start++;
@@ -369,6 +375,13 @@ static void handle_http_client(int client_fd)
             if (len >= sizeof(path)) len = sizeof(path) - 1;
             strncpy(path, path_start, len);
             path[len] = '\0';
+
+            /* 分离 query string */
+            char *q = strchr(path, '?');
+            if (q != NULL) {
+                *q = '\0';
+                query = q + 1;
+            }
         }
     }
 
@@ -488,6 +501,11 @@ static void handle_http_client(int client_fd)
             send_response_and_close(client_fd, s_html_fail);
             return;
         }
+    }
+
+    /* 控制相关路径 (/control, /api/...) */
+    if (captive_portal_control_handle(client_fd, is_get, path, query)) {
+        return;
     }
 
     /* 访问了 IP 的其他不存在路径，也跳回根目录 */
