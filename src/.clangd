@@ -1,0 +1,49 @@
+# clangd 配置文件：过滤 HiSpark RISC-V 编译器的自定义标志（Clang 不认识）
+# 放置于项目根目录，clangd 会自动从源文件目录向上搜索此文件
+
+CompileFlags:
+  Remove:
+    # RISC-V 编译器自定义优化标志
+    - -madjust-regorder
+    - -madjust-const-cost
+    - -freorder-commu-args
+    - -fimm-compare-expand
+    - -frmv-str-zero
+    - -mfp-const-opt
+    - -frtl-sequence-abstract
+    - -frtl-hoist-sink
+    - -fsafe-alias-multipointer
+    - -finline-optimize-size
+    - -fmuliadd-expand
+    - -mlli-expand
+    - -foptimize-reg-alloc
+    - -fsplit-multi-zero-assignments
+    - -floop-optimize-size
+    - -mpattern-abstract
+    - -foptimize-pro-and-epilogue
+    - -fimm-compare
+    - -femit-muliadd
+    - -fmerge-immshf
+    - -femit-uxtb-uxth
+    - -femit-lli
+    - -femit-clz
+    - -fldm-stm-optimize
+    # GCC 特有、Clang 不认识的标志
+    - -fno-tree-scev-cprop
+    - -fno-ipa-ra
+    - -Wtrampolines
+    - -Wlogical-op
+    - -Wjump-misses-init
+    # 汇编器选项
+    - -Wa,-enable-c-lbu-sb
+    - -Wa,-enable-c-lhu-sh
+    - -Wa,-mcjal-expand
+    - -Wa,-mlli-relax
+    # 其他非标准选项
+    - --short-enums
+    - -mpush-pop
+
+# 关闭 "头文件未被直接使用" 风格建议（嵌入式项目建议显式包含，不依赖间接包含）
+Diagnostics:
+  Suppress:
+    - unused-includes

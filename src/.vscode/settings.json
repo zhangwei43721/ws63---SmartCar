@@ -1,4 +1,19 @@
 {
+    // === clangd 配置 ===
+    "clangd.path": "c:\\Users\\xpzll\\AppData\\Roaming\\Code\\User\\globalStorage\\llvm-vs-code-extensions.vscode-clangd\\install\\22.1.0\\clangd_22.1.0\\bin\\clangd.exe",
+    "clangd.arguments": [
+        // 显式指定 compile_commands.json 所在目录（clangd 不会自动进入 output/ 分支搜索）
+        "--compile-commands-dir=${workspaceFolder}/output/ws63/acore/ws63-liteos-app",
+        // 允许 clangd 查询 RISC-V 交叉编译器，获取其内置宏和标准库头文件路径
+        "--query-driver=**/riscv32-linux-musl-gcc.exe",
+        "--background-index",
+        "--clang-tidy",
+        "--header-insertion=iwyu",
+        "--completion-style=bundled",
+        "--pch-storage=memory",
+        "--cross-file-rename"
+    ],
+
     "files.associations": {
         "app_init.h": "c",
         "cerrno": "c",

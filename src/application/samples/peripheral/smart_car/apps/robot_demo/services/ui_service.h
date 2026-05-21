@@ -22,16 +22,13 @@
 #define ROBOT_I2C_PIN_MODE 2  // GPIO 复用号
 
 void ui_service_init(void);
+
+/* 以下接口为非阻塞：仅向 UI 任务消息队列投递请求，由 UI 任务异步刷屏 */
 void ui_show_mode_page(CarStatus status);
 void ui_render_standby(WifiConnectStatus wifi_state, const char* ip_addr);
-bool ui_service_is_ready(void);  // 查询 OLED 是否就绪
-
-/**
- * @brief 在 OLED 上显示 OTA 升级进度
- * @param percent 进度百分比 (0~100)
- * @param status_line 状态描述字符串（如 "接收中"、"校验中"）
- */
 void ui_show_ota_progress(uint8_t percent, const char* status_line);
+
+bool ui_service_is_ready(void);  // 查询 OLED 是否就绪
 
 /**
  * @brief 独占/释放 OLED（OTA 等场景使用）

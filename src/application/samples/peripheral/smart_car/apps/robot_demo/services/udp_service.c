@@ -11,11 +11,13 @@
 
 #include "../../../drivers/wifi_client/bsp_wifi.h"
 #include "../core/mode_trace.h"
+#include "../core/motor_executor.h"
 #include "../core/robot_mgr.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 #include "ota_service.h"
 #include "securec.h"
+#include "soc_osal.h"
 #include "storage_service.h"
 #include "udp_net_common.h"
 
@@ -64,7 +66,7 @@ static discovery_packet_t g_discovery_pkt;
 static bool g_discovery_ready = false;  // 发现包是否已构建(MAC是否获取)
 
 /* --- 内部函数声明 --- */
-static void* udp_service_task(const char* arg);
+static int udp_service_task(void* arg);
 static void handle_udp_receive(void);
 static void process_packet(uint8_t* data, size_t len,
                            struct sockaddr_in* sender);
@@ -95,11 +97,7 @@ WifiConnectStatus udp_service_get_wifi_status(void) {
 const char* udp_service_get_ip(void) { return g_udp_net_ip; }
 
 void udp_service_push_cmd(int8_t m1, int8_t m2) {
-  osal_mutex_lock(&g_cmd_mutex);
-  g_cmd_cache.m1 = m1;
-  g_cmd_cache.m2 = m2;
-  g_cmd_cache.new_data = true;
-  osal_mutex_unlock(&g_cmd_mutex);
+  motor_executor_push_cmd(m1, m2, MOTOR_SRC_REMOTE);
 }
 
 bool udp_service_pop_cmd(int8_t* m1, int8_t* m2) {
@@ -165,7 +163,7 @@ static void process_packet(uint8_t* data, size_t len,
         udp_service_push_cmd(pkt->motor1, pkt->motor2);
         break;
       case 0x03:  // 模式
-        if (pkt->cmd <= 4) robot_mgr_set_status((CarStatus)pkt->cmd);
+        if (pkt->cmd <= 4) robot_mgr_post_mode((CarStatus)pkt->cmd, MODE_SRC_UDP);
         break;
       case 0x04:  // PID
         mode_trace_set_pid(
@@ -274,7 +272,7 @@ static void send_robot_state_or_heartbeat(void) {
 /**
  * @brief UDP 服务主任务
  */
-static void* udp_service_task(const char* arg) {
+static int udp_service_task(void* arg) {
   (void)arg;
 
   // 打开Socket，设置接收超时为 10ms
@@ -282,7 +280,7 @@ static void* udp_service_task(const char* arg) {
       udp_net_common_open_and_bind(UDP_SERVER_PORT, UDP_RECV_TIMEOUT_MS, true);
   if (g_sockfd < 0) {
     printf("[UDP] Socket 创建失败\r\n");
-    return NULL;
+    return 0;
   }
 
   uint64_t t_wifi_check = 0;
@@ -346,5 +344,5 @@ static void* udp_service_task(const char* arg) {
     // 5. 接收处理 (此处会阻塞10ms)
     handle_udp_receive();
   }
-  return NULL;
+  return 0;
 }

@@ -2,16 +2,12 @@
     "configurations": [
         {
             "name": "c/cpp plugin configurations",
+            "compileCommands": "${workspaceFolder}/output/ws63/acore/ws63-liteos-app/compile_commands.json",
             "compilerPath": "",
-            "includePath": [
-                "${workspaceFolder}/**"
-            ],
-            "browse": {
-                "limitSymbolsToIncludedHeaders": true,
-                "path": [
-                    "${workspaceFolder}/**"
-                ]
-            }
+            "intelliSenseMode": "linux-gcc-arm",
+            "cStandard": "gnu99",
+            "cppStandard": "c++11",
+            "configurationProvider": "llvm-vs-code-extensions.vscode-clangd"
         }
     ],
     "version": 4

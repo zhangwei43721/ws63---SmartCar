@@ -1,7 +1,39 @@
 #include "ui_service.h"
 
+#include "soc_osal.h"
+
+/* ============================================================
+ * 消息驱动 UI 任务：
+ *   - 对外接口（ui_show_mode_page / ui_render_standby / ui_show_ota_progress）
+ *     只往消息队列投递请求，立即返回；
+ *   - 独立 UI 任务阻塞在消息队列上，只有收到消息才刷屏，
+ *     从而避免在主循环里轮询 OLED 导致的 I2C 占用与闪烁。
+ * ============================================================ */
+
+#define UI_TASK_STACK_SIZE 2048
+#define UI_TASK_PRIO       28
+#define UI_MSG_QUEUE_DEPTH 4
+
+typedef enum {
+  UI_MSG_MODE = 0,
+  UI_MSG_STANDBY,
+  UI_MSG_OTA,
+} ui_msg_type_t;
+
+typedef struct {
+  ui_msg_type_t type;
+  CarStatus mode;
+  WifiConnectStatus wifi_state;
+  uint8_t percent;
+  char text[32];
+} ui_msg_t;
+
 static bool g_oled_ready = false; /* OLED 是否已初始化并可用 */
 static bool g_ui_busy = false;    /* OLED 是否被独占（OTA 等高优场景） */
+
+static unsigned long g_ui_queue = 0;
+static bool g_queue_inited = false;
+static osal_task* g_ui_task = NULL;
 
 /**
  * @brief 模式显示信息结构体
@@ -34,18 +66,89 @@ static const ModeDisplayInfo g_mode_display[] = {
     {"模式: 蓝牙", "未启用", ""},
 };
 
-/**
- * @brief 初始化 UI 服务（OLED 显示屏）
- * @note 初始化 I2C 总线和 SSD1306 显示屏
- */
+/* ---------- 实际渲染函数（仅 UI 任务调用） ---------- */
+
+static void ui_render_mode(CarStatus status) {
+  if (!g_oled_ready) return;
+  if (g_ui_busy) return;
+
+  CarStatus mode_count = (CarStatus)(sizeof(g_mode_display) / sizeof(g_mode_display[0]));
+  if (status >= CAR_STOP_STATUS && status < mode_count) {
+    ssd1306_Fill(Black);
+    ssd1306_DrawString16(0, 0, g_mode_display[status].line0, White);
+    ssd1306_DrawString16(0, 16, g_mode_display[status].line1, White);
+    ssd1306_DrawString16(0, 32, g_mode_display[status].line2, White);
+    ssd1306_UpdateScreen();
+  }
+}
+
+static void ui_render_standby_impl(WifiConnectStatus wifi_state,
+                                   const char* ip_addr) {
+  if (!g_oled_ready) return;
+  if (g_ui_busy) return;
+
+  static const char* wifi_state_str[] = {
+      "WiFi: 未连接",    // WIFI_STATUS_DISCONNECTED (0)
+      "WiFi: 连接中",    // WIFI_STATUS_CONNECTING (1)
+      "WiFi: 连接成功",  // WIFI_STATUS_CONNECTED (2)
+      "热点模式"         // WIFI_STATUS_AP_MODE (3)
+  };
+  const char* state_str = (wifi_state >= 0 && wifi_state < 4)
+                              ? wifi_state_str[wifi_state]
+                              : "WiFi: 未知状态";
+
+  ssd1306_Fill(Black);
+  ssd1306_DrawString16(0, 0, "模式: 停止", White);
+  ssd1306_DrawString16(0, 16, state_str, White);
+  ssd1306_DrawString16(0, 32, ip_addr, White);
+  ssd1306_UpdateScreen();
+}
+
+static void ui_render_ota(uint8_t percent, const char* status_line) {
+  if (!g_oled_ready) return;
+
+  char line2[32] = {0};
+  (void)snprintf(line2, sizeof(line2), "%s %u%%", status_line, percent);
+
+  ssd1306_Fill(Black);
+  ssd1306_DrawString16(0, 0, "OTA 升级", White);
+  ssd1306_DrawString16(0, 16, line2, White);
+  ssd1306_UpdateScreen();
+}
+
+/* ---------- UI 任务主循环 ---------- */
+
+static int ui_task_entry(void* arg) {
+  (void)arg;
+  ui_msg_t msg;
+
+  while (1) {
+    uint32_t len = sizeof(msg);
+    int ret = osal_msg_queue_read_copy(g_ui_queue, &msg, &len,
+                                        OSAL_WAIT_FOREVER);
+    if (ret != OSAL_SUCCESS) continue;
+
+    switch (msg.type) {
+      case UI_MSG_MODE:
+        ui_render_mode(msg.mode);
+        break;
+      case UI_MSG_STANDBY:
+        ui_render_standby_impl(msg.wifi_state, msg.text);
+        break;
+      case UI_MSG_OTA:
+        ui_render_ota(msg.percent, msg.text);
+        break;
+    }
+  }
+  return 0;
+}
+
+/* ---------- 初始化 ---------- */
+
 void ui_service_init(void) {
-  static bool init_attempted = false;  // 是否已经尝试过初始化
+  static bool init_attempted = false;
 
-  if (g_oled_ready) return;
-
-  // 如果已经尝试过但失败了，不再重复尝试
   if (init_attempted) return;
-
   init_attempted = true;
 
   uapi_pin_set_mode(ROBOT_I2C_SCL_PIN, ROBOT_I2C_PIN_MODE);
@@ -63,82 +166,75 @@ void ui_service_init(void) {
   }
   printf("[OLED] 显示屏初始化成功\r\n");
   g_oled_ready = true;
-}
 
-/**
- * @brief 在 OLED 上显示当前模式页面
- * @param status 小车当前状态
- */
-void ui_show_mode_page(CarStatus status) {
-  ui_service_init();
-  if (!g_oled_ready) return;
-  if (g_ui_busy) return; /* OTA 等场景独占屏幕时跳过 */
+  /* 创建消息队列 + UI 任务（即使 OLED 失败也创建任务，避免接口堆积） */
+  if (!g_queue_inited) {
+    if (osal_msg_queue_create("ui_msgq", UI_MSG_QUEUE_DEPTH, &g_ui_queue, 0,
+                              sizeof(ui_msg_t)) == OSAL_SUCCESS) {
+      g_queue_inited = true;
+    } else {
+      printf("[OLED] 消息队列创建失败\r\n");
+      return;
+    }
+  }
 
-  // 直接使用枚举值作为索引（更简单，不需要循环查找）
-  int mode_count = (int)(sizeof(g_mode_display) / sizeof(g_mode_display[0]));
-  if (status >= 0 && status < mode_count) {
-    ssd1306_Fill(Black);
-    ssd1306_DrawString16(0, 0, g_mode_display[status].line0, White);
-    ssd1306_DrawString16(0, 16, g_mode_display[status].line1, White);
-    ssd1306_DrawString16(0, 32, g_mode_display[status].line2, White);
-    ssd1306_UpdateScreen();
+  if (g_ui_task == NULL) {
+    osal_kthread_lock();
+    g_ui_task = osal_kthread_create((osal_kthread_handler)ui_task_entry, NULL,
+                                     "ui_task", UI_TASK_STACK_SIZE);
+    if (g_ui_task != NULL) {
+      osal_kthread_set_priority(g_ui_task, UI_TASK_PRIO);
+    }
+    osal_kthread_unlock();
   }
 }
 
-/**
- * @brief 在 OLED 上渲染待机页面
- * @param wifi_state WiFi 连接状态描述
- * @param ip_addr IP 地址字符串
- */
+/* ---------- 对外接口：仅投递消息 ---------- */
+
+static void ui_post(const ui_msg_t* msg) {
+  if (!g_queue_inited) return;
+
+  /* 与 motor_executor_push_cmd 一致：队列满则丢弃最旧的，
+   * 全程使用 NO_WAIT，保证 ISR 上下文也能安全投递。 */
+  if (osal_msg_queue_get_msg_num(g_ui_queue) >= UI_MSG_QUEUE_DEPTH) {
+    ui_msg_t dummy;
+    unsigned int sz = sizeof(dummy);
+    (void)osal_msg_queue_read_copy(g_ui_queue, &dummy, &sz, OSAL_MSGQ_NO_WAIT);
+  }
+  (void)osal_msg_queue_write_copy(g_ui_queue, (void*)msg, sizeof(*msg),
+                                   OSAL_MSGQ_NO_WAIT);
+}
+
+void ui_show_mode_page(CarStatus status) {
+  ui_msg_t msg = {0};
+  msg.type = UI_MSG_MODE;
+  msg.mode = status;
+  ui_post(&msg);
+}
+
 void ui_render_standby(WifiConnectStatus wifi_state, const char* ip_addr) {
-  ui_service_init();
+  ui_msg_t msg = {0};
+  msg.type = UI_MSG_STANDBY;
+  msg.wifi_state = wifi_state;
+  if (ip_addr != NULL) {
+    (void)strncpy_s(msg.text, sizeof(msg.text), ip_addr, sizeof(msg.text) - 1);
+  }
+  ui_post(&msg);
+}
 
-  if (!g_oled_ready) return;
-  if (g_ui_busy) return; /* OTA 等场景独占屏幕时跳过 */
-
-  // WiFi 状态字符串查找表（按 WifiConnectStatus 枚举值索引）
-  static const char* wifi_state_str[] = {
-      "WiFi: 未连接",    // WIFI_STATUS_DISCONNECTED (0)
-      "WiFi: 连接中",    // WIFI_STATUS_CONNECTING (1)
-      "WiFi: 连接成功",  // WIFI_STATUS_CONNECTED (2)
-      "热点模式"         // WIFI_STATUS_AP_MODE (3)
-  };
-
-  const char* state_str = (wifi_state >= 0 && wifi_state < 4)
-                              ? wifi_state_str[wifi_state]
-                              : "WiFi: 未知状态";
-
-  ssd1306_Fill(Black);
-  ssd1306_DrawString16(0, 0, "模式: 停止", White);
-  ssd1306_DrawString16(0, 16, state_str, White);
-
-  // IP string is ASCII, but DrawString16 handles ASCII too
-  ssd1306_DrawString16(0, 32, ip_addr, White);
-  ssd1306_UpdateScreen();
+void ui_show_ota_progress(uint8_t percent, const char* status_line) {
+  ui_msg_t msg = {0};
+  msg.type = UI_MSG_OTA;
+  msg.percent = percent;
+  if (status_line != NULL) {
+    (void)strncpy_s(msg.text, sizeof(msg.text), status_line,
+                    sizeof(msg.text) - 1);
+  }
+  ui_post(&msg);
 }
 
 bool ui_service_is_ready(void) { return g_oled_ready; }
 
-/**
- * @brief 在 OLED 上显示 OTA 升级进度
- * @param percent 进度百分比 (0~100)
- * @param status_line 状态描述字符串
- */
-void ui_show_ota_progress(uint8_t percent, const char* status_line) {
-  ui_service_init();
-  if (!g_oled_ready) return;
-
-  char line2[32] = {0};
-  (void)snprintf(line2, sizeof(line2), "%s %u%%", status_line, percent);
-
-  ssd1306_Fill(Black);
-  ssd1306_DrawString16(0, 0, "OTA 升级", White);
-  ssd1306_DrawString16(0, 16, line2, White);
-  ssd1306_UpdateScreen();
-}
-
 void ui_service_acquire(void) { g_ui_busy = true; }
-
 void ui_service_release(void) { g_ui_busy = false; }
-
 bool ui_service_is_busy(void) { return g_ui_busy; }

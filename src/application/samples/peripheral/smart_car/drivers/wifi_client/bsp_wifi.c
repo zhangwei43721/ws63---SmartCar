@@ -187,14 +187,14 @@ static int init_ap_mode(void) {
   struct netif* netif_p = netifapi_netif_find("ap0");
   if (netif_p) {
     ip4_addr_t ip, mask, gw;
-    IP4_ADDR(&ip, 192, 168, 43, 1);
+    IP4_ADDR(&ip, 192, 168, 1, 1);
     IP4_ADDR(&mask, 255, 255, 255, 0);
-    IP4_ADDR(&gw, 192, 168, 43, 1);
+    IP4_ADDR(&gw, 192, 168, 1, 1);
 
     netifapi_netif_set_addr(netif_p, &ip, &mask, &gw);
     netifapi_dhcps_start(netif_p, NULL, 0);
     g_wifi_status = BSP_WIFI_STATUS_GOT_IP;
-    printf("[WiFi] AP 热点 IP: 192.168.43.1\r\n");
+    printf("[WiFi] AP 热点 IP: 192.168.1.1\r\n");
     return 0;
   }
   printf("[WiFi] AP 热点网络接口配置失败\r\n");
@@ -373,4 +373,47 @@ int bsp_wifi_get_ip(char* ip_str, uint32_t len) {
     }
   }
   return -1;
+}
+
+
+/* ============ 公开 WiFi 扫描接口（供配网页面使用） ============ */
+int bsp_wifi_scan_list(bsp_wifi_scan_item_t* items, uint32_t max_count,
+                       uint32_t* out_count) {
+  if (items == NULL || out_count == NULL || max_count == 0) return -1;
+  *out_count = 0;
+
+  /* AP 模式下也允许扫描：底层 wifi_sta_scan 即使在 AP 模式仍可工作 */
+  uint32_t num = 32;
+  wifi_scan_info_stru* scan_res = (wifi_scan_info_stru*)osal_kmalloc(
+      sizeof(wifi_scan_info_stru) * num, OSAL_GFP_ATOMIC);
+  if (scan_res == NULL) {
+    printf("[WiFi] 扫描内存分配失败\r\n");
+    return -1;
+  }
+
+  wifi_sta_scan();
+  osDelay(600);
+
+  errcode_t ret = wifi_sta_get_scan_info(scan_res, &num);
+  if (ret != ERRCODE_SUCC) {
+    osal_kfree(scan_res);
+    return -1;
+  }
+
+  uint32_t out_idx = 0;
+  for (uint32_t i = 0; i < num && out_idx < max_count; i++) {
+    if (scan_res[i].ssid[0] == 0) continue;
+    bsp_wifi_scan_item_t* it = &items[out_idx];
+    (void)memset_s(it, sizeof(*it), 0, sizeof(*it));
+    (void)strncpy_s(it->ssid, sizeof(it->ssid), scan_res[i].ssid,
+                    sizeof(it->ssid) - 1);
+    it->rssi = (int8_t)scan_res[i].rssi;
+    it->security = (uint8_t)scan_res[i].security_type;
+    it->channel = (uint8_t)scan_res[i].channel_num;
+    out_idx++;
+  }
+
+  *out_count = out_idx;
+  osal_kfree(scan_res);
+  return 0;
 }

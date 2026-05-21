@@ -65,15 +65,15 @@ static errcode_t fota_upg_verify_stored_package(void)
   (void)memset_s(&hdr, sizeof(hdr), 0, sizeof(hdr));
   errcode_t r = uapi_upg_read_package(0U, (uint8_t *)&hdr, (uint32_t)sizeof(hdr));
   if (r != ERRCODE_SUCC) {
-    printf("[OTA] UPG read_package(0, header) failed, ret=0x%x\r\n", (unsigned)r);
+    printf("[OTA] 读取升级包头失败，错误码=0x%x\r\n", (unsigned)r);
     return r;
   }
   r = uapi_upg_verify_file(&hdr);
   if (r != ERRCODE_SUCC) {
-    printf("[OTA] uapi_upg_verify_file failed, ret=0x%x\r\n", (unsigned)r);
+    printf("[OTA] 升级包校验失败，错误码=0x%x\r\n", (unsigned)r);
     return r;
   }
-  printf("[OTA] UPG verify_file OK\r\n");
+  printf("[OTA] 升级包校验通过\r\n");
   return ERRCODE_SUCC;
 }
 
@@ -81,13 +81,13 @@ static errcode_t fota_upg_verify_stored_package(void)
 static errcode_t fota_upg_prepare_once(uint32_t package_len)
 {
   if (package_len == 0U) {
-    printf("[OTA] uapi_upg_prepare: package_len=0, skip (invalid)\r\n");
+    printf("[OTA] 准备失败：升级包长度为 0\r\n");
     return ERRCODE_FAIL;
   }
 
   uint32_t max_len = uapi_upg_get_storage_size();
   if (max_len > 0U && package_len > max_len) {
-    printf("[OTA] package_len[%u] > max_len[%u] skip (no enough space)\r\n",
+    printf("[OTA] 升级包过大[%u]，超出可用空间[%u]\r\n",
            package_len, max_len);
     return ERRCODE_UPG_NO_ENOUGH_SPACE;
   }
@@ -98,7 +98,7 @@ static errcode_t fota_upg_prepare_once(uint32_t package_len)
 
   errcode_t ret = uapi_upg_prepare(&prepare_info);
   if (ret != ERRCODE_SUCC) {
-    printf("[OTA] uapi_upg_prepare(len=%u) ret=0x%x\r\n",
+    printf("[OTA] 升级预准备失败，长度=%u 错误码=0x%x\r\n",
            package_len, (unsigned)ret);
   }
   return ret;
@@ -125,7 +125,7 @@ static void ota_update_ui(void)
 static void ota_set_state(ota_state_t s)
 {
   g_ota_state = s;
-  printf("[OTA] state -> %s\r\n", OTA_STATE_TO_STR(s));
+  printf("[OTA] 状态切换 -> %s\r\n", OTA_STATE_TO_STR(s));
   /* OTA 活跃阶段独占 OLED，IDLE 时释放，避免与 standby/mode 页面交替刷屏 */
   if (s == OTA_STATE_IDLE) {
     ui_service_release();
@@ -201,7 +201,7 @@ static void tcp_send_ack(int sock, uint8_t ack)
 /**
  * @brief OTA TCP 服务端任务（UDP 触发后创建）
  */
-static void *ota_tcp_server_task(const char *arg)
+static int ota_tcp_server_task(void *arg)
 {
   (void)arg;
   int listen_fd = -1;
@@ -220,12 +220,12 @@ static void *ota_tcp_server_task(const char *arg)
   int to_recv = 0;
   uint8_t pct = 0;
 
-  printf("[OTA] TCP server task started, port=%d\r\n", OTA_TCP_PORT);
+  printf("[OTA] TCP 服务任务已启动，监听端口=%d\r\n", OTA_TCP_PORT);
 
   /* 1. 创建监听 socket */
   listen_fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
   if (listen_fd < 0) {
-    printf("[OTA] socket() failed\r\n");
+    printf("[OTA] 创建 socket 失败\r\n");
     goto cleanup;
   }
 
@@ -237,17 +237,17 @@ static void *ota_tcp_server_task(const char *arg)
   srv_addr.sin_addr.s_addr = INADDR_ANY;
 
   if (lwip_bind(listen_fd, (struct sockaddr *)&srv_addr, sizeof(srv_addr)) < 0) {
-    printf("[OTA] bind() failed\r\n");
+    printf("[OTA] 绑定端口失败\r\n");
     goto cleanup;
   }
 
   if (lwip_listen(listen_fd, 1) < 0) {
-    printf("[OTA] listen() failed\r\n");
+    printf("[OTA] 监听失败\r\n");
     goto cleanup;
   }
 
   ota_set_state(OTA_STATE_WAITING);
-  printf("[OTA] Listening on port %d...\r\n", OTA_TCP_PORT);
+  printf("[OTA] 正在监听端口 %d，等待连接...\r\n", OTA_TCP_PORT);
 
   /* 2. 接受连接（带超时） */
   tv.tv_sec = 30;
@@ -256,10 +256,10 @@ static void *ota_tcp_server_task(const char *arg)
 
   conn_fd = lwip_accept(listen_fd, (struct sockaddr *)&cli_addr, &cli_len);
   if (conn_fd < 0) {
-    printf("[OTA] accept() timeout or failed\r\n");
+    printf("[OTA] 接受连接超时或失败\r\n");
     goto cleanup;
   }
-  printf("[OTA] Client connected: %s\r\n", inet_ntoa(cli_addr.sin_addr));
+  printf("[OTA] 客户端已连接: %s\r\n", inet_ntoa(cli_addr.sin_addr));
 
   /* 关闭 Nagle：避免 1 字节 ACK 与小报文被合并延迟 */
   {
@@ -270,12 +270,12 @@ static void *ota_tcp_server_task(const char *arg)
   /* 3. 接收 8 字节 Header */
   n = recv_all(conn_fd, header, sizeof(header), 10000);
   if (n != sizeof(header)) {
-    printf("[OTA] recv header failed, got %d bytes\r\n", n);
+    printf("[OTA] 接收包头失败，已收 %d 字节\r\n", n);
     goto cleanup;
   }
 
   if (memcmp(header, OTA_MAGIC_STR, OTA_MAGIC_LEN) != 0) {
-    printf("[OTA] Bad magic: %.4s\r\n", header);
+    printf("[OTA] 包头魔数错误: %.4s\r\n", header);
     tcp_send_ack(conn_fd, 0x01);
     goto cleanup;
   }
@@ -283,10 +283,10 @@ static void *ota_tcp_server_task(const char *arg)
   total_size = ((uint32_t)header[4] << 24) | ((uint32_t)header[5] << 16) |
                ((uint32_t)header[6] << 8)  | (uint32_t)header[7];
 
-  printf("[OTA] Header OK, firmware size=%u\r\n", total_size);
+  printf("[OTA] 包头校验通过，固件大小=%u 字节\r\n", total_size);
 
   if (total_size == 0) {
-    printf("[OTA] firmware size=0, abort\r\n");
+    printf("[OTA] 固件大小为 0，终止\r\n");
     tcp_send_ack(conn_fd, 0x01);
     goto cleanup;
   }
@@ -294,7 +294,7 @@ static void *ota_tcp_server_task(const char *arg)
   /* 4. UPG 预准备 */
   ret = fota_upg_prepare_once(total_size);
   if (ret != ERRCODE_SUCC) {
-    printf("[OTA] UPG prepare failed\r\n");
+    printf("[OTA] 升级预准备失败\r\n");
     tcp_send_ack(conn_fd, 0x01);
     goto cleanup;
   }
@@ -310,7 +310,7 @@ static void *ota_tcp_server_task(const char *arg)
 
   recv_buf = (uint8_t *)osal_kmalloc(OTA_RECV_CHUNK_SIZE, OSAL_GFP_ATOMIC);
   if (recv_buf == NULL) {
-    printf("[OTA] malloc recv_buf failed\r\n");
+    printf("[OTA] 申请接收缓冲区失败\r\n");
     goto cleanup;
   }
 
@@ -323,14 +323,14 @@ static void *ota_tcp_server_task(const char *arg)
                                                           : (int)(total_size - offset);
     n = recv_all(conn_fd, recv_buf, to_recv, 30000);
     if (n <= 0) {
-      printf("[OTA] recv data failed at offset=%u, ret=%d\r\n", offset, n);
+      printf("[OTA] 接收数据失败，偏移=%u 返回=%d\r\n", offset, n);
       goto cleanup;
     }
 
     /* 写入 UPG */
     ret = uapi_upg_write_package_sync(offset, recv_buf, (uint16_t)n);
     if (ret != ERRCODE_SUCC) {
-      printf("[OTA] uapi_upg_write_package_sync failed at offset=%u, ret=0x%x\r\n",
+      printf("[OTA] 写入升级分区失败，偏移=%u 错误码=0x%x\r\n",
              offset, (unsigned)ret);
       tcp_send_ack(conn_fd, 0x01);
       goto cleanup;
@@ -344,17 +344,17 @@ static void *ota_tcp_server_task(const char *arg)
 
     /* 每 32KB 打印一次日志 */
     if (offset % 32768 == 0 || offset == total_size) {
-      printf("[OTA] received %u/%u bytes (%u%%)\r\n", offset, total_size, pct);
+      printf("[OTA] 已接收 %u/%u 字节 (%u%%)\r\n", offset, total_size, pct);
     }
   }
 
-  printf("[OTA] All %u bytes received\r\n", offset);
+  printf("[OTA] 固件接收完成，共 %u 字节\r\n", offset);
 
   /* 6. UPG 校验 */
   ota_set_state(OTA_STATE_VERIFYING);
   ret = fota_upg_verify_stored_package();
   if (ret != ERRCODE_SUCC) {
-    printf("[OTA] verify failed, abort\r\n");
+    printf("[OTA] 校验失败，终止升级\r\n");
     tcp_send_ack(conn_fd, 0x01);
     goto cleanup;
   }
@@ -365,15 +365,15 @@ static void *ota_tcp_server_task(const char *arg)
 
   /* 7. 请求升级并重启 */
   ota_set_state(OTA_STATE_UPGRADING);
-  printf("[OTA] Requesting upgrade and reboot...\r\n");
+  printf("[OTA] 请求升级并重启...\r\n");
   ret = uapi_upg_request_upgrade(true);
   if (ret != ERRCODE_SUCC) {
-    printf("[OTA] uapi_upg_request_upgrade failed, ret=0x%x\r\n", (unsigned)ret);
+    printf("[OTA] 升级请求失败，错误码=0x%x\r\n", (unsigned)ret);
     goto cleanup;
   }
 
   /* 正常情况下 request_upgrade(true) 会立即重启，不会执行到这里 */
-  printf("[OTA] Reboot should have happened...\r\n");
+  printf("[OTA] 等待重启中...\r\n");
 
 cleanup:
   if (recv_buf != NULL) {
@@ -394,8 +394,8 @@ cleanup:
     osal_msleep(500);
     ota_set_state(OTA_STATE_IDLE);
   }
-  printf("[OTA] TCP server task exited\r\n");
-  return NULL;
+  printf("[OTA] TCP 服务任务已退出\r\n");
+  return 0;
 }
 
 /* ---------- 公共接口 ---------- */
@@ -412,20 +412,20 @@ void ota_service_init(void)
   g_ota_received = 0;
   g_ota_total = 0;
 
-  printf("[OTA] Init: initializing UPG module...\r\n");
+  printf("[OTA] 初始化：正在初始化 UPG 模块...\r\n");
   errcode_t ret = uapi_upg_init(&s_upg_funcs);
   if (ret != ERRCODE_SUCC && ret != ERRCODE_UPG_ALREADY_INIT) {
-    printf("[OTA] Init: uapi_upg_init failed, ret=0x%x\r\n", ret);
+    printf("[OTA] 初始化：uapi_upg_init 失败，错误码=0x%x\r\n", ret);
     return;
   }
 
-  printf("[OTA] Init: resetting upgrade flag...\r\n");
+  printf("[OTA] 初始化：重置升级标志位...\r\n");
   ret = uapi_upg_reset_upgrade_flag();
   if (ret != ERRCODE_SUCC) {
-    printf("[OTA] Init: uapi_upg_reset_upgrade_flag failed, ret=0x%x\r\n", ret);
+    printf("[OTA] 初始化：重置升级标志位失败，错误码=0x%x\r\n", ret);
   }
 
-  printf("[OTA] Init: done\r\n");
+  printf("[OTA] 初始化完成\r\n");
 }
 
 bool ota_service_start(uint32_t expected_size)
@@ -433,7 +433,7 @@ bool ota_service_start(uint32_t expected_size)
   (void)expected_size;
 
   if (g_ota_state != OTA_STATE_IDLE) {
-    printf("[OTA] already active, state=%s\r\n", OTA_STATE_TO_STR(g_ota_state));
+    printf("[OTA] 已在升级中，当前状态=%s\r\n", OTA_STATE_TO_STR(g_ota_state));
     return false;
   }
 
@@ -452,18 +452,18 @@ bool ota_service_start(uint32_t expected_size)
   osal_kthread_unlock();
 
   if (g_ota_task_handle == NULL) {
-    printf("[OTA] create task failed\r\n");
+    printf("[OTA] 创建任务失败\r\n");
     ota_set_state(OTA_STATE_FAILED);
     return false;
   }
 
-  printf("[OTA] task created, waiting for TCP connection...\r\n");
+  printf("[OTA] 任务已创建，等待 TCP 连接...\r\n");
   return true;
 }
 
 void ota_service_cancel(void)
 {
-  printf("[OTA] cancel requested\r\n");
+  printf("[OTA] 收到取消请求\r\n");
   if (g_tcp_conn_fd >= 0) {
     lwip_close(g_tcp_conn_fd);
     g_tcp_conn_fd = -1;

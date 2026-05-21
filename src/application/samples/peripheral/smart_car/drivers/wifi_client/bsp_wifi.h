@@ -111,4 +111,24 @@ int bsp_wifi_smart_init(void);
  */
 int bsp_wifi_switch_from_ap_to_sta(const char* ssid, const char* password);
 
+/**
+ * @brief WiFi 扫描结果条目（精简版，用于上报到前端）
+ */
+typedef struct {
+  char ssid[33];        /* SSID 字符串（最大 32 字节 + \0） */
+  int8_t rssi;          /* 信号强度（dBm） */
+  uint8_t security;     /* 加密类型 */
+  uint8_t channel;      /* 信道 */
+} bsp_wifi_scan_item_t;
+
+/**
+ * @brief 扫描周边 WiFi 并填充结果列表
+ * @param items 输出数组
+ * @param max_count 最多写入条数
+ * @param out_count 实际写入条数
+ * @return 0 成功，-1 失败
+ */
+int bsp_wifi_scan_list(bsp_wifi_scan_item_t* items, uint32_t max_count,
+                       uint32_t* out_count);
+
 #endif /* __BSP_WIFI_H__ */

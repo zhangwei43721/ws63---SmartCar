@@ -1,6 +1,12 @@
 /**
  * @file voice_service.c
- * @brief 语音模块命令服务实现 - 处理语音模块串口命令解析和分发
+ * @brief 语音模块命令服务实现 - 事件驱动 + 看门狗任务
+ *
+ * 设计：
+ *  - UART 回调：解析命令后直接推 Motor 队列，并写事件唤醒看门狗
+ *  - 看门狗任务：阻塞在事件上；收到事件后按 expire 时间等待，
+ *    超时未续命则推一条 0,0 停车命令
+ *  - 不再有 voice_service_tick 轮询
  */
 
 #include "voice_service.h"
@@ -8,28 +14,37 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../../../drivers/l9110s/bsp_l9110s.h"
 #include "../../../drivers/uart/bsp_uart.h"
+#include "../core/motor_executor.h"
 #include "../core/robot_mgr.h"
 #include "soc_osal.h"
 
 #define VOICE_CMD_TIMEOUT_MS 1000
 #define MOTOR_SPEED_HIGH 100
 #define MOTOR_SPEED_TURN 50
-#define TURN_DURATION_MS 400  // 转向持续时间
+#define TURN_DURATION_MS 400
 
-typedef struct {
-  int8_t l, r;
-  unsigned long long expire;  // 指令到期时刻
-} VoiceCtx;
+#define VOICE_TASK_STACK_SIZE 2048
+#define VOICE_TASK_PRIO       29
+#define VOICE_EVENT_NEW_CMD   0x01
 
-static VoiceCtx g_ctx = {0};
+static osal_event g_voice_event;
+static bool g_event_inited = false;
+static osal_task *g_voice_task = NULL;
 
-// 统一设置动作：速度(l, r)，持续时间(ms)
-static void set_motion(int8_t l, int8_t r, uint32_t ms) {
-  g_ctx.l = l;  // 左轮速度
-  g_ctx.r = r;  // 右轮速度
-  g_ctx.expire = osal_get_jiffies() + osal_msecs_to_jiffies(ms);
+// 共享：当前命令的到期时间（jiffies），0 表示无活动命令
+static volatile unsigned long long g_expire_tick = 0;
+
+static void voice_set_motion(int8_t l, int8_t r, uint32_t ms) {
+  motor_executor_push_cmd(l, r, MOTOR_SRC_VOICE);
+  if (ms == 0 || (l == 0 && r == 0)) {
+    g_expire_tick = 0;
+  } else {
+    g_expire_tick = osal_get_jiffies() + osal_msecs_to_jiffies(ms);
+    if (g_event_inited) {
+      osal_event_write(&g_voice_event, VOICE_EVENT_NEW_CMD);
+    }
+  }
 }
 
 static void process_command(uint8_t cmd) {
@@ -39,36 +54,32 @@ static void process_command(uint8_t cmd) {
                                       CAR_OBSTACLE_AVOIDANCE_STATUS,
                                       CAR_WIFI_CONTROL_STATUS};
     if (cmd - 0x10 < 4) {
-      set_motion(0, 0, 0);
-      robot_mgr_set_status(modes[cmd - 0x10]);
+      voice_set_motion(0, 0, 0);
+      robot_mgr_post_mode(modes[cmd - 0x10], MODE_SRC_VOICE);
     }
     return;
   }
 
-  // 2. 运动控制：强制切入遥控模式
-  if (robot_mgr_get_status() != CAR_WIFI_CONTROL_STATUS)
-    robot_mgr_set_status(CAR_WIFI_CONTROL_STATUS);
-
+  // 2. 运动控制：直接推电机命令，不切换模式
   switch (cmd) {
     case VOICE_CMD_STOP:
-      set_motion(0, 0, 0);
+      voice_set_motion(0, 0, 0);
       break;
     case VOICE_CMD_FORWARD:
-      set_motion(MOTOR_SPEED_HIGH, MOTOR_SPEED_HIGH, VOICE_CMD_TIMEOUT_MS);
+      voice_set_motion(MOTOR_SPEED_HIGH, MOTOR_SPEED_HIGH, VOICE_CMD_TIMEOUT_MS);
       break;
     case VOICE_CMD_BACKWARD:
-      set_motion(-MOTOR_SPEED_HIGH, -MOTOR_SPEED_HIGH, VOICE_CMD_TIMEOUT_MS);
+      voice_set_motion(-MOTOR_SPEED_HIGH, -MOTOR_SPEED_HIGH, VOICE_CMD_TIMEOUT_MS);
       break;
     case VOICE_CMD_LEFT:
-      set_motion(-MOTOR_SPEED_TURN, MOTOR_SPEED_TURN, TURN_DURATION_MS);
+      voice_set_motion(-MOTOR_SPEED_TURN, MOTOR_SPEED_TURN, TURN_DURATION_MS);
       break;
     case VOICE_CMD_RIGHT:
-      set_motion(MOTOR_SPEED_TURN, -MOTOR_SPEED_TURN, TURN_DURATION_MS);
+      voice_set_motion(MOTOR_SPEED_TURN, -MOTOR_SPEED_TURN, TURN_DURATION_MS);
       break;
   }
 }
 
-// UART接收回调
 static void voice_rx_callback(const uint8_t* data, uint16_t length) {
   if (!data || length == 0) return;
   for (uint16_t i = 0; i < length; i++) {
@@ -76,36 +87,63 @@ static void voice_rx_callback(const uint8_t* data, uint16_t length) {
   }
 }
 
+/* 看门狗任务：等到 expire 后推停车命令 */
+static int voice_watchdog_task(void *arg) {
+  (void)arg;
+  unsigned long long jiffies_per_sec = osal_msecs_to_jiffies(1000);
+  if (jiffies_per_sec == 0) jiffies_per_sec = 1000;
+
+  while (1) {
+    // 无活动命令时无限期阻塞等待
+    (void)osal_event_read(&g_voice_event, VOICE_EVENT_NEW_CMD,
+                          OSAL_EVENT_FOREVER,
+                          OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
+
+    // 命令活跃期间，按剩余时间等待；中途收到新命令会重新设置 expire
+    while (g_expire_tick != 0) {
+      unsigned long long now = osal_get_jiffies();
+      unsigned long long expire = g_expire_tick;
+      if (now >= expire) {
+        g_expire_tick = 0;
+        motor_executor_push_cmd(0, 0, MOTOR_SRC_VOICE);
+        break;
+      }
+      unsigned long long remain_jiffies = expire - now;
+      unsigned int remain_ms = (unsigned int)(remain_jiffies * 1000ULL / jiffies_per_sec);
+      if (remain_ms == 0) remain_ms = 1;
+      (void)osal_event_read(&g_voice_event, VOICE_EVENT_NEW_CMD,
+                            remain_ms,
+                            OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
+    }
+  }
+  return 0;
+}
+
 void voice_service_init(void) {
-  memset(&g_ctx, 0, sizeof(g_ctx));
-  if (bsp_uart_init(voice_rx_callback) != 0) {
-    printf("[语音] 初始化失败！\r\n");
+  g_expire_tick = 0;
+  if (osal_event_init(&g_voice_event) == OSAL_SUCCESS) {
+    g_event_inited = true;
+  } else {
+    printf("[语音] 事件初始化失败\r\n");
     return;
   }
+
+  if (bsp_uart_init(voice_rx_callback) != 0) {
+    printf("[语音] UART 初始化失败！\r\n");
+    return;
+  }
+
+  osal_kthread_lock();
+  g_voice_task = osal_kthread_create((osal_kthread_handler)voice_watchdog_task,
+                                      NULL, "voice_wd", VOICE_TASK_STACK_SIZE);
+  if (g_voice_task != NULL) {
+    osal_kthread_set_priority(g_voice_task, VOICE_TASK_PRIO);
+  }
+  osal_kthread_unlock();
+
   printf("[语音] 服务已启动\r\n");
 }
 
-void voice_service_tick(void) {
-  // 检查是否有有效的语音命令
-  if (g_ctx.l != 0 || g_ctx.r != 0) {
-    // 检查是否到期
-    if (osal_get_jiffies() >= g_ctx.expire) {
-      g_ctx.l = 0;
-      g_ctx.r = 0;
-      // 语音命令到期，立即停车
-      l9110s_set_differential(0, 0);
-    } else {
-      // 命令有效期内，持续执行电机驱动
-      l9110s_set_differential(g_ctx.l, g_ctx.r);
-    }
-  }
-}
-
 bool voice_service_is_cmd_active(void) {
-  return (g_ctx.l != 0 || g_ctx.r != 0);
-}
-
-void voice_service_get_motor_cmd(int8_t* l, int8_t* r) {
-  if (l) *l = g_ctx.l;
-  if (r) *r = g_ctx.r;
+  return g_expire_tick != 0;
 }

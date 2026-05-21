@@ -10,11 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../../drivers/l9110s/bsp_l9110s.h"
+#include "../core/motor_executor.h"
 #include "../core/robot_mgr.h"
 #include "../robot_common.h"
+#include "captive_portal_service.h"
 #include "lwip/sockets.h"
-#include "udp_service.h"
 
 /* ---------- 内嵌控制页面 ---------- */
 static const char s_html_control[] =
@@ -49,6 +49,9 @@ static const char s_html_control[] =
     "</style></head><body>"
     "<div class=\"card\">"
     "<h1>小车控制</h1>"
+    "<div style=\"text-align:center;margin-bottom:12px\">"
+    "<a href=\"#\" onclick=\"resetMode();return false;\" style=\"font-size:13px;color:#007aff;text-decoration:none\">返回配网</a>"
+    "</div>"
     "<div class=\"mode-box\">"
     "<button class=\"mode-btn\" id=\"m0\" onclick=\"setMode(0)\">停止</button>"
     "<button class=\"mode-btn\" id=\"m3\" onclick=\"setMode(3)\">遥控</button>"
@@ -85,9 +88,10 @@ static const char s_html_control[] =
     "<p class=\"tip\">按住方向键控制，松开自动停止</p>"
     "</div>"
     "<script>"
-    "var curMode=-1;"
+    "var curMode=-1;var pendingMove=null;"
     "function setMode(m){fetch('/api/mode?m='+m).then(function(){poll();});}"
-    "function move(l,r){fetch('/api/move?l='+l+'&r='+r);}"
+    "function resetMode(){fetch('/api/reset').then(function(){location.href='/';});}"
+    "function move(l,r){if(pendingMove){pendingMove.abort();}pendingMove=new AbortController();fetch('/api/move?l='+l+'&r='+r,{signal:pendingMove.signal}).catch(function(){});}"
     "function poll(){"
     "fetch('/api/status').then(function(r){return r.json();}).then(function(d){"
     "curMode=d.mode;var names=['停止','循迹','避障','遥控'];"
@@ -186,7 +190,7 @@ static void handle_api_mode(int client_fd, const char *query)
 {
     int mode = query_get_int(query, "m");
     if (mode >= 0 && mode <= 3) {
-        robot_mgr_set_status((CarStatus)mode);
+        robot_mgr_post_mode((CarStatus)mode, MODE_SRC_HTTP);
         printf("[Portal] HTTP 设置模式: %d\r\n", mode);
     }
 
@@ -201,27 +205,15 @@ static void handle_api_mode(int client_fd, const char *query)
 }
 
 /**
- * @brief GET /api/move?l=X&r=Y -> 控制电机（仅在遥控模式下生效）
+ * @brief GET /api/move?l=X&r=Y -> 控制电机
  */
 static void handle_api_move(int client_fd, const char *query)
 {
     int left  = query_get_int(query, "l");
     int right = query_get_int(query, "r");
 
-    /* 自动切换到遥控模式 */
-    CarStatus cur = robot_mgr_get_status();
-    if (cur != CAR_WIFI_CONTROL_STATUS) {
-        robot_mgr_set_status(CAR_WIFI_CONTROL_STATUS);
-    }
-
-    /* 限制范围 */
-    if (left  < -100) left  = -100;
-    if (left  > 100)  left  = 100;
-    if (right < -100) right = -100;
-    if (right > 100)  right = 100;
-
-    /* 推入命令缓存，由 mode_remote_tick() 执行 */
-    udp_service_push_cmd((int8_t)left, (int8_t)right);
+    /* 推入 Motor Executor 命令队列，由独立高优先级任务执行 */
+    motor_executor_push_cmd((int8_t)left, (int8_t)right, MOTOR_SRC_REMOTE);
 
     char json[128];
     (void)snprintf(json, sizeof(json),
@@ -233,12 +225,31 @@ static void handle_api_move(int client_fd, const char *query)
     send_response_and_close(client_fd, json);
 }
 
+/**
+ * @brief GET /api/reset -> 退出控制模式，恢复配网模式
+ */
+static void handle_api_reset(int client_fd)
+{
+    captive_portal_set_mode(PORTAL_MODE_CONFIG);
+    printf("[Portal] HTTP 切换回配网模式\r\n");
+
+    char json[128];
+    (void)snprintf(json, sizeof(json),
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Connection: close\r\n\r\n"
+        "{\"ok\":true,\"mode\":\"config\"}\r\n");
+
+    send_response_and_close(client_fd, json);
+}
+
 /* ---------- 公共接口 ---------- */
 
 bool captive_portal_control_handle(int client_fd, bool is_get,
                                    const char *path, const char *query)
 {
     if (is_get && strcmp(path, "/control") == 0) {
+        captive_portal_set_mode(PORTAL_MODE_CONTROL);
         send_response_and_close(client_fd, s_html_control);
         return true;
     }
@@ -255,6 +266,11 @@ bool captive_portal_control_handle(int client_fd, bool is_get,
 
     if (is_get && strcmp(path, "/api/move") == 0) {
         handle_api_move(client_fd, query);
+        return true;
+    }
+
+    if (is_get && strcmp(path, "/api/reset") == 0) {
+        handle_api_reset(client_fd);
         return true;
     }
 

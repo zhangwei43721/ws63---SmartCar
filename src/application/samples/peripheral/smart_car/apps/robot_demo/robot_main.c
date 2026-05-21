@@ -49,7 +49,7 @@ static void mode_switch_isr(pin_t pin, uintptr_t param) {
   printf("模式切换：%s -> %s\r\n", mode_names[current_status],
          mode_names[next_status]);
 
-  robot_mgr_set_status(next_status);
+  robot_mgr_post_mode(next_status, MODE_SRC_BUTTON);
 }
 
 /**
@@ -68,22 +68,23 @@ static void robot_key_init(void) {
 
 /**
  * @brief 智能小车主任务
+ *
+ * robot_mgr_init 内部已创建 robot_mgr/motor/sensor/trace/ui/voice 等任务，
+ * 主任务仅负责按键中断初始化与低频喂狗。
  */
-static void* robot_demo_task(const char* arg) {
+static int robot_demo_task(void* arg) {
   UNUSED(arg);
 
-  robot_mgr_init();      // 初始化底层驱动
+  robot_mgr_init();      // 初始化底层驱动 + 各服务任务
   voice_service_init();  // 初始化UART命令服务
   robot_key_init();      // 初始化按键控制
 
   while (1) {
-    robot_mgr_tick();      // 执行小车逻辑
-    voice_service_tick();  // 执行UART命令服务
-    uapi_watchdog_kick();  // 喂狗
-    osal_msleep(20);       // 调度让权延时
+    uapi_watchdog_kick();   // 低频喂狗
+    osal_msleep(1000);
   }
 
-  return NULL;
+  return 0;
 }
 
 /**
