@@ -16,7 +16,7 @@
 
 #include "../../../drivers/uart/bsp_uart.h"
 #include "../core/motor_executor.h"
-#include "../core/robot_mgr.h"
+#include "../robot_common.h"
 #include "soc_osal.h"
 
 #define VOICE_CMD_TIMEOUT_MS 1000

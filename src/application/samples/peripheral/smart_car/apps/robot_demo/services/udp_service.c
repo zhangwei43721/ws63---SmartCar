@@ -12,13 +12,14 @@
 #include "../../../drivers/wifi_client/bsp_wifi.h"
 #include "../core/mode_trace.h"
 #include "../core/motor_executor.h"
-#include "../core/robot_mgr.h"
+#include "../robot_common.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 #include "ota_service.h"
 #include "securec.h"
 #include "soc_osal.h"
 #include "storage_service.h"
+#include "ui_service.h"
 #include "udp_net_common.h"
 
 /* --- 配置常量 --- */
@@ -388,6 +389,7 @@ static int udp_service_task(void* arg) {
   uint64_t t_wifi_check = 0;
   uint64_t t_send_loop = 0;
   uint64_t t_keepalive_decay = 0;
+  bool wifi_was_ready = false;
 
   while (!g_udp_should_exit) {
     uint64_t now = osal_get_jiffies();
@@ -399,6 +401,27 @@ static int udp_service_task(void* arg) {
     }
 
     bool wifi_ready = g_udp_net_wifi_connected && g_udp_net_wifi_has_ip;
+    static bsp_wifi_mode_t last_mode = BSP_WIFI_MODE_STA;
+    bsp_wifi_mode_t curr_mode = bsp_wifi_get_mode();
+
+    static char last_ip[BUF_IP] = {0};
+
+    /* 模式变化时重置边沿标记，确保切换后一定会刷新一次 */
+    if (curr_mode != last_mode) {
+      wifi_was_ready = false;
+      last_ip[0] = '\0';
+    }
+
+    // WiFi 刚就绪或 IP 变化时刷新待机界面
+    bool ip_changed = (wifi_ready && strcmp(last_ip, g_udp_net_ip) != 0);
+    if ((wifi_ready && !wifi_was_ready) || ip_changed) {
+      ui_show_mode_page(CAR_STOP_STATUS);
+      wifi_was_ready = true;
+      (void)strncpy_s(last_ip, sizeof(last_ip), g_udp_net_ip, sizeof(last_ip) - 1);
+    } else if (!wifi_ready) {
+      wifi_was_ready = false;
+    }
+    last_mode = curr_mode;
 
     if (wifi_ready) {
       // 2. 延迟构建广播包 (确保有MAC)

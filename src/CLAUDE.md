@@ -198,3 +198,8 @@ ELF 文件路径：`output/ws63/acore/ws63-liteos-app/ws63-liteos-app.elf`。
 - 任务创建后**不要**立即释放任务句柄（LiteOS 中的常见错误模式）。
 - `drivers/` 的 CMake 使用 `file(GLOB_RECURSE ...)`；在驱动目录中新增 `.c` 文件会自动被收录，无需修改 CMake。
 - `robot_common.h` 定义了跨 core 和 services 共享的结构体（`RobotState`、`CarStatus`、`WifiConnectStatus`）。
+
+
+所有代码先想一下能不能用RTOS的方式来实现，而不是用裸机的方式实现
+例如不要写一些狗屎全局标志位，不要写延时死等，不要写轮询浪费cpu
+很多东西的结果都可以在底层代码接口中拿到结果，可以用状态机+事件/任务/信号量/互斥锁/定时器/消息队列/链表来实现

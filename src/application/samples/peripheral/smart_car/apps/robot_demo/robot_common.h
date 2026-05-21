@@ -1,6 +1,7 @@
 #ifndef ROBOT_COMMON_H
 #define ROBOT_COMMON_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 /**
@@ -34,5 +35,23 @@ typedef struct {
   unsigned int ir_middle;  // 中红外状态 (0:黑线, 1:白色)
   unsigned int ir_right;   // 右红外状态 (0:黑线, 1:白色)
 } RobotState;
+
+/* ---------- 模式命令来源 ---------- */
+typedef enum {
+  MODE_SRC_BUTTON = 0x01,   /* 按键 ISR */
+  MODE_SRC_UDP    = 0x02,   /* WiFi UDP 遥控 */
+  MODE_SRC_HTTP   = 0x03,   /* 强制门户 HTTP */
+  MODE_SRC_SLE    = 0x04,   /* 星闪遥控 */
+  MODE_SRC_VOICE  = 0x05,   /* UART/语音命令 */
+  MODE_SRC_INTERNAL = 0x06, /* 内部初始化等 */
+} ModeCmdSource;
+
+/* ---------- 主状态机接口 ---------- */
+CarStatus robot_mgr_get_status(void);
+bool robot_mgr_post_mode(CarStatus status, uint32_t source);
+void robot_mgr_get_state_copy(RobotState* out);
+void robot_mgr_update_distance(float distance);
+void robot_mgr_update_ir_status(unsigned int left, unsigned int middle,
+                                unsigned int right);
 
 #endif

@@ -7,7 +7,7 @@
 #include "adc.h"
 #include "motor_executor.h"
 #include "robot_config.h"
-#include "robot_mgr.h"
+#include "../robot_common.h"
 #include "soc_osal.h"
 
 #define TRACE_SPEED_FORWARD 40

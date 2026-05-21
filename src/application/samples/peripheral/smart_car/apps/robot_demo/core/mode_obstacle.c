@@ -8,7 +8,7 @@
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
 #include "motor_executor.h"
 #include "robot_config.h"
-#include "robot_mgr.h"
+#include "../robot_common.h"
 #include "soc_osal.h"
 
 /* ================= 参数配置 ================= */

@@ -11,7 +11,6 @@
 #include <string.h>
 
 #include "../core/motor_executor.h"
-#include "../core/robot_mgr.h"
 #include "../robot_common.h"
 #include "captive_portal_service.h"
 #include "lwip/sockets.h"

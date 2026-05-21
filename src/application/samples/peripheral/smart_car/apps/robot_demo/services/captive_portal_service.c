@@ -18,6 +18,7 @@
 #include "soc_osal.h"
 #include "storage_service.h"
 #include "captive_portal_control.h"
+#include "wifi_device.h"
 
 /* ---------- 配置常量 ---------- */
 #define CAPTIVE_PORTAL_HTTP_PORT     80
@@ -56,6 +57,12 @@ static osal_task *g_switch_task = NULL;
 static char      g_switch_ssid[32] = {0};
 static char      g_switch_password[64] = {0};
 
+/* WiFi 扫描缓存 */
+#define SCAN_CACHE_MAX 16
+static bsp_wifi_scan_item_t g_scan_cache[SCAN_CACHE_MAX];
+static uint32_t g_scan_cache_count = 0;
+static bool g_scan_cache_ready = false;
+
 /* ---------- 内嵌配网页面 ---------- */
 static const char s_html_page[] =
     "HTTP/1.1 200 OK\r\n"
@@ -87,10 +94,10 @@ static const char s_html_page[] =
     "<label>WiFi 名称 (SSID)</label>"
     "<input type=\"text\" id=\"ssid\" name=\"ssid\" placeholder=\"请输入WiFi名称\" required maxlength=31>"
     "<select id=\"ssid_sel\" onchange=\"pickSsid()\" style=\"width:100%;margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:10px;font-size:14px;background:#fafafa\">"
-    "<option value=\"\">-- 附近 WiFi (点扫描) --</option>"
+    "<option value=\"\">-- 附近 WiFi --</option>"
     "</select>"
-    "<button type=\"button\" onclick=\"scanWifi()\" style=\"margin-top:8px;background:#e5e5ea;color:#333;font-size:13px;padding:8px\">扫描附近 WiFi</button>"
-    "<p id=\"scan_tip\" style=\"font-size:12px;color:#999;margin-top:4px\"></p>"
+    "<button type=\"button\" onclick=\"scanWifi(true)\" style=\"margin-top:8px;background:#e5e5ea;color:#333;font-size:13px;padding:8px\">刷新 WiFi 列表</button>"
+    "<p id=\"scan_tip\" style=\"font-size:12px;color:#999;margin-top:4px\">正在加载附近 WiFi...</p>"
     "</div>"
     "<div class=\"field\">"
     "<label>WiFi 密码</label>"
@@ -106,18 +113,19 @@ static const char s_html_page[] =
     "</div>"
     "<script>"
     "function pickSsid(){var s=document.getElementById('ssid_sel');if(s.value){document.getElementById('ssid').value=s.value;}}"
-    "function scanWifi(){"
-    "var t=document.getElementById('scan_tip');t.textContent='扫描中，请等待...';"
-    "var x=new XMLHttpRequest();x.open('GET','/scan',true);x.timeout=8000;"
+    "function scanWifi(refresh){"
+    "var t=document.getElementById('scan_tip');t.textContent=refresh?'刷新中，请等待...':'加载中...';"
+    "var x=new XMLHttpRequest();x.open('GET',refresh?'/scan?refresh=1':'/scan',true);x.timeout=8000;"
     "x.onreadystatechange=function(){if(x.readyState==4){"
     "if(x.status==200){try{var d=JSON.parse(x.responseText);var s=document.getElementById('ssid_sel');"
     "s.innerHTML='<option value=\"\">-- 选择 SSID --</option>';"
     "d.list.forEach(function(it){var o=document.createElement('option');o.value=it.ssid;"
     "o.textContent=it.ssid+' ('+it.rssi+'dBm'+(it.sec>0?' 加密':' 开放')+')';s.appendChild(o);});"
     "t.textContent='共发现 '+d.list.length+' 个网络';}catch(e){t.textContent='解析失败';}}"
-    "else{t.textContent='扫描失败';}}};"
-    "x.ontimeout=function(){t.textContent='扫描超时';};"
+    "else{t.textContent='加载失败';}}};"
+    "x.ontimeout=function(){t.textContent='加载超时';};"
     "x.send();}"
+    "window.onload=function(){scanWifi(false);};"
     "</script>"
     "</body></html>";
 
@@ -299,32 +307,29 @@ static void send_response_and_close(int client_fd, const char *response)
 }
 
 /**
- * @brief 处理 /scan 请求，扫描附近 WiFi 并以 JSON 返回
- * @note 由 portal_task 调用，处于较低优先级，扫描期间会阻塞 ~600ms
+ * @brief 执行一次 WiFi 扫描并更新缓存
  */
-static void handle_scan_request(int client_fd)
+static void refresh_scan_cache(void)
 {
-    const uint32_t MAX_ITEMS = 16;
-    bsp_wifi_scan_item_t* items =
-        (bsp_wifi_scan_item_t*)osal_kmalloc(sizeof(bsp_wifi_scan_item_t) * MAX_ITEMS, OSAL_GFP_ATOMIC);
-    if (items == NULL) {
-        const char err[] =
-            "HTTP/1.1 500 Internal Error\r\n"
-            "Content-Type: application/json\r\n"
-            "Connection: close\r\n\r\n"
-            "{\"list\":[]}\r\n";
-        send_response_and_close(client_fd, err);
-        return;
+    g_scan_cache_ready = false;
+    g_scan_cache_count = 0;
+    if (bsp_wifi_scan_list(g_scan_cache, SCAN_CACHE_MAX, &g_scan_cache_count) == 0) {
+        g_scan_cache_ready = true;
+        printf("[Portal] WiFi 扫描缓存更新: %u 条\r\n", g_scan_cache_count);
+    } else {
+        printf("[Portal] WiFi 扫描失败\r\n");
     }
+}
 
-    uint32_t count = 0;
-    int ret = bsp_wifi_scan_list(items, MAX_ITEMS, &count);
-
-    /* 构建 JSON：动态分配，避免大栈 */
+/**
+ * @brief 将扫描结果列表序列化为 JSON 并发送
+ */
+static void send_scan_json(int client_fd, bsp_wifi_scan_item_t* items,
+                           uint32_t count, bool ok)
+{
     size_t buf_size = 256 + count * 96;
     char* json = (char*)osal_kmalloc(buf_size, OSAL_GFP_ATOMIC);
     if (json == NULL) {
-        osal_kfree(items);
         send_response_and_close(client_fd, "HTTP/1.1 500\r\n\r\n");
         return;
     }
@@ -333,11 +338,10 @@ static void handle_scan_request(int client_fd)
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: application/json\r\n"
         "Connection: close\r\n\r\n"
-        "{\"ok\":%s,\"list\":[", (ret == 0) ? "true" : "false");
+        "{\"ok\":%s,\"list\":[", ok ? "true" : "false");
     if (n < 0 || (size_t)n >= buf_size) n = (int)buf_size - 1;
 
     for (uint32_t i = 0; i < count && n < (int)buf_size - 1; i++) {
-        /* 转义 SSID 中的 " 和 \ */
         char esc[68] = {0};
         size_t ej = 0;
         for (size_t k = 0; items[i].ssid[k] != '\0' && ej + 2 < sizeof(esc); k++) {
@@ -360,10 +364,53 @@ static void handle_scan_request(int client_fd)
 
     (void)lwip_send(client_fd, json, (size_t)n, 0);
     lwip_close(client_fd);
-
     osal_kfree(json);
-    osal_kfree(items);
-    printf("[Portal] /scan 返回 %u 条结果\r\n", count);
+}
+
+/**
+ * @brief 处理 /scan 请求，扫描附近 WiFi 并以 JSON 返回
+ * @param client_fd 客户端 socket
+ * @param query 查询字符串，支持 ?refresh=1 强制刷新
+ * @note 默认返回缓存结果；refresh=1 时实时扫描并更新缓存
+ */
+static void handle_scan_request(int client_fd, const char* query)
+{
+    bool force_refresh = (query != NULL && strstr(query, "refresh=1") != NULL);
+
+    if (force_refresh) {
+        const uint32_t MAX_ITEMS = 16;
+        bsp_wifi_scan_item_t* items =
+            (bsp_wifi_scan_item_t*)osal_kmalloc(sizeof(bsp_wifi_scan_item_t) * MAX_ITEMS, OSAL_GFP_ATOMIC);
+        if (items == NULL) {
+            send_response_and_close(client_fd, "HTTP/1.1 500\r\n\r\n");
+            return;
+        }
+        uint32_t count = 0;
+        int ret = bsp_wifi_scan_list(items, MAX_ITEMS, &count);
+        if (ret == 0) {
+            /* 更新缓存 */
+            g_scan_cache_count = (count > SCAN_CACHE_MAX) ? SCAN_CACHE_MAX : count;
+            for (uint32_t i = 0; i < g_scan_cache_count; i++) {
+                g_scan_cache[i] = items[i];
+            }
+            g_scan_cache_ready = true;
+        }
+        send_scan_json(client_fd, items, count, ret == 0);
+        osal_kfree(items);
+        printf("[Portal] /scan?refresh=1 返回 %u 条结果\r\n", count);
+        return;
+    }
+
+    /* 默认返回缓存 */
+    if (g_scan_cache_ready && g_scan_cache_count > 0) {
+        send_scan_json(client_fd, g_scan_cache, g_scan_cache_count, true);
+        printf("[Portal] /scan 返回缓存 %u 条结果\r\n", g_scan_cache_count);
+    } else {
+        /* 缓存为空， fallback 到实时扫描 */
+        refresh_scan_cache();
+        send_scan_json(client_fd, g_scan_cache, g_scan_cache_count, g_scan_cache_ready);
+        printf("[Portal] /scan 缓存未命中，实时扫描返回 %u 条\r\n", g_scan_cache_count);
+    }
 }
 
 /**
@@ -531,7 +578,7 @@ static void handle_http_client(int client_fd)
 
     /* GET /scan -> 扫描附近 WiFi 并返回 JSON 列表 */
     if (is_get && strcmp(path, "/scan") == 0) {
-        handle_scan_request(client_fd);
+        handle_scan_request(client_fd, query);
         return;
     }
 
@@ -852,6 +899,9 @@ static int captive_portal_task(void *arg)
                     (void)bsp_wifi_get_ip(g_ap_ip_str, sizeof(g_ap_ip_str));
                     printf("[Portal] AP IP: %s, 请用手机连接 %s 后访问 http://%s/\r\n",
                            g_ap_ip_str, BSP_WIFI_AP_SSID, g_ap_ip_str);
+
+                    /* AP 启动后自动扫描一次 WiFi 并缓存 */
+                    refresh_scan_cache();
                 }
             }
 
@@ -971,6 +1021,16 @@ const char* captive_portal_service_get_status_text(void)
 
 void captive_portal_set_mode(portal_mode_t mode)
 {
+    if (g_portal_mode == mode) return;
+
+    if (mode == PORTAL_MODE_CONTROL) {
+        /* 进入控制模式：关闭 STA 节省资源 */
+        wifi_sta_disable();
+    } else {
+        /* 返回配网模式：打开 STA 支持扫描 */
+        wifi_sta_enable();
+    }
+
     g_portal_mode = mode;
 }
 

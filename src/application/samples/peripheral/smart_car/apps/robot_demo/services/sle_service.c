@@ -23,7 +23,7 @@
 
 #include "../../../drivers/sle/sle_device.h"
 #include "../core/motor_executor.h"
-#include "../core/robot_mgr.h"
+#include "../robot_common.h"
 #include "../robot_common.h"
 #include "common_def.h"
 #include "errcode.h"

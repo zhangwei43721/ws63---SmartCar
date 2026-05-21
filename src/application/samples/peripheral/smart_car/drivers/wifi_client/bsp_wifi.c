@@ -33,6 +33,11 @@
 static bsp_wifi_status_t g_wifi_status = BSP_WIFI_STATUS_IDLE;  // WiFi 连接状态
 static bsp_wifi_mode_t g_wifi_mode = BSP_WIFI_MODE_STA;         // WiFi 工作模式
 
+/* RTOS 同步原语 */
+static osal_semaphore g_scan_sem;
+static osal_semaphore g_conn_sem;
+static bool g_wifi_sync_inited = false;
+
 /**
  * @brief WiFi 连接事件回调函数
  * @param state WiFi 状态变化
@@ -49,11 +54,20 @@ static void wifi_cb(td_s32 state, const wifi_linked_info_stru* info,
   } else if (state == WIFI_STATE_NOT_AVALIABLE) {
     g_wifi_status = BSP_WIFI_STATUS_DISCONNECTED;
   }
+  osal_sem_up(&g_conn_sem);
+}
+
+static void scan_cb(td_s32 state, td_s32 size) {
+  (void)state;
+  (void)size;
+  osal_sem_up(&g_scan_sem);
 }
 
 /* WiFi 事件回调结构体 */
-static wifi_event_stru g_wifi_event = {.wifi_event_connection_changed =
-                                           wifi_cb};
+static wifi_event_stru g_wifi_event = {
+    .wifi_event_connection_changed = wifi_cb,
+    .wifi_event_scan_state_changed = scan_cb,
+};
 
 /**
  * @brief 等待并获取 DHCP 分配的 IP 地址
@@ -106,9 +120,15 @@ static errcode_t find_ap(const char* ssid, const char* key,
     return ERRCODE_MALLOC;
   }
 
-  /* 执行 WiFi 扫描 */
-  wifi_sta_scan();
-  osDelay(600);
+  /* 执行 WiFi 扫描，等待扫描完成事件 */
+  if (wifi_sta_scan() != ERRCODE_SUCC) {
+    osal_kfree(scan_res);
+    return ERRCODE_FAIL;
+  }
+  if (osal_sem_down_timeout(&g_scan_sem, 2000) != OSAL_SUCCESS) {
+    osal_kfree(scan_res);
+    return ERRCODE_FAIL;
+  }
 
   /* 获取扫描结果 */
   errcode_t ret = wifi_sta_get_scan_info(scan_res, &num);
@@ -207,13 +227,21 @@ static int init_ap_mode(void) {
  * @return 成功返回 0，失败返回 -1
  */
 int bsp_wifi_init_ex(bsp_wifi_mode_t mode) {
+  if (!g_wifi_sync_inited) {
+    (void)osal_sem_binary_sem_init(&g_scan_sem, 0);
+    (void)osal_sem_binary_sem_init(&g_conn_sem, 0);
+    g_wifi_sync_inited = true;
+  }
+
   g_wifi_mode = mode;
-  if (mode == BSP_WIFI_MODE_STA) wifi_register_event_cb(&g_wifi_event);
+  wifi_register_event_cb(&g_wifi_event);
   while (!wifi_is_wifi_inited()) osDelay(10);
 
   if (mode == BSP_WIFI_MODE_STA) {
     return (wifi_sta_enable() == ERRCODE_SUCC) ? 0 : -1;
   } else {
+    /* AP 模式下也启用 STA，以支持后台扫描周围 WiFi */
+    (void)wifi_sta_enable();
     return init_ap_mode();
   }
 }
@@ -233,28 +261,42 @@ int bsp_wifi_start_sta_with_timeout(const char* ssid, const char* password,
   g_wifi_mode = BSP_WIFI_MODE_STA;
 
   wifi_sta_config_stru cfg = {0};
-  unsigned long long start = osal_get_jiffies();
-  unsigned long long timeout_ticks = osal_msecs_to_jiffies(timeout_ms);
 
   printf("[WiFi] 正在连接 %s (超时=%dms)...\r\n", ssid, timeout_ms);
 
-  /* 循环尝试连接直到超时 */
-  while ((osal_get_jiffies() - start) < timeout_ticks) {
-    if (find_ap(ssid, password, &cfg) == ERRCODE_SUCC) {
-      if (wifi_sta_connect(&cfg) == ERRCODE_SUCC) {
-        /* 等待连接成功 */
-        for (int i = 0; i < 40; i++) {
-          if (g_wifi_status == BSP_WIFI_STATUS_CONNECTED) goto connected;
-          osDelay(50);
-        }
-      }
-    }
-    osDelay(500);
+  /* 扫描并查找 AP（最多重试 2 次） */
+  errcode_t found = ERRCODE_FAIL;
+  for (int retry = 0; retry < 2; retry++) {
+    found = find_ap(ssid, password, &cfg);
+    if (found == ERRCODE_SUCC) break;
+    if (retry == 0) osDelay(500);
   }
-  return -1;
+  if (found != ERRCODE_SUCC) {
+    printf("[WiFi] 未找到 AP: %s\r\n", ssid);
+    return -1;
+  }
 
-connected:
-  return wait_for_dhcp("wlan0", 5000);
+  /* 清空信号量，排除历史事件 */
+  while (osal_sem_trydown(&g_conn_sem) == OSAL_SUCCESS) {
+  }
+
+  /* 发起连接 */
+  if (wifi_sta_connect(&cfg) != ERRCODE_SUCC) {
+    printf("[WiFi] 连接请求失败\r\n");
+    return -1;
+  }
+
+  /* 等待连接事件（成功或失败） */
+  if (osal_sem_down_timeout(&g_conn_sem, timeout_ms) != OSAL_SUCCESS) {
+    printf("[WiFi] 连接超时\r\n");
+    return -1;
+  }
+
+  if (g_wifi_status == BSP_WIFI_STATUS_CONNECTED) {
+    return wait_for_dhcp("wlan0", 5000);
+  }
+  printf("[WiFi] 连接失败（密码错误或 AP 拒绝）\r\n");
+  return -1;
 }
 
 /**
@@ -287,16 +329,14 @@ int bsp_wifi_smart_init(void) {
   printf("[WiFi] NV 配置: SSID='%s'，尝试 STA 连接...\r\n", ssid);
   bsp_wifi_init_ex(BSP_WIFI_MODE_STA);
 
-  /* 如果有配置的 SSID，尝试连接 */
-  if (bsp_wifi_start_sta_with_timeout(ssid, pass, 15000) == 0) {
+  /* 如果有配置的 SSID，尝试连接（超时 5s） */
+  if (bsp_wifi_start_sta_with_timeout(ssid, pass, 5000) == 0) {
     printf("[WiFi] STA 连接成功\r\n");
     return 0;
   }
 
-  /* STA 连接失败，切换到 AP 模式 */
+  /* STA 连接失败，开启 AP 模式 */
   printf("[WiFi] STA 连接失败（密码错误或网络不可达），切换到 AP 模式\r\n");
-  wifi_sta_disable();
-  osDelay(200); /* 等待 STA 完全关闭 */
   g_wifi_mode = BSP_WIFI_MODE_AP;
   return init_ap_mode();
 }
@@ -316,16 +356,12 @@ int bsp_wifi_switch_from_ap_to_sta(const char* ssid, const char* password) {
 
   /* 启用 STA 模式 */
   if (wifi_sta_enable() != ERRCODE_SUCC) {
-    bsp_wifi_smart_init();
-    return -1;
+    return (bsp_wifi_smart_init() == 0) ? 0 : -1;
   }
 
   /* 连接到指定 WiFi */
-  if (bsp_wifi_start_sta_with_timeout(ssid, password, 15000) != 0) {
-    /* 连接失败，回滚到 AP 模式 */
-    wifi_sta_disable();
-    init_ap_mode();
-    return -1;
+  if (bsp_wifi_start_sta_with_timeout(ssid, password, 5000) != 0) {
+    return (bsp_wifi_smart_init() == 0) ? 0 : -1;
   }
   return 0;
 }
@@ -382,19 +418,41 @@ int bsp_wifi_scan_list(bsp_wifi_scan_item_t* items, uint32_t max_count,
   if (items == NULL || out_count == NULL || max_count == 0) return -1;
   *out_count = 0;
 
-  /* AP 模式下也允许扫描：底层 wifi_sta_scan 即使在 AP 模式仍可工作 */
+  // 扫描需要 STA 使能；AP 模式下 STA 通常被关闭，在扫描WiFi时临时启用 
+  bool sta_was_enabled = (wifi_is_sta_enabled() == 1);
+  if (!sta_was_enabled) {
+    if (wifi_sta_enable() != ERRCODE_SUCC) {
+      printf("[WiFi] 扫描前 STA 启用失败\r\n");
+      return -1;
+    }
+  }
+
   uint32_t num = 32;
   wifi_scan_info_stru* scan_res = (wifi_scan_info_stru*)osal_kmalloc(
       sizeof(wifi_scan_info_stru) * num, OSAL_GFP_ATOMIC);
   if (scan_res == NULL) {
     printf("[WiFi] 扫描内存分配失败\r\n");
+    if (!sta_was_enabled) wifi_sta_disable();
     return -1;
   }
 
-  wifi_sta_scan();
-  osDelay(600);
+  if (wifi_sta_scan() != ERRCODE_SUCC) {
+    osal_kfree(scan_res);
+    if (!sta_was_enabled) wifi_sta_disable();
+    return -1;
+  }
+  if (osal_sem_down_timeout(&g_scan_sem, 2000) != OSAL_SUCCESS) {
+    osal_kfree(scan_res);
+    if (!sta_was_enabled) wifi_sta_disable();
+    return -1;
+  }
 
   errcode_t ret = wifi_sta_get_scan_info(scan_res, &num);
+
+  // 扫描结束后，若 STA 原本是关闭的，恢复关闭状态
+  if (!sta_was_enabled) 
+    wifi_sta_disable();
+  
   if (ret != ERRCODE_SUCC) {
     osal_kfree(scan_res);
     return -1;

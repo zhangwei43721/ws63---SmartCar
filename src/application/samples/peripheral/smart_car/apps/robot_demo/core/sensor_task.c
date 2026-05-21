@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
-#include "robot_mgr.h"
+#include "../robot_common.h"
 #include "soc_osal.h"
 
 #define SENSOR_TASK_INTERVAL_MS 50

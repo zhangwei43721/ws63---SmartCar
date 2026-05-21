@@ -51,7 +51,7 @@ int udp_net_get_mac_address(uint8_t* mac_buf) {
     netif_p = netifapi_netif_find("ap0");
   }
 
-  if (netif_p && netif_p->hwaddr) {
+  if (netif_p) {
     memcpy_s(mac_buf, 6, netif_p->hwaddr, 6);
     return 0;
   }
@@ -159,8 +159,10 @@ void udp_net_common_wifi_ensure_connected(void) {
   if (status == BSP_WIFI_STATUS_GOT_IP || status == BSP_WIFI_STATUS_CONNECTED) {
     g_udp_net_wifi_connected = true;
     if (status == BSP_WIFI_STATUS_GOT_IP) {
-      bsp_wifi_get_ip(g_udp_net_ip, sizeof(g_udp_net_ip));
-      g_udp_net_wifi_has_ip = true;
+      /* 只有成功获取到 IP 才标记 has_ip，避免刷新时显示 0.0.0.0 */
+      if (bsp_wifi_get_ip(g_udp_net_ip, sizeof(g_udp_net_ip)) == 0) {
+        g_udp_net_wifi_has_ip = true;
+      }
     }
     return;
   }

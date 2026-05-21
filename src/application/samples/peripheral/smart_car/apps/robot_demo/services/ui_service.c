@@ -1,11 +1,13 @@
 #include "ui_service.h"
 
+#include "captive_portal_service.h"
 #include "soc_osal.h"
+#include "udp_net_common.h"
+#include "udp_service.h"
 
 /* ============================================================
  * 消息驱动 UI 任务：
- *   - 对外接口（ui_show_mode_page / ui_render_standby / ui_show_ota_progress）
- *     只往消息队列投递请求，立即返回；
+ *   - 对外接口只往消息队列投递请求，立即返回；
  *   - 独立 UI 任务阻塞在消息队列上，只有收到消息才刷屏，
  *     从而避免在主循环里轮询 OLED 导致的 I2C 占用与闪烁。
  * ============================================================ */
@@ -34,6 +36,9 @@ static bool g_ui_busy = false;    /* OLED 是否被独占（OTA 等高优场景�
 static unsigned long g_ui_queue = 0;
 static bool g_queue_inited = false;
 static osal_task* g_ui_task = NULL;
+
+/* UI 当前缓存的模式，用于待机页面判断 */
+static CarStatus g_ui_current_mode = CAR_STOP_STATUS;
 
 /**
  * @brief 模式显示信息结构体
@@ -125,16 +130,38 @@ static int ui_task_entry(void* arg) {
   while (1) {
     uint32_t len = sizeof(msg);
     int ret = osal_msg_queue_read_copy(g_ui_queue, &msg, &len,
-                                        OSAL_WAIT_FOREVER);
+                                       OSAL_WAIT_FOREVER);
     if (ret != OSAL_SUCCESS) continue;
 
     switch (msg.type) {
       case UI_MSG_MODE:
-        ui_render_mode(msg.mode);
+        g_ui_current_mode = msg.mode;
+        if (msg.mode == CAR_STOP_STATUS) {
+          /* 待机模式：直接读取网络层缓存的 IP，无轮询 */
+          WifiConnectStatus wifi_status = udp_service_get_wifi_status();
+          char ip_line[32] = {0};
+          if (wifi_status == WIFI_STATUS_AP_MODE) {
+            const char* ap_ip = captive_portal_service_get_ap_ip();
+            (void)snprintf(ip_line, sizeof(ip_line), "IP: %s",
+                           ap_ip ? ap_ip : "...");
+          } else {
+            const char* ip = udp_service_get_ip();
+            (void)snprintf(ip_line, sizeof(ip_line), "IP: %s",
+                           ip ? ip : "Pending");
+          }
+          ui_render_standby_impl(wifi_status, ip_line);
+        } else {
+          ui_render_mode(msg.mode);
+        }
         break;
+
       case UI_MSG_STANDBY:
-        ui_render_standby_impl(msg.wifi_state, msg.text);
+        // 仅在当前处于待机模式时刷新，避免干扰循迹/避障等模式显示
+        if (g_ui_current_mode == CAR_STOP_STATUS) {
+          ui_render_standby_impl(msg.wifi_state, msg.text);
+        }
         break;
+
       case UI_MSG_OTA:
         ui_render_ota(msg.percent, msg.text);
         break;
@@ -187,6 +214,8 @@ void ui_service_init(void) {
     }
     osal_kthread_unlock();
   }
+  
+  ui_show_mode_page(CAR_STOP_STATUS);
 }
 
 /* ---------- 对外接口：仅投递消息 ---------- */
