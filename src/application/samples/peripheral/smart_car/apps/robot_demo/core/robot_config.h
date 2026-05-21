@@ -8,10 +8,6 @@
 #ifndef ROBOT_CONFIG_H
 #define ROBOT_CONFIG_H
 
-/* 任务配置 */
-#define TASK_STACK_SIZE (1024 * 10)  // 任务栈大小
-#define TASK_PRIO 25                 // 任务优先级
-
 /* 时间配置 */
 #define SENSOR_DELAY 50     // 传感器稳定等待
 #define BACKWARD_TIME 400   // 后退时间

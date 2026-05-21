@@ -334,6 +334,7 @@ static void handle_scan_request(int client_fd)
         "Content-Type: application/json\r\n"
         "Connection: close\r\n\r\n"
         "{\"ok\":%s,\"list\":[", (ret == 0) ? "true" : "false");
+    if (n < 0 || (size_t)n >= buf_size) n = (int)buf_size - 1;
 
     for (uint32_t i = 0; i < count && n < (int)buf_size - 1; i++) {
         /* 转义 SSID 中的 " 和 \ */
@@ -346,12 +347,16 @@ static void handle_scan_request(int client_fd)
         }
         esc[ej] = '\0';
 
-        n += snprintf(json + n, buf_size - n,
+        int wrote = snprintf(json + n, buf_size - n,
                       "%s{\"ssid\":\"%s\",\"rssi\":%d,\"sec\":%u,\"ch\":%u}",
                       (i == 0) ? "" : ",", esc, items[i].rssi,
                       (unsigned)items[i].security, (unsigned)items[i].channel);
+        if (wrote > 0) n += wrote;
     }
-    n += snprintf(json + n, buf_size - n, "]}\r\n");
+    if (n >= 0 && (size_t)n < buf_size) {
+        int wrote = snprintf(json + n, buf_size - n, "]}\r\n");
+        if (wrote > 0) n += wrote;
+    }
 
     (void)lwip_send(client_fd, json, (size_t)n, 0);
     lwip_close(client_fd);

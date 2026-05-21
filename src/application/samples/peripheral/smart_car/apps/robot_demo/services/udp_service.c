@@ -43,10 +43,20 @@ typedef struct {
   uint8_t mac[6];
   char name[16];
 } discovery_packet_t;
+
+/* WiFi 配置扩展包（变长，最大 70 字节） */
+typedef struct {
+  uint8_t  type;       // 0xE0~0xE2
+  uint8_t  ssid_len;   // SSID 长度（0~32）
+  uint8_t  pwd_len;    // 密码长度（0~63）
+  char     payload[64];// SSID + 密码连续存放
+} wifi_config_pkt_t;
 #pragma pack()
 
 /* --- 全局变量 --- */
 static int g_sockfd = -1;
+static osal_task *g_udp_task = NULL;
+static volatile bool g_udp_should_exit = false;
 static osal_mutex g_cmd_mutex;
 
 // 命令缓存
@@ -80,10 +90,23 @@ void udp_service_init(void) {
   udp_net_common_init();
   osal_mutex_init(&g_cmd_mutex);
 
+  if (g_udp_task != NULL) return;
+  g_udp_should_exit = false;
+
   // 创建线程
-  osal_task* task = osal_kthread_create((osal_kthread_handler)udp_service_task,
-                                        NULL, "udp_task", UDP_STACK_SIZE);
-  if (task) osal_kthread_set_priority(task, UDP_TASK_PRIORITY);
+  osal_kthread_lock();
+  g_udp_task = osal_kthread_create((osal_kthread_handler)udp_service_task,
+                                   NULL, "udp_task", UDP_STACK_SIZE);
+  if (g_udp_task != NULL) osal_kthread_set_priority(g_udp_task, UDP_TASK_PRIORITY);
+  osal_kthread_unlock();
+}
+
+void udp_service_deinit(void) {
+  g_udp_should_exit = true;
+  if (g_sockfd >= 0) {
+    lwip_close(g_sockfd);
+    g_sockfd = -1;
+  }
 }
 
 WifiConnectStatus udp_service_get_wifi_status(void) {
@@ -97,7 +120,7 @@ WifiConnectStatus udp_service_get_wifi_status(void) {
 const char* udp_service_get_ip(void) { return g_udp_net_ip; }
 
 void udp_service_push_cmd(int8_t m1, int8_t m2) {
-  motor_executor_push_cmd(m1, m2, MOTOR_SRC_REMOTE);
+  motor_executor_push_cmd(m1, m2);
 }
 
 bool udp_service_pop_cmd(int8_t* m1, int8_t* m2) {
@@ -142,16 +165,90 @@ static void build_discovery_packet(void) {
 /**
  * @brief 处理具体的业务包逻辑
  */
+static void send_wifi_config_ack(uint8_t type, uint8_t status,
+                                  struct sockaddr_in* sender) {
+  uint8_t ack[3] = {type, status, 0};
+  udp_net_common_send_to_addr(ack, sizeof(ack), sender);
+}
+
+static void handle_wifi_config(uint8_t* data, size_t len,
+                                struct sockaddr_in* sender) {
+  if (len < 3) return;
+  wifi_config_pkt_t* pkt = (wifi_config_pkt_t*)data;
+
+  switch (pkt->type) {
+    case UDP_CMD_WIFI_CONFIG_SET: {
+      char ssid[33] = {0};
+      char pwd[64] = {0};
+      if (pkt->ssid_len > 0 && pkt->ssid_len <= 32) {
+        (void)memcpy_s(ssid, sizeof(ssid), pkt->payload, pkt->ssid_len);
+        ssid[pkt->ssid_len] = '\0';
+      }
+      if (pkt->pwd_len > 0 && pkt->pwd_len <= 63) {
+        (void)memcpy_s(pwd, sizeof(pwd), pkt->payload + pkt->ssid_len, pkt->pwd_len);
+        pwd[pkt->pwd_len] = '\0';
+      }
+      errcode_t ret = storage_service_save_wifi_config(ssid, pwd);
+      send_wifi_config_ack(pkt->type,
+                           (ret == ERRCODE_SUCC) ? 0x00 : 0x01, sender);
+      printf("[UDP] WiFi配置保存: SSID='%s' 结果=%d\r\n", ssid, ret);
+      break;
+    }
+
+    case UDP_CMD_WIFI_CONFIG_CONNECT: {
+      char ssid[32] = {0};
+      char pwd[64] = {0};
+      if (pkt->ssid_len > 0 && pkt->ssid_len <= 32) {
+        (void)memcpy_s(ssid, sizeof(ssid), pkt->payload, pkt->ssid_len);
+        ssid[pkt->ssid_len] = '\0';
+      }
+      if (pkt->pwd_len > 0 && pkt->pwd_len <= 63) {
+        (void)memcpy_s(pwd, sizeof(pwd), pkt->payload + pkt->ssid_len, pkt->pwd_len);
+        pwd[pkt->pwd_len] = '\0';
+      }
+      /* 先保存 */
+      (void)storage_service_save_wifi_config(ssid, pwd);
+      /* 再切换 */
+      int ret = bsp_wifi_switch_from_ap_to_sta(ssid, pwd);
+      send_wifi_config_ack(pkt->type,
+                           (ret == 0) ? 0x00 : 0x01, sender);
+      printf("[UDP] WiFi切换STA: SSID='%s' 结果=%d\r\n", ssid, ret);
+      break;
+    }
+
+    case UDP_CMD_WIFI_CONFIG_GET: {
+      char ssid[32] = {0};
+      char pwd[64] = {0};
+      storage_service_get_wifi_config(ssid, pwd);
+      uint8_t ack[70] = {0};
+      ack[0] = pkt->type;
+      ack[1] = 0x00;  // success
+      size_t ssid_len = strlen(ssid);
+      size_t pwd_len = strlen(pwd);
+      if (ssid_len > 32) ssid_len = 32;
+      if (pwd_len > 63) pwd_len = 63;
+      ack[2] = (uint8_t)ssid_len;
+      ack[3] = (uint8_t)pwd_len;
+      if (ssid_len > 0) {
+        (void)memcpy_s(ack + 4, sizeof(ack) - 4, ssid, ssid_len);
+      }
+      if (pwd_len > 0) {
+        (void)memcpy_s(ack + 4 + ssid_len, sizeof(ack) - 4 - ssid_len, pwd, pwd_len);
+      }
+      udp_net_common_send_to_addr(ack, 4 + ssid_len + pwd_len, sender);
+      break;
+    }
+  }
+}
+
 static void process_packet(uint8_t* data, size_t len,
                            struct sockaddr_in* sender) {
-  (void)sender;  // 预留参数，供未来扩展使用
   if (len < 1) return;
   uint8_t type = data[0];
 
-  // WiFi配置命令特殊处理 (保留原有逻辑)
+  // WiFi配置命令
   if (type >= 0xE0 && type <= 0xE2) {
-    // 这里为了简化代码，暂不展开handle_wifi_config的具体实现
-    // 实际使用时请保留你原代码中的 handle_wifi_config 逻辑调用
+    handle_wifi_config(data, len, sender);
     return;
   }
 
@@ -166,8 +263,13 @@ static void process_packet(uint8_t* data, size_t len,
         if (pkt->cmd <= 4) robot_mgr_post_mode((CarStatus)pkt->cmd, MODE_SRC_UDP);
         break;
       case 0x04:  // PID
-        mode_trace_set_pid(
-            pkt->cmd, (int16_t)((pkt->motor1 << 8) | (uint8_t)pkt->motor2));
+        if (pkt->cmd == 0xFF) {
+          /* 显式保存当前 PID 到 NV */
+          mode_trace_save_pid();
+        } else {
+          mode_trace_set_pid(
+              pkt->cmd, (int16_t)((pkt->motor1 << 8) | (uint8_t)pkt->motor2));
+        }
         break;
       case 0xFE:  // 心跳包
         // 仅用于刷新超时时间，无其他业务逻辑
@@ -287,7 +389,7 @@ static int udp_service_task(void* arg) {
   uint64_t t_send_loop = 0;
   uint64_t t_keepalive_decay = 0;
 
-  while (1) {
+  while (!g_udp_should_exit) {
     uint64_t now = osal_get_jiffies();
 
     // 1. WiFi 状态维护 (每2秒检查一次)
@@ -344,5 +446,11 @@ static int udp_service_task(void* arg) {
     // 5. 接收处理 (此处会阻塞10ms)
     handle_udp_receive();
   }
+
+  if (g_sockfd >= 0) {
+    lwip_close(g_sockfd);
+    g_sockfd = -1;
+  }
+  g_udp_task = NULL;
   return 0;
 }

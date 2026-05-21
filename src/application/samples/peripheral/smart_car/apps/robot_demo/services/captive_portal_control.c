@@ -172,13 +172,16 @@ static void handle_api_status(int client_fd)
     robot_mgr_get_state_copy(&st);
 
     char json[256];
-    (void)snprintf(json, sizeof(json),
+    int json_len = snprintf(json, sizeof(json),
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: application/json\r\n"
         "Connection: close\r\n\r\n"
         "{\"mode\":%d,\"dist\":%.1f,\"ir\":[%u,%u,%u]}\r\n",
         (int)st.mode, st.distance,
         st.ir_left, st.ir_middle, st.ir_right);
+    if (json_len < 0 || (size_t)json_len >= sizeof(json)) {
+        json[sizeof(json) - 1] = '\0';
+    }
 
     send_response_and_close(client_fd, json);
 }
@@ -213,7 +216,7 @@ static void handle_api_move(int client_fd, const char *query)
     int right = query_get_int(query, "r");
 
     /* 推入 Motor Executor 命令队列，由独立高优先级任务执行 */
-    motor_executor_push_cmd((int8_t)left, (int8_t)right, MOTOR_SRC_REMOTE);
+    motor_executor_push_cmd((int8_t)left, (int8_t)right);
 
     char json[128];
     (void)snprintf(json, sizeof(json),

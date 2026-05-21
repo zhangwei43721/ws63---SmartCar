@@ -53,14 +53,14 @@ static uint32_t ssd1306_SendData(uint8_t* buffer, uint32_t size) {
   return 0;
 }
 
-static uint32_t ssd1306_WiteByte(uint8_t regAddr, uint8_t byte) {
+static uint32_t ssd1306_WriteByte(uint8_t regAddr, uint8_t byte) {
   uint8_t buffer[] = {regAddr, byte};
   return ssd1306_SendData(buffer, sizeof(buffer));
 }
 
 // Send a byte to the command register
 void ssd1306_WriteCommand(uint8_t byte) {
-  ssd1306_WiteByte(SSD1306_CTRL_CMD, byte);
+  ssd1306_WriteByte(SSD1306_CTRL_CMD, byte);
 }
 
 // Send data

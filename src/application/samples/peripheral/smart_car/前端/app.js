@@ -126,6 +126,26 @@ function sendPid(type) {
   }
 }
 
+function savePid() {
+  const deviceIP = getSelectedDeviceIP();
+  if (!deviceIP) {
+    alert("请先选择小车！");
+    return;
+  }
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(
+      JSON.stringify({
+        type: "savePid",
+        deviceIP: deviceIP,
+      }),
+    );
+    console.log("[Frontend] Save PID command sent to proxy");
+    alert("PID 保存命令已发送");
+  } else {
+    console.error("[Frontend] Socket not ready");
+  }
+}
+
 // --- 核心函数 ---
 
 /**

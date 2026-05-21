@@ -61,7 +61,7 @@ static const ModeDisplayInfo g_mode_display[] = {
     // CAR_OBSTACLE_AVOIDANCE_STATUS (2)
     {"模式: 避障", "避障中...", ""},
     // CAR_WIFI_CONTROL_STATUS (3)
-    {"模式: 遥控", "遥控", ""},
+    {"模式: 遥控", "遥控中...", ""},
     // CAR_BT_CONTROL_STATUS (4)
     {"模式: 蓝牙", "未启用", ""},
 };
@@ -72,8 +72,8 @@ static void ui_render_mode(CarStatus status) {
   if (!g_oled_ready) return;
   if (g_ui_busy) return;
 
-  CarStatus mode_count = (CarStatus)(sizeof(g_mode_display) / sizeof(g_mode_display[0]));
-  if (status >= CAR_STOP_STATUS && status < mode_count) {
+  size_t mode_count = sizeof(g_mode_display) / sizeof(g_mode_display[0]);
+  if (status >= CAR_STOP_STATUS && (size_t)status < mode_count) {
     ssd1306_Fill(Black);
     ssd1306_DrawString16(0, 0, g_mode_display[status].line0, White);
     ssd1306_DrawString16(0, 16, g_mode_display[status].line1, White);

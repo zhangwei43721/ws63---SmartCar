@@ -38,9 +38,7 @@ typedef enum {
   OTA_STATE_MAX
 } ota_state_t;
 
-extern const char *const g_ota_state_str[];
-#define OTA_STATE_TO_STR(state) \
-  (((uint32_t)(state) < OTA_STATE_MAX) ? g_ota_state_str[(uint32_t)(state)] : "UNKNOWN")
+const char* ota_state_to_str(ota_state_t state);
 
 /* 公共进度/状态查询 */
 typedef struct {

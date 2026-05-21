@@ -81,7 +81,7 @@ static void nv_set_defaults(robot_nv_config_t* cfg) {
 
   // WiFi 默认值
   strncpy(cfg->wifi_ssid, "BSHZ-2.4G", 31);
-  strncpy(cfg->wifi_password, "BS666888", 63);
+  strncpy(cfg->wifi_password, "BS6668888", 63);
 
   cfg->checksum = 0;
   cfg->checksum = nv_checksum16_add((const uint8_t*)cfg, sizeof(*cfg));

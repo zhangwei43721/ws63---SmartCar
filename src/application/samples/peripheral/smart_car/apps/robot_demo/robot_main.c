@@ -22,6 +22,8 @@
 #include "watchdog.h"
 
 #define ROBOT_MODE_SWITCH_GPIO 3  // 按键 设置为GPIO 3
+#define ROBOT_TASK_STACK_SIZE (1024 * 10)  // 主任务栈大小
+#define ROBOT_TASK_PRIO 25                  // 主任务优先级
 
 // 上次按键触发的时间戳（用于按键防抖，避免抖动时多次触发）
 static unsigned long long button_time_tick = 0;
@@ -39,15 +41,8 @@ static void mode_switch_isr(pin_t pin, uintptr_t param) {
   }
   button_time_tick = current_tick;
 
-  CarStatus current_status = robot_mgr_get_status();
-
   // 模式循环切换：停止 -> 循迹 -> 避障 -> 遥控 -> 停止
-  CarStatus next_status = (CarStatus)((current_status + 1) % 4);
-
-  // 打印切换信息
-  const char* mode_names[] = {"停止", "循迹", "避障", "遥控"};
-  printf("模式切换：%s -> %s\r\n", mode_names[current_status],
-         mode_names[next_status]);
+  CarStatus next_status = (CarStatus)((robot_mgr_get_status() + 1) % 4);
 
   robot_mgr_post_mode(next_status, MODE_SRC_BUTTON);
 }
@@ -95,9 +90,9 @@ static void robot_demo_entry(void) {
   // 创建 OSAL 线程
   osal_kthread_lock();
   task_handle = osal_kthread_create((osal_kthread_handler)robot_demo_task, NULL,
-                                    "robot_demo_task", TASK_STACK_SIZE);
+                                    "robot_demo_task", ROBOT_TASK_STACK_SIZE);
 
-  if (task_handle != NULL) osal_kthread_set_priority(task_handle, TASK_PRIO);
+  if (task_handle != NULL) osal_kthread_set_priority(task_handle, ROBOT_TASK_PRIO);
   printf("智能小车演示入口已创建\r\n");
   osal_kthread_unlock();
 }

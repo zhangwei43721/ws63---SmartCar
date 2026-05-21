@@ -25,24 +25,10 @@
 void sle_service_init(void);
 
 /**
- * @brief SLE 服务周期任务（可选，用于发送心跳或状态）
- */
-void sle_service_tick(void);
-
-/**
  * @brief 检查是否有 SLE 设备连接
  * @return true 已连接
  *         false 未连接
  */
 bool sle_service_is_connected(void);
-
-/**
- * @brief 从缓冲区取出一条遥控命令（非阻塞）
- * @param motor1_out 输出：电机1 值 (-100 ~ 100)
- * @param motor2_out 输出：电机2 值 (-100 ~ 100)
- * @return true 有新命令
- *         false 无新命令
- */
-bool sle_service_pop_cmd(int8_t* motor1_out, int8_t* motor2_out);
 
 #endif /* SLE_SERVICE_H */

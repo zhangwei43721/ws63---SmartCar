@@ -197,13 +197,50 @@ wss.on("connection", (ws) => {
           const modeMap = { standby: 0, tracking: 1, avoid: 2, remote: 3 };
           sendToCar(buildPacket(0x03, modeMap[data.mode] || 0), ip);
           break;
-        case "setPid": // PID参数
+        case "setPid": { // PID参数
           const val =
             data.paramType <= 3 ? Math.round(data.value * 100) : data.value;
           const high = (val >> 8) & 0xff;
           const low = val & 0xff;
           sendToCar(buildPacket(0x04, data.paramType, high, low), ip);
           break;
+        }
+        case "savePid": { // 显式保存 PID 到 NV
+          sendToCar(buildPacket(0x04, 0xFF, 0, 0), ip);
+          break;
+        }
+        case "wifiConfigSet": { // 保存 WiFi 配置 (0xE0)
+          const ssidBuf = Buffer.from(data.ssid || "", "utf8");
+          const pwdBuf = Buffer.from(data.password || "", "utf8");
+          const buf = Buffer.alloc(3 + 64);
+          buf[0] = 0xE0;
+          buf[1] = Math.min(ssidBuf.length, 32);
+          buf[2] = Math.min(pwdBuf.length, 63);
+          ssidBuf.copy(buf, 3);
+          pwdBuf.copy(buf, 3 + buf[1]);
+          sendToCar(buf, ip);
+          break;
+        }
+        case "wifiConfigConnect": { // 保存并连接 WiFi (0xE1)
+          const ssidBuf = Buffer.from(data.ssid || "", "utf8");
+          const pwdBuf = Buffer.from(data.password || "", "utf8");
+          const buf = Buffer.alloc(3 + 64);
+          buf[0] = 0xE1;
+          buf[1] = Math.min(ssidBuf.length, 32);
+          buf[2] = Math.min(pwdBuf.length, 63);
+          ssidBuf.copy(buf, 3);
+          pwdBuf.copy(buf, 3 + buf[1]);
+          sendToCar(buf, ip);
+          break;
+        }
+        case "wifiConfigGet": { // 获取 WiFi 配置 (0xE2)
+          const buf = Buffer.alloc(3);
+          buf[0] = 0xE2;
+          buf[1] = 0;
+          buf[2] = 0;
+          sendToCar(buf, ip);
+          break;
+        }
       }
     } catch (e) {
       console.error("WS 解析错误:", e);

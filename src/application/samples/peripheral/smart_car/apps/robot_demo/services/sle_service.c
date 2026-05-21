@@ -60,7 +60,7 @@ static void process_packet(const uint8_t* data, uint16_t len) {
 
     switch (pkt->type) {
       case 0x01:  // 控制包：直接推入 Motor 队列
-        motor_executor_push_cmd(pkt->motor1, pkt->motor2, MOTOR_SRC_REMOTE);
+        motor_executor_push_cmd(pkt->motor1, pkt->motor2);
         break;
 
       case 0x03:  // 模式切换
@@ -99,7 +99,7 @@ static void sle_disconnect_callback(uint16_t conn_id) {
   unused(conn_id);
   g_connected = false;
   // 断开时主动停车
-  motor_executor_push_cmd(0, 0, MOTOR_SRC_REMOTE);
+  motor_executor_push_cmd(0, 0);
   printf("[SLE_SRV] 设备已断开\r\n");
 }
 

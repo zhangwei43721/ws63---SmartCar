@@ -36,6 +36,10 @@ static osal_event g_trace_event;
 static bool g_event_inited = false;
 static volatile bool g_trace_running = false;
 
+/* PID 参数互斥锁：保护 set_pid 与 tick 的并发访问 */
+static osal_mutex g_pid_mutex;
+static bool g_pid_mutex_inited = false;
+
 typedef struct {
   uint8_t left;
   uint8_t middle;
@@ -111,9 +115,12 @@ static void trace_tick_once(void) {
     g_last_seen_tick = now;
     g_last_valid_error = error;
 
-    float pid_output = calculate_pid(error);
-
-    int current_base_speed = g_base_speed;
+    float pid_output;
+    int current_base_speed;
+    if (g_pid_mutex_inited) osal_mutex_lock(&g_pid_mutex);
+    pid_output = calculate_pid(error);
+    current_base_speed = g_base_speed;
+    if (g_pid_mutex_inited) osal_mutex_unlock(&g_pid_mutex);
     if (error >= 2 || error <= -2)
       current_base_speed = (int)(g_base_speed * 0.6f);
     else if (error >= 1 || error <= -1)
@@ -129,20 +136,19 @@ static void trace_tick_once(void) {
     if (right_speed > 100) right_speed = 100;
     if (right_speed < -100) right_speed = -100;
 
-    motor_executor_push_cmd((int8_t)left_speed, (int8_t)right_speed,
-                            MOTOR_SRC_AUTO);
+    motor_executor_push_cmd((int8_t)left_speed, (int8_t)right_speed);
   } else {
     if (now - g_last_seen_tick < osal_msecs_to_jiffies(TRACE_LOST_TIMEOUT_MS)) {
       int search_speed = TRACE_SEARCH_SPEED;
       if (g_last_valid_error < -0.5f) {
-        motor_executor_push_cmd(search_speed, -search_speed / 2, MOTOR_SRC_AUTO);
+        motor_executor_push_cmd(search_speed, -search_speed / 2);
       } else if (g_last_valid_error > 0.5f) {
-        motor_executor_push_cmd(-search_speed / 2, search_speed, MOTOR_SRC_AUTO);
+        motor_executor_push_cmd(-search_speed / 2, search_speed);
       } else {
-        motor_executor_push_cmd(search_speed, search_speed, MOTOR_SRC_AUTO);
+        motor_executor_push_cmd(search_speed, search_speed);
       }
     } else {
-      motor_executor_push_cmd(0, 0, MOTOR_SRC_AUTO);
+      motor_executor_push_cmd(0, 0);
     }
   }
 }
@@ -161,12 +167,14 @@ static int trace_task_entry(void *arg) {
     trace_tick_once();
   }
 
-  motor_executor_push_cmd(0, 0, MOTOR_SRC_AUTO);
+  motor_executor_push_cmd(0, 0);
   printf("[Trace] 循迹任务退出\r\n");
+  g_trace_task = NULL;   /* 退出前自清句柄，供 exit 同步 */
   return 0;
 }
 
 void mode_trace_set_pid(int type, int value) {
+  if (g_pid_mutex_inited) osal_mutex_lock(&g_pid_mutex);
   if (type == 1)
     g_kp = (float)value / 1000.0f;
   else if (type == 2)
@@ -177,10 +185,20 @@ void mode_trace_set_pid(int type, int value) {
     g_base_speed = value;
   printf("PID Set: Kp=%.2f Ki=%.3f Kd=%.2f Speed=%d\r\n", g_kp, g_ki, g_kd,
          g_base_speed);
-
-  storage_service_save_pid_params(g_kp, g_ki, g_kd, (int16_t)g_base_speed);
   g_integral = 0;
   g_last_error = 0;
+  if (g_pid_mutex_inited) osal_mutex_unlock(&g_pid_mutex);
+}
+
+void mode_trace_save_pid(void) {
+  if (g_pid_mutex_inited) osal_mutex_lock(&g_pid_mutex);
+  float kp = g_kp, ki = g_ki, kd = g_kd;
+  int16_t speed = (int16_t)g_base_speed;
+  if (g_pid_mutex_inited) osal_mutex_unlock(&g_pid_mutex);
+
+  errcode_t ret = storage_service_save_pid_params(kp, ki, kd, speed);
+  printf("PID Save: Kp=%.2f Ki=%.3f Kd=%.2f Speed=%d 结果=%d\r\n",
+         kp, ki, kd, speed, ret);
 }
 
 void mode_trace_enter(void) {
@@ -198,6 +216,12 @@ void mode_trace_enter(void) {
   g_ki = ki;
   g_kd = kd;
   g_base_speed = speed;
+
+  if (!g_pid_mutex_inited) {
+    if (osal_mutex_init(&g_pid_mutex) == OSAL_SUCCESS) {
+      g_pid_mutex_inited = true;
+    }
+  }
 
   if (!g_event_inited) {
     if (osal_event_init(&g_trace_event) == OSAL_SUCCESS) {
@@ -220,18 +244,19 @@ void mode_trace_enter(void) {
   osal_kthread_unlock();
 }
 
-void mode_trace_tick(void) {
-  // 任务化后无需主循环驱动
-}
-
 void mode_trace_exit(void) {
   if (g_trace_task != NULL) {
     g_trace_running = false;
     if (g_event_inited) {
       osal_event_write(&g_trace_event, TRACE_EVENT_STOP);
     }
-    // 任务自行退出，不在此 join；下次 enter 时若上次未完全退出会跳过创建
-    g_trace_task = NULL;
+    /* 等待任务自行退出（最多 200ms），避免 enter 时跳过创建 */
+    int wait = 0;
+    while (g_trace_task != NULL && wait < 20) {
+      osal_msleep(10);
+      wait++;
+    }
+    g_trace_task = NULL;  /* 兜底 */
   }
-  motor_executor_push_cmd(0, 0, MOTOR_SRC_AUTO);
+  motor_executor_push_cmd(0, 0);
 }

@@ -36,7 +36,7 @@ static osal_task *g_voice_task = NULL;
 static volatile unsigned long long g_expire_tick = 0;
 
 static void voice_set_motion(int8_t l, int8_t r, uint32_t ms) {
-  motor_executor_push_cmd(l, r, MOTOR_SRC_VOICE);
+  motor_executor_push_cmd(l, r);
   if (ms == 0 || (l == 0 && r == 0)) {
     g_expire_tick = 0;
   } else {
@@ -105,7 +105,7 @@ static int voice_watchdog_task(void *arg) {
       unsigned long long expire = g_expire_tick;
       if (now >= expire) {
         g_expire_tick = 0;
-        motor_executor_push_cmd(0, 0, MOTOR_SRC_VOICE);
+        motor_executor_push_cmd(0, 0);
         break;
       }
       unsigned long long remain_jiffies = expire - now;

@@ -318,8 +318,8 @@ static void bsp_bt_spp_add_ccc_descriptor(uint32_t server_id,
   descriptor.value_len = sizeof(ccc_data_val);
   descriptor.value = ccc_data_val;
   gatts_add_descriptor(server_id, srvc_handle, &descriptor);
-  osal_vfree(ccc_uuid.uuid);
 }
+
 
 /**
  * @brief 添加特征和CCCD

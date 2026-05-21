@@ -21,7 +21,9 @@
 
 /* 状态字符串表 */
 #define OTA_STATE_EXPAND(s, str) str,
-const char *const g_ota_state_str[] = { OTA_STATE_MAP(OTA_STATE_EXPAND) };
+static const char *const g_ota_state_str[] = { OTA_STATE_MAP(OTA_STATE_EXPAND) };
+#define OTA_STATE_TO_STR(state) \
+  (((uint32_t)(state) < OTA_STATE_MAX) ? g_ota_state_str[(uint32_t)(state)] : "UNKNOWN")
 
 /* ---------- 内部状态 ---------- */
 static volatile ota_state_t g_ota_state = OTA_STATE_IDLE;
@@ -121,10 +123,18 @@ static void ota_update_ui(void)
   ui_show_ota_progress(g_ota_progress, status_str);
 }
 
+const char* ota_state_to_str(ota_state_t state)
+{
+  return OTA_STATE_TO_STR(state);
+}
+
 /* ---------- 状态管理 ---------- */
 static void ota_set_state(ota_state_t s)
 {
+  if (g_ota_mutex_inited) osal_mutex_lock(&g_ota_mutex);
   g_ota_state = s;
+  if (g_ota_mutex_inited) osal_mutex_unlock(&g_ota_mutex);
+
   printf("[OTA] 状态切换 -> %s\r\n", OTA_STATE_TO_STR(s));
   /* OTA 活跃阶段独占 OLED，IDLE 时释放，避免与 standby/mode 页面交替刷屏 */
   if (s == OTA_STATE_IDLE) {
@@ -137,7 +147,10 @@ static void ota_set_state(ota_state_t s)
 
 static void ota_set_progress(uint8_t pct)
 {
+  if (g_ota_mutex_inited) osal_mutex_lock(&g_ota_mutex);
   g_ota_progress = pct;
+  if (g_ota_mutex_inited) osal_mutex_unlock(&g_ota_mutex);
+
   /* OLED 通过 I2C@400KHz 全屏刷写 ~50ms，刷太频繁会卡死接收 */
   static uint8_t last_ui_pct = 0xFF;
   if (last_ui_pct == 0xFF || pct == 100 || (pct / 10) != (last_ui_pct / 10)) {
@@ -148,16 +161,21 @@ static void ota_set_progress(uint8_t pct)
 
 bool ota_service_is_active(void)
 {
-  return (g_ota_state != OTA_STATE_IDLE && g_ota_state != OTA_STATE_FAILED);
+  if (g_ota_mutex_inited) osal_mutex_lock(&g_ota_mutex);
+  bool active = (g_ota_state != OTA_STATE_IDLE && g_ota_state != OTA_STATE_FAILED);
+  if (g_ota_mutex_inited) osal_mutex_unlock(&g_ota_mutex);
+  return active;
 }
 
 void ota_service_get_status(ota_status_t *out)
 {
   if (out == NULL) return;
+  if (g_ota_mutex_inited) osal_mutex_lock(&g_ota_mutex);
   out->state = g_ota_state;
   out->progress_percent = g_ota_progress;
   out->received_size = g_ota_received;
   out->total_size = g_ota_total;
+  if (g_ota_mutex_inited) osal_mutex_unlock(&g_ota_mutex);
 }
 
 /* ---------- TCP 接收与 UPG 写入 ---------- */
@@ -224,6 +242,7 @@ static int ota_tcp_server_task(void *arg)
 
   /* 1. 创建监听 socket */
   listen_fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
+  g_tcp_listen_fd = listen_fd;   /* 同步到全局，供 cancel 使用 */
   if (listen_fd < 0) {
     printf("[OTA] 创建 socket 失败\r\n");
     goto cleanup;
@@ -255,6 +274,7 @@ static int ota_tcp_server_task(void *arg)
   lwip_setsockopt(listen_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
   conn_fd = lwip_accept(listen_fd, (struct sockaddr *)&cli_addr, &cli_len);
+  g_tcp_conn_fd = conn_fd;       /* 同步到全局，供 cancel 使用 */
   if (conn_fd < 0) {
     printf("[OTA] 接受连接超时或失败\r\n");
     goto cleanup;

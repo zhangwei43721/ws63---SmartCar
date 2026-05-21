@@ -11,7 +11,6 @@ typedef enum {
   CAR_TRACE_STATUS,              /* 循迹模式：根据红外传感器进行黑线跟踪 */
   CAR_OBSTACLE_AVOIDANCE_STATUS, /* 避障模式：根据超声波传感器自动避障 */
   CAR_WIFI_CONTROL_STATUS,       /* WiFi遥控模式：通过UDP/WiFi接收控制命令 */
-  CAR_BT_CONTROL_STATUS /* 蓝牙遥控模式（未实现）：通过BLE蓝牙接收控制命令 */
 } CarStatus;
 
 /**
@@ -23,10 +22,6 @@ typedef enum {
   WIFI_STATUS_CONNECTED,        /* 已连接 */
   WIFI_STATUS_AP_MODE           /* 热点模式（预留） */
 } WifiConnectStatus;
-
-// 转向方向常量
-#define CAR_TURN_LEFT 0
-#define CAR_TURN_RIGHT 1
 
 /**
  * @brief 机器人实时状态结构体

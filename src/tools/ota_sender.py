@@ -12,10 +12,36 @@ WS63 智能小车局域网 OTA 固件推送工具
     (type=0xFF, mac[6], name[16])。本脚本监听该端口自动定位小车 IP。
 """
 
+import signal
 import socket
 import struct
 import sys
 import time
+
+g_target_ip = None  # 全局变量，供信号处理使用
+
+def cancel_ota(ip: str):
+    """发送 OTA 取消命令"""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(1.0)
+    try:
+        pkt = bytes([0x05, 0x02, 0x00, 0x00, 0x00])
+        sock.sendto(pkt, (ip, UDP_PORT))
+        print(f"[UDP] 已发送 OTA 取消命令到 {ip}")
+    except Exception as e:
+        print(f"[UDP] 发送取消命令失败: {e}")
+    finally:
+        sock.close()
+
+def signal_handler(sig, frame):
+    """Ctrl-C 信号处理：优雅取消 OTA"""
+    global g_target_ip
+    if g_target_ip:
+        print("\n[INFO] 检测到中断，正在取消 OTA...")
+        cancel_ota(g_target_ip)
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
 
 UDP_PORT = 8888           # OTA 触发端口
 UDP_BROADCAST_PORT = 8889 # 小车发现广播端口
@@ -188,6 +214,7 @@ def parse_args():
 
 
 def main():
+    global g_target_ip
     device_ip, firmware_path = parse_args()
 
     print(f"=" * 50)
@@ -202,6 +229,8 @@ def main():
             print("[ERR] 未发现小车，请确认小车已开机并与本机处于同一局域网")
             sys.exit(1)
         device_ip = result[0]
+
+    g_target_ip = device_ip  # 设置全局变量，供信号处理使用
 
     if not udp_trigger_ota(device_ip):
         sys.exit(1)

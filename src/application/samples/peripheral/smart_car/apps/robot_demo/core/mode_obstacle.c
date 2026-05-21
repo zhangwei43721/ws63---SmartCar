@@ -47,7 +47,7 @@ static volatile bool g_obst_running = false;
 
 static void obst_push(int8_t l, int8_t r)
 {
-    motor_executor_push_cmd(l, r, MOTOR_SRC_AUTO);
+    motor_executor_push_cmd(l, r);
 }
 
 static void obst_transition(obstacle_state_t new_state)
@@ -143,15 +143,16 @@ static int obstacle_task_entry(void *arg)
         obstacle_tick_once();
     }
 
-    motor_executor_push_cmd(0, 0, MOTOR_SRC_AUTO);
+    motor_executor_push_cmd(0, 0);
     printf("[Obstacle] 避障任务退出\r\n");
+    g_obst_task = NULL;   /* 退出前自清句柄，供 exit 同步 */
     return 0;
 }
 
 void mode_obstacle_enter(void) {
     printf("进入智能避障模式\r\n");
     obst_transition(OBST_STATE_FORWARD);
-    motor_executor_push_cmd(0, 0, MOTOR_SRC_AUTO);
+    motor_executor_push_cmd(0, 0);
 
     if (!g_event_inited) {
         if (osal_event_init(&g_obst_event) == OSAL_SUCCESS) {
@@ -174,18 +175,20 @@ void mode_obstacle_enter(void) {
     osal_kthread_unlock();
 }
 
-void mode_obstacle_tick(void) {
-    // 任务化后无需主循环驱动
-}
-
 void mode_obstacle_exit(void) {
     if (g_obst_task != NULL) {
         g_obst_running = false;
         if (g_event_inited) {
             osal_event_write(&g_obst_event, OBST_EVENT_STOP);
         }
-        g_obst_task = NULL;
+        /* 等待任务自行退出（最多 200ms），避免 enter 时跳过创建 */
+        int wait = 0;
+        while (g_obst_task != NULL && wait < 20) {
+            osal_msleep(10);
+            wait++;
+        }
+        g_obst_task = NULL;  /* 兜底 */
     }
-    motor_executor_push_cmd(0, 0, MOTOR_SRC_AUTO);
+    motor_executor_push_cmd(0, 0);
     obst_transition(OBST_STATE_FORWARD);
 }

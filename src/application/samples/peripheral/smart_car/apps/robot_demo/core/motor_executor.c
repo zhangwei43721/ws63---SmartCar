@@ -59,9 +59,8 @@ void motor_executor_init(void)
     }
 }
 
-bool motor_executor_push_cmd(int8_t left, int8_t right, uint32_t source)
+bool motor_executor_push_cmd(int8_t left, int8_t right)
 {
-    (void)source;
     if (g_motor_queue == 0) return false;
 
     if (left < -100) left = -100;
@@ -69,7 +68,7 @@ bool motor_executor_push_cmd(int8_t left, int8_t right, uint32_t source)
     if (right < -100) right = -100;
     if (right > 100) right = 100;
 
-    MotorCmdMsg msg = {left, right, source};
+    MotorCmdMsg msg = {left, right};
 
     unsigned int msg_num = osal_msg_queue_get_msg_num(g_motor_queue);
     if (msg_num > 0) {

@@ -54,16 +54,15 @@ static bool g_state_mutex_inited = false;
  * 400ms 无新命令时 Motor Executor 自动停车，无需主循环逻辑。 */
 static void mode_remote_enter(void) {
   printf("Robot: 遥控模式\r\n");
-  motor_executor_push_cmd(0, 0, MOTOR_SRC_REMOTE);
+  motor_executor_push_cmd(0, 0);
 }
-static void mode_remote_tick(void) {}
 static void mode_remote_exit(void) {
-  motor_executor_push_cmd(0, 0, MOTOR_SRC_REMOTE);
+  motor_executor_push_cmd(0, 0);
 }
 
 static void mode_standby_enter(void) {
   // 切换到待机模式时，立即停止小车
-  CAR_STOP();
+  motor_executor_push_cmd(0, 0);
 }
 
 /**
@@ -100,11 +99,11 @@ static RobotModeOps g_mode_ops[] = {
     // CAR_STOP_STATUS (0)
     {mode_standby_enter, mode_standby_tick, mode_standby_exit},
     // CAR_TRACE_STATUS (1)
-    {mode_trace_enter, mode_trace_tick, mode_trace_exit},
+    {mode_trace_enter, NULL, mode_trace_exit},
     // CAR_OBSTACLE_AVOIDANCE_STATUS (2)
-    {mode_obstacle_enter, mode_obstacle_tick, mode_obstacle_exit},
+    {mode_obstacle_enter, NULL, mode_obstacle_exit},
     // CAR_WIFI_CONTROL_STATUS (3)
-    {mode_remote_enter, mode_remote_tick, mode_remote_exit}};
+    {mode_remote_enter, NULL, mode_remote_exit}};
 
 /**
  * @brief 初始化状态互斥锁，保护全局机器人状态的并发访问
@@ -173,6 +172,10 @@ CarStatus robot_mgr_get_status(void) { return g_status; }
  */
 static void robot_mgr_apply_status(CarStatus status) {
   if (g_status == status) return;
+
+  const char* mode_names[] = {"停止", "循迹", "避障", "遥控"};
+  printf("模式切换：%s -> %s\r\n", mode_names[g_status], mode_names[status]);
+
   g_status = status;
   MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
   g_robot_state.mode = status;
@@ -189,6 +192,7 @@ bool robot_mgr_post_mode(CarStatus status, uint32_t source) {
 
   ModeCmdMsg msg = { .status = status, .source = source };
 
+  uint32_t irq_sts = osal_irq_lock();
   if (osal_msg_queue_get_msg_num(g_mode_queue) >= MODE_CMD_QUEUE_DEPTH) {
     ModeCmdMsg dummy;
     unsigned int sz = sizeof(dummy);
@@ -197,6 +201,8 @@ bool robot_mgr_post_mode(CarStatus status, uint32_t source) {
   }
   int ret = osal_msg_queue_write_copy(g_mode_queue, &msg, sizeof(msg),
                                       OSAL_MSGQ_NO_WAIT);
+  osal_irq_restore(irq_sts);
+
   return (ret == OSAL_SUCCESS);
 }
 
@@ -216,21 +222,19 @@ void robot_mgr_tick(void) {
   }
 
   CarStatus current_status = g_status;  // 当前状态
-  CarStatus mode_count =
-      (CarStatus)(sizeof(g_mode_ops) / sizeof(g_mode_ops[0]));  // 模式数量
+  size_t mode_count = sizeof(g_mode_ops) / sizeof(g_mode_ops[0]);
+
+  _Static_assert(CAR_WIFI_CONTROL_STATUS + 1 == 4, "CarStatus enum mismatch");
 
   // 1. 处理状态切换
   if (current_status != g_last_status) {
-    // 先停车，确保模式切换时电机安全
-    motor_executor_push_cmd(0, 0, MOTOR_SRC_AUTO);
-
-    // 退出旧模式
-    if (g_last_status >= CAR_STOP_STATUS && g_last_status < mode_count) {
+    // 退出旧模式（exit 中自行负责停车）
+    if (g_last_status >= CAR_STOP_STATUS && (size_t)g_last_status < mode_count) {
       if (g_mode_ops[g_last_status].exit) g_mode_ops[g_last_status].exit();
     }
 
     // 进入新模式
-    if (current_status >= CAR_STOP_STATUS && current_status < mode_count) {
+    if (current_status >= CAR_STOP_STATUS && (size_t)current_status < mode_count) {
       if (g_mode_ops[current_status].enter) g_mode_ops[current_status].enter();
     }
 
@@ -238,7 +242,7 @@ void robot_mgr_tick(void) {
   }
 
   // 2. 执行当前模式逻辑
-  if (current_status >= CAR_STOP_STATUS && current_status < mode_count) {
+  if (current_status >= CAR_STOP_STATUS && (size_t)current_status < mode_count) {
     if (g_mode_ops[current_status].tick) g_mode_ops[current_status].tick();
   }
 }

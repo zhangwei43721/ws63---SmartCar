@@ -48,12 +48,6 @@ typedef enum {
 int bsp_wifi_connect_ap(const char* ssid, const char* password);
 
 /**
- * @brief 断开WiFi连接
- * @return 0成功，-1失败
- */
-int bsp_wifi_disconnect(void);
-
-/**
  * @brief 获取WiFi连接状态
  * @return WiFi状态
  */
@@ -66,19 +60,6 @@ bsp_wifi_status_t bsp_wifi_get_status(void);
  * @return 0成功，-1失败
  */
 int bsp_wifi_get_ip(char* ip_str, uint32_t len);
-
-/**
- * @brief 注册WiFi事件回调（已废弃，事件在初始化时自动注册）
- * @param handler 事件处理函数（未使用）
- * @return 0成功
- */
-int bsp_wifi_register_event_handler(void* handler);
-
-/**
- * @brief 使用默认配置连接WiFi
- * @return 0成功，-1失败
- */
-int bsp_wifi_connect_default(void);
 
 /**
  * @brief 获取当前WiFi工作模式
