@@ -1,6 +1,6 @@
 /**
- * UDP Control App for Smart Car (Modified)
- * 修复了摇杆混控逻辑和模式切换协议，删除OTA功能
+ * UDP Control App for Smart Car
+ * 支持：遥控、循迹、避障、PID 调试、WiFi 配置、OTA 固件升级
  */
 
 // --- 配置管理 ---
@@ -26,6 +26,15 @@ const appState = {
   // 上次发送的控制值（用于检测变化）
   lastSent: { motor1: 0, motor2: 0 },
   lastControlSendAt: 0,
+  // OTA 状态
+  ota: {
+    active: false,
+    deviceIP: null,
+    file: null,
+    totalSize: 0,
+    sentSize: 0,
+    chunkSize: 16384,
+  },
 };
 
 // --- 辅助函数：获取当前选中设备的 IP ---
@@ -68,6 +77,10 @@ function bindHoldButton(el, onPress) {
 
   const press = (evt) => {
     evt.preventDefault();
+    if (!appState.connected) {
+      showConfigConnect();
+      return;
+    }
     if (appState.mode !== "remote") return;
     onPress();
   };
@@ -95,7 +108,7 @@ function sendPid(type) {
   const deviceIP = getSelectedDeviceIP();
   if (!deviceIP) {
     console.warn("[Frontend] sendPid aborted: No device selected");
-    alert("请先选择小车！");
+    showConfigConnect();
     return;
   }
 
@@ -129,7 +142,7 @@ function sendPid(type) {
 function savePid() {
   const deviceIP = getSelectedDeviceIP();
   if (!deviceIP) {
-    alert("请先选择小车！");
+    showConfigConnect();
     return;
   }
   if (socket && socket.readyState === WebSocket.OPEN) {
@@ -280,9 +293,13 @@ function selectDevice(mac) {
   document.getElementById("discoveryStatus").textContent =
     `已选择: ${device.name} (${device.ip})`;
 
-  // 启用控制界面
+  // 启用控制界面（只有用户主动点击连接后才算真正在线）
   setConnectionStatus(true);
   appState.connected = true;
+
+  // 关闭设置弹窗
+  const m = document.getElementById("configModal");
+  if (m) m.style.display = "none";
 
   console.log(`已选择设备: ${device.name} (${mac})`);
 }
@@ -387,13 +404,13 @@ function handleProxyMessage(msg) {
   // 调试：输出所有消息类型
   console.log(`[前端] 收到消息: type=${msg.type}`, msg);
 
-  // 处理设备发现
+  // 处理设备发现（广播包，仅表示小车在线，不代表已建立控制连接）
   if (msg.type === "deviceDiscovered") {
     const { ip, mac, name, deviceId } = msg.device;
     console.log(`[前端] 发现设备详情:`, { ip, mac, name, deviceId });
 
-    // 如果 MAC 为空，说明是旧格式广播包，使用 IP 作为 key
     const deviceKey = mac || ip;
+    const isNew = !appState.devices.has(deviceKey);
     appState.devices.set(deviceKey, {
       name: name || `Robot_${ip.split('.').pop()}`,
       ip: ip,
@@ -403,17 +420,14 @@ function handleProxyMessage(msg) {
     });
 
     console.log(`发现设备: ${deviceId || ip}`);
-
-    // 自动选中上次连接的设备
-    if (mac && mac === appState.lastConnectedMAC && !appState.selectedMAC) {
-      selectDevice(mac);
-    }
-
-    // 更新设备列表 UI
     updateDeviceListUI();
 
-    appState.connected = true;
-    setConnectionStatus(true);
+    // 如果当前没有选择任何设备，自动弹出设置窗口让用户手动连接
+    if (!appState.selectedMAC) {
+      showConfigConnect();
+      const ds = document.getElementById("discoveryStatus");
+      if (ds) ds.textContent = isNew ? "发现小车，请点击连接" : "发现小车更新";
+    }
   }
   // 处理设备丢失
   else if (msg.type === "deviceLost") {
@@ -470,6 +484,8 @@ function handleProxyMessage(msg) {
 
       renderVisuals();
     }
+  } else if (msg.type === "otaStatus") {
+    handleOtaStatus(msg);
   } else if (msg.type === "wifiConfigResponse") {
     // WiFi 配置响应需要发送到当前选中设备
     let deviceMAC = null;
@@ -535,17 +551,15 @@ function updateModeButtons(mode) {
 }
 
 function changeMode(modeStr) {
-  console.log(`请求切换模式: ${modeStr}`);
+  if (!appState.connected) {
+    showConfigConnect();
+    return;
+  }
 
-  // 立即更新UI，不等回包，提升体验
+  console.log(`请求切换模式: ${modeStr}`);
   appState.mode = modeStr;
   updateModeButtons(modeStr);
-
-  if (appState.connected) {
-    sendModeChange(modeStr);
-  } else {
-    console.warn("设备未连接，模式切换指令可能无法发送");
-  }
+  sendModeChange(modeStr);
 }
 
 // --- 视觉渲染 ---
@@ -596,15 +610,16 @@ function updateLocalAnimations() {
 // --- 工具函数 ---
 
 function setConnectionStatus(isOnline) {
-  const el = document.getElementById("statusConn");
+  const dot = document.getElementById("statusConn");
+  const text = document.getElementById("statusText");
   if (isOnline) {
-    el.classList.add("connected");
-    el.classList.remove("disconnected");
-    el.textContent = "在线";
+    dot.classList.add("connected");
+    dot.classList.remove("disconnected");
+    if (text) text.textContent = "在线";
   } else {
-    el.classList.remove("connected");
-    el.classList.add("disconnected");
-    el.textContent = "离线";
+    dot.classList.remove("connected");
+    dot.classList.add("disconnected");
+    if (text) text.textContent = "离线";
   }
 }
 
@@ -624,7 +639,7 @@ function saveWifiConfig() {
 
   const deviceIP = getSelectedDeviceIP();
   if (!deviceIP) {
-    alert("请先选择小车");
+    showConfigConnect();
     return;
   }
 
@@ -652,7 +667,7 @@ function connectWifi() {
 
   const deviceIP = getSelectedDeviceIP();
   if (!deviceIP) {
-    alert("请先选择小车");
+    showConfigConnect();
     return;
   }
 
@@ -679,17 +694,186 @@ function saveConfig() {
   toggleConfig();
 }
 
+function switchTab(tabId) {
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tabId);
+  });
+  document.querySelectorAll(".tab-page").forEach((page) => {
+    page.style.display = page.id === `tab-${tabId}` ? "block" : "none";
+  });
+}
+
+function showConfigConnect() {
+  switchTab("connect");
+  const m = document.getElementById("configModal");
+  if (m) m.style.display = "flex";
+}
+
+// --- OTA 功能 ---
+
+function showOtaModal(show) {
+  const modal = document.getElementById("otaModal");
+  if (modal) modal.style.display = show ? "flex" : "none";
+}
+
+function updateOtaUI(state, progress, message) {
+  const bar = document.getElementById("otaProgressBar");
+  const text = document.getElementById("otaStatusText");
+  const meta = document.getElementById("otaMeta");
+  const cancelBtn = document.getElementById("otaCancelBtn");
+
+  if (bar) bar.style.width = `${progress}%`;
+  if (text) text.textContent = message || state;
+
+  const stateLabels = {
+    triggering: "触发中",
+    ready: "准备就绪",
+    transferring: "传输中",
+    verifying: "校验中",
+    done: "完成",
+    error: "失败",
+    cancelled: "已取消",
+  };
+
+  if (meta) meta.textContent = `${stateLabels[state] || state} · ${progress}%`;
+
+  if (cancelBtn) {
+    cancelBtn.disabled = state === "done" || state === "verifying";
+    cancelBtn.style.opacity = cancelBtn.disabled ? "0.5" : "1";
+  }
+}
+
+function onOtaFileSelected(input) {
+  const file = input.files?.[0];
+  const nameEl = document.getElementById("otaFileName");
+  const labelEl = document.getElementById("otaFileLabel");
+
+  if (file && nameEl) {
+    nameEl.textContent = file.name;
+    nameEl.style.color = "var(--text-main)";
+  } else if (nameEl) {
+    nameEl.textContent = "未选择文件";
+    nameEl.style.color = "var(--text-sub)";
+  }
+
+  if (labelEl) {
+    if (file) labelEl.classList.add("has-file");
+    else labelEl.classList.remove("has-file");
+  }
+}
+
+async function startOta() {
+  const fileInput = document.getElementById("otaFile");
+  const file = fileInput?.files?.[0];
+  if (!file) {
+    alert("请先选择固件文件");
+    return;
+  }
+
+  const deviceIP = getSelectedDeviceIP();
+  if (!deviceIP) {
+    showConfigConnect();
+    return;
+  }
+
+  appState.ota = {
+    active: true,
+    deviceIP,
+    file,
+    totalSize: file.size,
+    sentSize: 0,
+    chunkSize: 16384,
+  };
+
+  showOtaModal(true);
+  updateOtaUI("triggering", 0, "正在触发 OTA...");
+
+  const startBtn = document.getElementById("otaStartBtn");
+  if (startBtn) startBtn.disabled = true;
+
+  socket.send(JSON.stringify({
+    type: "otaTrigger",
+    deviceIP,
+    totalSize: file.size,
+  }));
+}
+
+function sendNextOtaChunk() {
+  const state = appState.ota;
+  if (!state.active || state.sentSize >= state.totalSize) return;
+
+  const end = Math.min(state.sentSize + state.chunkSize, state.totalSize);
+  const slice = state.file.slice(state.sentSize, end);
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const arrayBuffer = e.target.result;
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: "otaChunk",
+        deviceIP: state.deviceIP,
+        data: base64,
+      }));
+    }
+
+    state.sentSize = end;
+  };
+  reader.readAsArrayBuffer(slice);
+}
+
+function handleOtaStatus(msg) {
+  const { state, progress, message } = msg;
+  updateOtaUI(state, progress, message);
+
+  if (state === "ready") {
+    sendNextOtaChunk();
+  } else if (state === "transferring") {
+    if (appState.ota.sentSize < appState.ota.totalSize) {
+      sendNextOtaChunk();
+    }
+  } else if (state === "done" || state === "error" || state === "cancelled") {
+    appState.ota.active = false;
+    const startBtn = document.getElementById("otaStartBtn");
+    if (startBtn) startBtn.disabled = false;
+
+    if (state === "done" || state === "cancelled") {
+      setTimeout(() => showOtaModal(false), 2000);
+    }
+  }
+}
+
+function cancelOta() {
+  const state = appState.ota;
+  if (!state.active) {
+    showOtaModal(false);
+    return;
+  }
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: "otaCancel",
+      deviceIP: state.deviceIP,
+    }));
+  }
+
+  appState.ota.active = false;
+  updateOtaUI("cancelled", 0, "正在取消...");
+  const startBtn = document.getElementById("otaStartBtn");
+  if (startBtn) startBtn.disabled = false;
+  setTimeout(() => showOtaModal(false), 1500);
+}
+
 // --- 初始化 ---
 window.onload = function () {
   connectToProxy();
 
-  // 如果没有保存的设备，自动打开设置弹窗进行设备发现
-  if (!appState.lastConnectedMAC) {
-    setTimeout(() => {
-      const m = document.getElementById("configModal");
-      if (m) m.style.display = "flex";
-    }, 500);
-  }
 
   // 默认UI状态
   updateModeButtons("standby");

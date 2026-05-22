@@ -1,5 +1,6 @@
 const WebSocket = require("ws");
 const dgram = require("dgram");
+const net = require("net");
 
 // --- 严格的配置常量 ---
 const CONFIG = {
@@ -15,6 +16,14 @@ const devices = new Map(); // Key: IP, Value: { lastSeen, mac, name, status }
 const activeIntervals = new Map(); // 存储快速回复定时器
 const udpSocket = dgram.createSocket("udp4");
 const wss = new WebSocket.Server({ port: CONFIG.WS_PORT });
+
+// --- OTA 配置 ---
+const OTA_CONFIG = {
+  TCP_PORT: 8890,
+  CHUNK_SIZE: 32768,
+};
+
+const otaSessions = new Map(); // deviceIP -> { state, totalSize, receivedSize, progress, tcpSocket }
 
 // --- 工具函数 ---
 
@@ -43,6 +52,147 @@ const buildPacket = (type, cmd, m1 = 0, m2 = 0, extra = 0) => {
   buf[4] = extra;
   return buf;
 };
+
+// --- OTA 工具函数 ---
+
+const broadcastOtaStatus = (deviceIP, state, progress, message) => {
+  broadcastToFrontend({
+    type: "otaStatus",
+    deviceIP,
+    state,
+    progress,
+    message,
+  });
+};
+
+function handleOtaUdpResponse(ip, cmd) {
+  const session = otaSessions.get(ip);
+  if (!session || session.state !== "triggering") return;
+
+  if (cmd === 0x00) {
+    session.state = "connecting";
+    connectOtaTcp(ip, session);
+  } else if (cmd === 0x01) {
+    session.state = "error";
+    broadcastOtaStatus(ip, "error", 0, "设备正忙，正在进行 OTA");
+    otaSessions.delete(ip);
+  } else {
+    session.state = "error";
+    broadcastOtaStatus(ip, "error", 0, `设备返回未知状态: ${cmd}`);
+    otaSessions.delete(ip);
+  }
+}
+
+function connectOtaTcp(ip, session) {
+  const tcpSock = new net.Socket();
+  session.tcpSocket = tcpSock;
+  tcpSock.setTimeout(30000);
+
+  tcpSock.connect(OTA_CONFIG.TCP_PORT, ip, () => {
+    const header = Buffer.alloc(8);
+    header.write("OTAx", 0, 4, "ascii");
+    header.writeUInt32BE(session.totalSize, 4);
+    tcpSock.write(header);
+    session.state = "header_sent";
+  });
+
+  tcpSock.on("data", (data) => {
+    if (session.state === "header_sent" && data.length >= 1 && data[0] === 0x00) {
+      session.state = "ready";
+      broadcastOtaStatus(ip, "ready", 0, "TCP 已就绪，等待固件数据");
+    } else if (session.state === "verifying" && data.length >= 1) {
+      if (data[0] === 0x00) {
+        session.state = "done";
+        broadcastOtaStatus(ip, "done", 100, "OTA 成功，设备即将重启");
+      } else {
+        session.state = "error";
+        broadcastOtaStatus(ip, "error", 100, `校验失败: ${data[0]}`);
+      }
+      tcpSock.end();
+      otaSessions.delete(ip);
+    }
+  });
+
+  tcpSock.on("error", (err) => {
+    session.state = "error";
+    broadcastOtaStatus(ip, "error", session.progress || 0, `TCP 错误: ${err.message}`);
+    otaSessions.delete(ip);
+  });
+
+  tcpSock.on("timeout", () => {
+    tcpSock.destroy();
+    if (otaSessions.has(ip)) {
+      session.state = "error";
+      broadcastOtaStatus(ip, "error", session.progress || 0, "TCP 连接超时");
+      otaSessions.delete(ip);
+    }
+  });
+
+  tcpSock.on("close", () => {
+    if (otaSessions.has(ip) && session.state !== "done" && session.state !== "error") {
+      broadcastOtaStatus(ip, "error", session.progress || 0, "TCP 连接断开");
+      otaSessions.delete(ip);
+    }
+  });
+}
+
+function handleOtaTrigger(deviceIP, totalSize) {
+  const existing = otaSessions.get(deviceIP);
+  if (existing && existing.state !== "done" && existing.state !== "error" && existing.state !== "cancelled") {
+    broadcastOtaStatus(deviceIP, "error", 0, "该设备已有 OTA 在进行中");
+    return;
+  }
+
+  const session = {
+    state: "triggering",
+    totalSize,
+    receivedSize: 0,
+    tcpSocket: null,
+    progress: 0,
+  };
+  otaSessions.set(deviceIP, session);
+
+  broadcastOtaStatus(deviceIP, "triggering", 0, "正在触发 OTA...");
+  sendToCar(buildPacket(0x05, 0x01, 0, 0, 0), deviceIP);
+}
+
+function handleOtaChunk(deviceIP, chunkBuf) {
+  const session = otaSessions.get(deviceIP);
+  if (!session) {
+    broadcastOtaStatus(deviceIP, "error", 0, "无活跃的 OTA 会话");
+    return;
+  }
+  if (session.state !== "ready" && session.state !== "transferring") {
+    broadcastOtaStatus(deviceIP, "error", 0, `OTA 状态错误: ${session.state}`);
+    return;
+  }
+
+  session.state = "transferring";
+  session.tcpSocket.write(chunkBuf);
+  session.receivedSize += chunkBuf.length;
+  session.progress = Math.round((session.receivedSize / session.totalSize) * 100);
+
+  broadcastOtaStatus(deviceIP, "transferring", session.progress,
+    `传输中 ${session.receivedSize}/${session.totalSize} bytes`);
+
+  if (session.receivedSize >= session.totalSize) {
+    session.state = "verifying";
+    broadcastOtaStatus(deviceIP, "verifying", 100, "固件发送完毕，等待设备校验...");
+    session.tcpSocket.setTimeout(60000);
+  }
+}
+
+function handleOtaCancel(deviceIP) {
+  const session = otaSessions.get(deviceIP);
+  if (session?.tcpSocket) {
+    session.tcpSocket.destroy();
+  }
+  if (session) {
+    otaSessions.delete(deviceIP);
+  }
+  sendToCar(buildPacket(0x05, 0x02, 0, 0, 0), deviceIP);
+  broadcastOtaStatus(deviceIP, "cancelled", 0, "OTA 已取消");
+}
 
 // --- UDP 核心逻辑 ---
 
@@ -116,7 +266,13 @@ udpSocket.on("message", (msg, rinfo) => {
     return;
   }
 
-  // 2. 处理普通业务包 (心跳0xFE 或 状态0x02)
+  // 2. 处理 OTA UDP 响应 (0x05)
+  if (type === 0x05) {
+    handleOtaUdpResponse(ip, msg[1]);
+    return;
+  }
+
+  // 3. 处理普通业务包 (心跳0xFE 或 状态0x02)
   if (dev) {
     dev.lastSeen = now; // 刷新保活时间
 
@@ -239,6 +395,19 @@ wss.on("connection", (ws) => {
           buf[1] = 0;
           buf[2] = 0;
           sendToCar(buf, ip);
+          break;
+        }
+        case "otaTrigger": { // OTA 触发
+          handleOtaTrigger(ip, data.totalSize);
+          break;
+        }
+        case "otaChunk": { // OTA 固件分片
+          const chunk = Buffer.from(data.data, "base64");
+          handleOtaChunk(ip, chunk);
+          break;
+        }
+        case "otaCancel": { // OTA 取消
+          handleOtaCancel(ip);
           break;
         }
       }
