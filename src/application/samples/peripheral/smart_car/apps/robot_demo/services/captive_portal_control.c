@@ -12,7 +12,6 @@
 
 #include "../core/motor_executor.h"
 #include "../robot_common.h"
-#include "captive_portal_service.h"
 #include "lwip/sockets.h"
 
 /* ---------- 内嵌控制页面 ---------- */
@@ -228,19 +227,16 @@ static void handle_api_move(int client_fd, const char *query)
 }
 
 /**
- * @brief GET /api/reset -> 退出控制模式，恢复配网模式
+ * @brief GET /api/reset -> 返回成功响应
  */
 static void handle_api_reset(int client_fd)
 {
-    captive_portal_set_mode(PORTAL_MODE_CONFIG);
-    printf("[Portal] HTTP 切换回配网模式\r\n");
-
     char json[128];
     (void)snprintf(json, sizeof(json),
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: application/json\r\n"
         "Connection: close\r\n\r\n"
-        "{\"ok\":true,\"mode\":\"config\"}\r\n");
+        "{\"ok\":true}\r\n");
 
     send_response_and_close(client_fd, json);
 }
@@ -251,7 +247,6 @@ bool captive_portal_control_handle(int client_fd, bool is_get,
                                    const char *path, const char *query)
 {
     if (is_get && strcmp(path, "/control") == 0) {
-        captive_portal_set_mode(PORTAL_MODE_CONTROL);
         send_response_and_close(client_fd, s_html_control);
         return true;
     }

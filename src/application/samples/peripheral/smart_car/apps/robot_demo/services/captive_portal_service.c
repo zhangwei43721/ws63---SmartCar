@@ -18,7 +18,6 @@
 #include "soc_osal.h"
 #include "storage_service.h"
 #include "captive_portal_control.h"
-#include "wifi_device.h"
 
 /* ---------- 配置常量 ---------- */
 #define CAPTIVE_PORTAL_HTTP_PORT     80
@@ -42,7 +41,6 @@ typedef enum {
 
 /* ---------- 全局状态 ---------- */
 static volatile portal_status_t g_portal_status = PORTAL_STATUS_IDLE;
-static volatile portal_mode_t   g_portal_mode   = PORTAL_MODE_CONFIG;
 static osal_task *g_portal_task = NULL;
 static bool      g_task_should_exit = false;
 static char      g_ap_ip_str[BUF_IP] = "0.0.0.0";
@@ -88,7 +86,7 @@ static const char s_html_page[] =
     "</style></head><body>"
     "<div class=\"card\">"
     "<h1>智能小车配网</h1>"
-    "<p class=\"sub\">连接你的家庭WiFi，让小车接入局域网</p>"
+    "<p class=\"sub\">连接你的WiFi，让小车接入局域网</p>"
     "<form method=\"POST\" action=\"/config\">"
     "<div class=\"field\">"
     "<label>WiFi 名称 (SSID)</label>"
@@ -218,11 +216,6 @@ static const char s_html_busy[] =
     "</div></body></html>";
 
 /* 302 重定向响应（动态 IP，在 handle_http_client 中生成） */
-
-/* 204 快速拒绝响应（控制模式下屏蔽 Captive Portal 检测） */
-static const char s_http_204[] =
-    "HTTP/1.1 204 No Content\r\n"
-    "Connection: close\r\n\r\n";
 
 /* ---------- 内部函数 ---------- */
 
@@ -538,37 +531,23 @@ static void handle_http_client(int client_fd)
 
     /* 如果是通过 DNS 劫持过来的（Host 不是小车 IP） */
     if (!is_direct_ip) {
-        /* 控制模式下不劫持，直接返回 204，减少网络负载 */
-        if (g_portal_mode == PORTAL_MODE_CONTROL) {
-            send_response_and_close(client_fd, s_http_204);
-        } else {
-            /* 配网模式下 302 强制跳转到小车真实 IP */
-            char redirect_resp[256];
-            (void)snprintf(redirect_resp, sizeof(redirect_resp),
-                "HTTP/1.1 302 Found\r\n"
-                "Location: http://%s/\r\n"
-                "Content-Length: 0\r\n"
-                "Connection: close\r\n\r\n",
-                g_ap_ip_str);
-            send_response_and_close(client_fd, redirect_resp);
-        }
+        /* 302 强制跳转到小车真实 IP */
+        char redirect_resp[256];
+        (void)snprintf(redirect_resp, sizeof(redirect_resp),
+            "HTTP/1.1 302 Found\r\n"
+            "Location: http://%s/\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n\r\n",
+            g_ap_ip_str);
+        send_response_and_close(client_fd, redirect_resp);
         return;
     }
     /* ======================================== */
 
-    /* 控制模式下：只处理控制相关路径，其余快速返回 204 */
-    if (g_portal_mode == PORTAL_MODE_CONTROL) {
-        /* 控制 API 和 /control 页面 */
-        if (captive_portal_control_handle(client_fd, is_get, path, query)) {
-            return;
-        }
-
-        /* 其他路径全部 204 */
-        send_response_and_close(client_fd, s_http_204);
+    /* 控制相关路径 (/control, /api/...) */
+    if (captive_portal_control_handle(client_fd, is_get, path, query)) {
         return;
     }
-
-    /* 配网模式：原有的全部逻辑 */
 
     /* GET /status -> 返回 JSON */
     if (is_get && strcmp(path, "/status") == 0) {
@@ -906,20 +885,6 @@ static int captive_portal_task(void *arg)
             }
 
             if (server_running && g_http_fd >= 0) {
-                /* 根据当前模式动态启停 DNS */
-                if (g_portal_mode == PORTAL_MODE_CONFIG) {
-                    if (g_dns_fd < 0) {
-                        g_dns_fd = dns_server_start();
-                        printf("[Portal] DNS 劫持已启动\r\n");
-                    }
-                } else {
-                    if (g_dns_fd >= 0) {
-                        dns_server_stop(g_dns_fd);
-                        g_dns_fd = -1;
-                        printf("[Portal] DNS 劫持已关闭（控制模式）\r\n");
-                    }
-                }
-
                 fd_set readset;
                 FD_ZERO(&readset);
                 FD_SET(g_http_fd, &readset);
@@ -1019,22 +984,3 @@ const char* captive_portal_service_get_status_text(void)
     return g_status_text;
 }
 
-void captive_portal_set_mode(portal_mode_t mode)
-{
-    if (g_portal_mode == mode) return;
-
-    if (mode == PORTAL_MODE_CONTROL) {
-        /* 进入控制模式：关闭 STA 节省资源 */
-        wifi_sta_disable();
-    } else {
-        /* 返回配网模式：打开 STA 支持扫描 */
-        wifi_sta_enable();
-    }
-
-    g_portal_mode = mode;
-}
-
-portal_mode_t captive_portal_get_mode(void)
-{
-    return g_portal_mode;
-}
