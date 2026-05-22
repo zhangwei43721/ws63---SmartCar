@@ -17,7 +17,8 @@ static int GetUtf8CharLength(const char* target) {
 /* Find index in the font array */
 static int FindFontIndex(const char* target, int len) {
   int i;
-  int count = 162;  // Based on the array size in FontDotMatrix16.c
+  int count = sizeof(g_font_dot_matrix_16_index) /
+              sizeof(g_font_dot_matrix_16_index[0]);
 
   for (i = 0; i < count; i++) {
     const char* idx_str = g_font_dot_matrix_16_index[i];
