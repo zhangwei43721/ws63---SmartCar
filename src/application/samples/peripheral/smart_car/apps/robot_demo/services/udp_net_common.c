@@ -23,6 +23,13 @@ bool g_udp_net_wifi_has_ip = false;
 char g_udp_net_ip[BUF_IP] = "0.0.0.0";
 static unsigned int g_wifi_last_retry = 0;
 
+/* STA 断线重试计数：连续失败 N 次后切回 AP */
+#define STA_RETRY_MAX 3
+static int g_sta_retry_count = 0;
+
+/* 模式变化检测：切换模式时重置重试计时 */
+static bsp_wifi_mode_t g_last_checked_mode = BSP_WIFI_MODE_STA;
+
 int g_udp_net_socket_fd = -1;
 bool g_udp_net_bound = false;
 
@@ -132,17 +139,28 @@ static int wifi_connect_from_nv(void) {
   return bsp_wifi_start_sta_with_timeout(s, p, 3000);
 }
 
-/* 维护 WiFi 连接状态（核心逻辑） */
+/* 维护 WiFi 连接状态：两种模式，来回切换 */
 void udp_net_common_wifi_ensure_connected(void) {
-  if (!g_wifi_inited) {
-    if (bsp_wifi_smart_init() != 0) return; /* 智能启动：STA失败自动切AP */
-    g_wifi_inited = true;
+  /* 模式变化检测：重置重试计时，避免切换后立即重连 */
+  bsp_wifi_mode_t curr_mode = bsp_wifi_get_mode();
+  if (curr_mode != g_last_checked_mode) {
     g_wifi_last_retry = 0;
+    g_sta_retry_count = 0;
+    g_last_checked_mode = curr_mode;
   }
 
-  /* AP模式：始终视为已连接，仅检查IP */
-  if (bsp_wifi_get_mode() == BSP_WIFI_MODE_AP) {
+  if (!g_wifi_inited) {
+    if (bsp_wifi_smart_init() != 0) return;
+    g_wifi_inited = true;
+    g_wifi_last_retry = 0;
+    g_sta_retry_count = 0;
+    return;
+  }
+
+  /* ---------- AP 模式 ---------- */
+  if (curr_mode == BSP_WIFI_MODE_AP) {
     g_udp_net_wifi_connected = true;
+    g_sta_retry_count = 0;
     if (!g_udp_net_wifi_has_ip &&
         bsp_wifi_get_ip(g_udp_net_ip, sizeof(g_udp_net_ip)) == 0) {
       g_udp_net_wifi_has_ip = true;
@@ -151,38 +169,51 @@ void udp_net_common_wifi_ensure_connected(void) {
     return;
   }
 
-  /* STA模式：断线重连逻辑 */
-  unsigned int now = (unsigned int)osal_get_jiffies();
-
-  /* 先检查实际 WiFi 状态，避免重复连接 */
+  /* ---------- STA 模式 ---------- */
   bsp_wifi_status_t status = bsp_wifi_get_status();
-  if (status == BSP_WIFI_STATUS_GOT_IP || status == BSP_WIFI_STATUS_CONNECTED) {
+
+  /* 1. 已就绪：有 IP 就完事 */
+  if (status == BSP_WIFI_STATUS_GOT_IP) {
     g_udp_net_wifi_connected = true;
-    if (status == BSP_WIFI_STATUS_GOT_IP) {
-      /* 只有成功获取到 IP 才标记 has_ip，避免刷新时显示 0.0.0.0 */
-      if (bsp_wifi_get_ip(g_udp_net_ip, sizeof(g_udp_net_ip)) == 0) {
-        g_udp_net_wifi_has_ip = true;
-      }
+    g_sta_retry_count = 0;
+    char new_ip[BUF_IP] = {0};
+    bsp_wifi_get_ip(new_ip, sizeof(new_ip));
+    if (!g_udp_net_wifi_has_ip || strcmp(g_udp_net_ip, new_ip) != 0) {
+      (void)strncpy_s(g_udp_net_ip, sizeof(g_udp_net_ip), new_ip,
+                      sizeof(g_udp_net_ip) - 1);
+      printf("udp_net: STA 就绪 IP=%s\r\n", g_udp_net_ip);
     }
+    g_udp_net_wifi_has_ip = true;
     return;
   }
 
-  if (!g_udp_net_wifi_connected) {
-    if (g_wifi_last_retry == 0 || (now - g_wifi_last_retry >= 5000)) {
-      g_wifi_last_retry = now;
-      if (wifi_connect_from_nv() == 0) g_udp_net_wifi_connected = true;
-    }
+  /* 2. 连接中或已关联但未获取IP：给DHCP留出时间，不重连 */
+  if (status == BSP_WIFI_STATUS_CONNECTING ||
+      status == BSP_WIFI_STATUS_CONNECTED) {
+    g_udp_net_wifi_connected = false;
+    g_udp_net_wifi_has_ip = false;
+    return;
   }
 
-  /* 更新状态标记 */
-  if (g_udp_net_wifi_connected) {
-    bsp_wifi_status_t status = bsp_wifi_get_status();
-    if (status == BSP_WIFI_STATUS_GOT_IP) {
-      if (bsp_wifi_get_ip(g_udp_net_ip, sizeof(g_udp_net_ip)) == 0)
-        g_udp_net_wifi_has_ip = true;
-    } else if (status == BSP_WIFI_STATUS_DISCONNECTED) {
-      g_udp_net_wifi_connected = false;
-      g_udp_net_wifi_has_ip = false;
-    }
+  /* 3. 已断开：标记状态，定时重连 */
+  g_udp_net_wifi_connected = false;
+  g_udp_net_wifi_has_ip = false;
+
+  unsigned int now = (unsigned int)osal_get_jiffies();
+  if (g_wifi_last_retry != 0 &&
+      (now - g_wifi_last_retry < osal_msecs_to_jiffies(5000))) {
+    return;
+  }
+  g_wifi_last_retry = now;
+
+  printf("udp_net: STA 断开，尝试重连...\r\n");
+  if (wifi_connect_from_nv() == 0) return;
+
+  /* 4. 重连失败，计数 */
+  g_sta_retry_count++;
+  printf("udp_net: STA 重连失败 (第%d次)\r\n", g_sta_retry_count);
+  if (g_sta_retry_count >= STA_RETRY_MAX) {
+    printf("udp_net: STA 连续 %d 次失败，切 AP\r\n", STA_RETRY_MAX);
+    if (bsp_wifi_switch_to_ap() == 0) g_sta_retry_count = 0;
   }
 }

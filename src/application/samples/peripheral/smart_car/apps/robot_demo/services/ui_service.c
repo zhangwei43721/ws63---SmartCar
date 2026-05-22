@@ -12,7 +12,7 @@
  *     从而避免在主循环里轮询 OLED 导致的 I2C 占用与闪烁。
  * ============================================================ */
 
-#define UI_TASK_STACK_SIZE 2048
+#define UI_TASK_STACK_SIZE 4096
 #define UI_TASK_PRIO       28
 #define UI_MSG_QUEUE_DEPTH 4
 

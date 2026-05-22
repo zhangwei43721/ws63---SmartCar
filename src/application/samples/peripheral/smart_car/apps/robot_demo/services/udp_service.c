@@ -58,13 +58,6 @@ typedef struct {
 static int g_sockfd = -1;
 static osal_task *g_udp_task = NULL;
 static volatile bool g_udp_should_exit = false;
-static osal_mutex g_cmd_mutex;
-
-// 命令缓存
-static struct {
-  int8_t m1, m2;
-  bool new_data;
-} g_cmd_cache = {0};
 
 // 连接状态管理
 static struct sockaddr_in g_server_addr;  // 当前绑定的控制器地址
@@ -89,7 +82,6 @@ static void build_discovery_packet(void);
 
 void udp_service_init(void) {
   udp_net_common_init();
-  osal_mutex_init(&g_cmd_mutex);
 
   if (g_udp_task != NULL) return;
   g_udp_should_exit = false;
@@ -122,19 +114,6 @@ const char* udp_service_get_ip(void) { return g_udp_net_ip; }
 
 void udp_service_push_cmd(int8_t m1, int8_t m2) {
   motor_executor_push_cmd(m1, m2);
-}
-
-bool udp_service_pop_cmd(int8_t* m1, int8_t* m2) {
-  bool ret = false;
-  osal_mutex_lock(&g_cmd_mutex);
-  if (g_cmd_cache.new_data) {
-    *m1 = g_cmd_cache.m1;
-    *m2 = g_cmd_cache.m2;
-    g_cmd_cache.new_data = false;
-    ret = true;
-  }
-  osal_mutex_unlock(&g_cmd_mutex);
-  return ret;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -392,6 +371,13 @@ static int udp_service_task(void* arg) {
   bool wifi_was_ready = false;
 
   while (!g_udp_should_exit) {
+    /* 模式切换后 socket 可能绑定在已关闭的接口上，需重建 */
+    if (g_sockfd < 0) {
+      g_sockfd = udp_net_common_open_and_bind(UDP_SERVER_PORT,
+                                               UDP_RECV_TIMEOUT_MS, true);
+      if (g_sockfd < 0) continue;
+    }
+
     uint64_t now = osal_get_jiffies();
 
     // 1. WiFi 状态维护 (每2秒检查一次)
@@ -410,6 +396,14 @@ static int udp_service_task(void* arg) {
     if (curr_mode != last_mode) {
       wifi_was_ready = false;
       last_ip[0] = '\0';
+      g_discovery_ready = false; /* 模式变化后重新构建发现包（MAC可能不同） */
+      /* 重建 socket：AP/STA 接口不同，旧 socket 绑定在已关闭接口上无法广播 */
+      if (g_sockfd >= 0) {
+        lwip_close(g_sockfd);
+        g_sockfd = -1;
+      }
+      printf("[UDP] WiFi 模式变化: %d -> %d, 重建 socket\r\n", (int)last_mode,
+             (int)curr_mode);
     }
 
     // WiFi 刚就绪或 IP 变化时刷新待机界面
@@ -424,19 +418,15 @@ static int udp_service_task(void* arg) {
     last_mode = curr_mode;
 
     if (wifi_ready) {
-      // 2. 延迟构建广播包 (确保有MAC)
-      if (!g_discovery_ready) {
-        build_discovery_packet();
-      }
+      // 2. 构建发现包
+      if (!g_discovery_ready) build_discovery_packet();
 
-      // 3. 容错计次衰减：每秒减少一次生命值
+      // 3. 连接超时检测
       if (now - t_keepalive_decay >= osal_msecs_to_jiffies(1000)) {
         t_keepalive_decay = now;
         if (g_is_connected && g_keepalive_count > 0) {
-          g_keepalive_count--;
-          // 生命值耗尽才真正断连
-          if (g_keepalive_count == 0) {
-            printf("[UDP] 连接超时 (5s内未收到心跳)，切回广播模式\r\n");
+          if (--g_keepalive_count == 0) {
+            printf("[UDP] 连接超时，切回广播模式\r\n");
             g_is_connected = false;
             memset_s(&g_server_addr, sizeof(g_server_addr), 0,
                      sizeof(g_server_addr));
@@ -444,7 +434,7 @@ static int udp_service_task(void* arg) {
         }
       }
 
-      // 4. 梯度频率发送：广播期500ms，连接期2s
+      // 4. 发送：广播 500ms / 心跳 2s
       uint32_t send_interval =
           g_is_connected ? CONNECTED_HEART_MS : BROADCAST_INTERVAL_MS;
       if (now - t_send_loop >= osal_msecs_to_jiffies(send_interval)) {

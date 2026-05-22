@@ -93,6 +93,13 @@ int bsp_wifi_smart_init(void);
 int bsp_wifi_switch_from_ap_to_sta(const char* ssid, const char* password);
 
 /**
+ * @brief 从STA模式切换到AP模式
+ * @return 0成功，-1失败
+ * @note 断开当前STA连接，启动AP热点
+ */
+int bsp_wifi_switch_to_ap(void);
+
+/**
  * @brief WiFi 扫描结果条目（精简版，用于上报到前端）
  */
 typedef struct {

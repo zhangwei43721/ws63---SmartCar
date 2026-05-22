@@ -50,7 +50,10 @@ static void wifi_cb(td_s32 state, const wifi_linked_info_stru* info,
   (void)reason;
   if (state == WIFI_STATE_AVALIABLE) {
     printf("[WiFi] 已连接: %s, 信号强度: %d\r\n", info->ssid, info->rssi);
-    g_wifi_status = BSP_WIFI_STATUS_CONNECTED;
+    /* DHCP 完成后状态为 GOT_IP，后续事件不要降级回 CONNECTED */
+    if (g_wifi_status != BSP_WIFI_STATUS_GOT_IP) {
+      g_wifi_status = BSP_WIFI_STATUS_CONNECTED;
+    }
   } else if (state == WIFI_STATE_NOT_AVALIABLE) {
     g_wifi_status = BSP_WIFI_STATUS_DISCONNECTED;
   }
@@ -93,6 +96,7 @@ static int wait_for_dhcp(const char* ifname, uint32_t timeout_ms) {
   while ((osal_get_jiffies() - start) < timeout_ticks) {
     if (netif_p->ip_addr.u_addr.ip4.addr != 0) {
       g_wifi_status = BSP_WIFI_STATUS_GOT_IP;
+      netifapi_netif_set_default(netif_p); /* STA 模式设为默认接口 */
       return 0;
     }
     osDelay(10);
@@ -213,6 +217,7 @@ static int init_ap_mode(void) {
 
     netifapi_netif_set_addr(netif_p, &ip, &mask, &gw);
     netifapi_dhcps_start(netif_p, NULL, 0);
+    netifapi_netif_set_default(netif_p); /* AP 模式设为默认接口 */
     g_wifi_status = BSP_WIFI_STATUS_GOT_IP;
     printf("[WiFi] AP 热点 IP: 192.168.1.1\r\n");
     return 0;
@@ -364,6 +369,18 @@ int bsp_wifi_switch_from_ap_to_sta(const char* ssid, const char* password) {
     return (bsp_wifi_smart_init() == 0) ? 0 : -1;
   }
   return 0;
+}
+
+/**
+ * @brief 从 STA 模式切换到 AP 模式
+ * @return 成功返回 0，失败返回 -1
+ * @note 断开当前 STA 连接，启动 AP 热点
+ */
+int bsp_wifi_switch_to_ap(void) {
+  printf("[WiFi] 正在从 STA 切换到 AP 模式...\r\n");
+  wifi_sta_disconnect();          // 断开当前 STA 连接 
+  g_wifi_mode = BSP_WIFI_MODE_AP; // 切换到 AP 模式
+  return init_ap_mode();          // 启动 AP（函数内部会启用STA 以支持扫描）
 }
 
 /**
