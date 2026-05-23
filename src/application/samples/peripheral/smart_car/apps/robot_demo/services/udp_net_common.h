@@ -15,8 +15,6 @@ int udp_net_common_open_and_bind(uint16_t port, unsigned int recv_timeout_ms,
                                  bool enable_broadcast);
 int udp_net_common_send_broadcast(const void* buf, size_t len, uint16_t port);
 
-// 确保 WiFi 已初始化并尽力保持连接；连接成功后会刷新 g_udp_net_ip。
-void udp_net_common_wifi_ensure_connected(void);
 extern int g_udp_net_socket_fd;
 extern bool g_udp_net_bound;
 extern bool g_udp_net_wifi_connected;

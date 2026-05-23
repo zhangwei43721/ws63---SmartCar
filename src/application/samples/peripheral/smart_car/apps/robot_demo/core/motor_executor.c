@@ -5,6 +5,7 @@
 #include "../../../drivers/l9110s/bsp_l9110s.h"
 #include "robot_config.h"
 #include "soc_osal.h"
+#include "osal_timer.h"
 
 #define MOTOR_EXEC_TIMEOUT_MS  400
 #define MOTOR_EXEC_STACK_SIZE  2048
@@ -12,6 +13,14 @@
 
 static unsigned long g_motor_queue = 0;
 static osal_task *g_motor_task = NULL;
+static osal_timer g_motor_timer;
+
+static void motor_timeout_callback(unsigned long arg)
+{
+    (void)arg;
+    l9110s_set_differential(0, 0);
+    osal_timer_stop(&g_motor_timer);
+}
 
 static int motor_executor_task(void *arg)
 {
@@ -24,11 +33,11 @@ static int motor_executor_task(void *arg)
     while (1) {
         size = sizeof(cmd);
         int ret = osal_msg_queue_read_copy(g_motor_queue, &cmd, &size,
-                                           osal_msecs_to_jiffies(MOTOR_EXEC_TIMEOUT_MS));
+                                           OSAL_WAIT_FOREVER);
         if (ret == OSAL_SUCCESS) {
             l9110s_set_differential(cmd.left, cmd.right);
-        } else {
-            l9110s_set_differential(0, 0);
+            osal_timer_stop(&g_motor_timer);
+            osal_timer_start(&g_motor_timer);
         }
     }
     return 0;
@@ -37,10 +46,18 @@ static int motor_executor_task(void *arg)
 void motor_executor_init(void)
 {
     if (g_motor_queue != 0) return;
-    // 队列长度设为 1：电机命令只需保留最新的，旧命令到达时立即过期。
+
     if (osal_msg_queue_create("motor_q", 1, &g_motor_queue, 0,
                               sizeof(MotorCmdMsg)) != OSAL_SUCCESS) {
         printf("[Motor] 队列创建失败\r\n");
+        return;
+    }
+
+    g_motor_timer.interval = MOTOR_EXEC_TIMEOUT_MS;
+    g_motor_timer.handler = motor_timeout_callback;
+    g_motor_timer.data = 0;
+    if (osal_timer_init(&g_motor_timer) != OSAL_SUCCESS) {
+        printf("[Motor] 定时器初始化失败\r\n");
         return;
     }
 

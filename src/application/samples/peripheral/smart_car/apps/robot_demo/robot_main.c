@@ -35,6 +35,7 @@
 #include "../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../drivers/l9110s/bsp_l9110s.h"
 #include "../../drivers/tcrt5000/bsp_tcrt5000.h"
+#include "services/wifi_mgr_service.h"
 
 /* ============================================================
  * 按键中断
@@ -187,6 +188,10 @@ void robot_mgr_update_ir_status(unsigned int left, unsigned int middle,
 
 static void robot_system_init(void) {
   storage_service_init();
+  bsp_wifi_mgr_init();
+
+  bsp_wifi_msg_t wifi_start = {.id = WIFI_MSG_START};
+  bsp_wifi_mgr_send_msg(&wifi_start);
 
   // 驱动初始化
   l9110s_init();

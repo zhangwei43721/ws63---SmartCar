@@ -10,7 +10,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../../../drivers/wifi_client/bsp_wifi.h"
+#include "../../../drivers/wifi_client/bsp_wifi_sta.h"
+#include "../../../drivers/wifi_client/bsp_wifi_ap.h"
+#include "wifi_mgr_service.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 #include "../core/robot_config.h"
@@ -449,7 +451,7 @@ static int wifi_switch_task(void *arg)
     strncpy(g_status_text, "切换STA", sizeof(g_status_text));
 
     printf("[Portal] 正在从 AP 切换到 STA 模式...\r\n");
-    if (bsp_wifi_switch_from_ap_to_sta(g_switch_ssid, g_switch_password) == 0) {
+    if (bsp_wifi_connect_ap(g_switch_ssid, g_switch_password) == 0) {
         g_portal_status = PORTAL_STATUS_SUCCESS;
         strncpy(g_status_text, "配网成功", sizeof(g_status_text));
         printf("[Portal] 切换到 STA 成功\r\n");

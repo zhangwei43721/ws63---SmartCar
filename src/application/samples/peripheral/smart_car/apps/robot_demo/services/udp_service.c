@@ -9,7 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../../../drivers/wifi_client/bsp_wifi.h"
+#include "../../../drivers/wifi_client/bsp_wifi_sta.h"
+#include "wifi_mgr_service.h"
 #include "../core/mode_trace.h"
 #include "../core/motor_executor.h"
 #include "../robot_common.h"
@@ -103,11 +104,15 @@ void udp_service_deinit(void) {
 }
 
 WifiConnectStatus udp_service_get_wifi_status(void) {
-  if (bsp_wifi_get_mode() == BSP_WIFI_MODE_AP) return WIFI_STATUS_AP_MODE;
-  if (g_udp_net_wifi_connected && g_udp_net_wifi_has_ip)
-    return WIFI_STATUS_CONNECTED;
-  return g_udp_net_wifi_connected ? WIFI_STATUS_CONNECTING
-                                  : WIFI_STATUS_DISCONNECTED;
+  bsp_wifi_mode_t mode = bsp_wifi_get_mode();
+  bsp_wifi_status_t status = bsp_wifi_get_status();
+
+  if (mode == BSP_WIFI_MODE_AP) return WIFI_STATUS_AP_MODE;
+  if (status == BSP_WIFI_STATUS_GOT_IP) return WIFI_STATUS_CONNECTED;
+  if (status == BSP_WIFI_STATUS_CONNECTING ||
+      status == BSP_WIFI_STATUS_CONNECTED)
+    return WIFI_STATUS_CONNECTING;
+  return WIFI_STATUS_DISCONNECTED;
 }
 
 const char* udp_service_get_ip(void) { return g_udp_net_ip; }
@@ -189,7 +194,7 @@ static void handle_wifi_config(uint8_t* data, size_t len,
       /* 先保存 */
       (void)storage_service_save_wifi_config(ssid, pwd);
       /* 再切换 */
-      int ret = bsp_wifi_switch_from_ap_to_sta(ssid, pwd);
+      int ret = bsp_wifi_connect_ap(ssid, pwd);
       send_wifi_config_ack(pkt->type,
                            (ret == 0) ? 0x00 : 0x01, sender);
       printf("[UDP] WiFi切换STA: SSID='%s' 结果=%d\r\n", ssid, ret);
@@ -365,7 +370,6 @@ static int udp_service_task(void* arg) {
     return 0;
   }
 
-  uint64_t t_wifi_check = 0;
   uint64_t t_send_loop = 0;
   uint64_t t_keepalive_decay = 0;
   bool wifi_was_ready = false;
@@ -380,15 +384,25 @@ static int udp_service_task(void* arg) {
 
     uint64_t now = osal_get_jiffies();
 
-    // 1. WiFi 状态维护 (每2秒检查一次)
-    if (now - t_wifi_check >= osal_msecs_to_jiffies(2000)) {
-      udp_net_common_wifi_ensure_connected();
-      t_wifi_check = now;
+    /* WiFi 状态直接查询 BSP（由 Manager task 自动维护） */
+    bsp_wifi_mode_t curr_mode = bsp_wifi_get_mode();
+    bsp_wifi_status_t wifi_status = bsp_wifi_get_status();
+
+    if (curr_mode == BSP_WIFI_MODE_AP) {
+      g_udp_net_wifi_connected = (wifi_status == BSP_WIFI_STATUS_GOT_IP);
+      g_udp_net_wifi_has_ip = g_udp_net_wifi_connected;
+    } else {
+      g_udp_net_wifi_connected =
+          (wifi_status == BSP_WIFI_STATUS_GOT_IP ||
+           wifi_status == BSP_WIFI_STATUS_CONNECTED);
+      g_udp_net_wifi_has_ip = (wifi_status == BSP_WIFI_STATUS_GOT_IP);
+    }
+    if (g_udp_net_wifi_has_ip) {
+      bsp_wifi_get_ip(g_udp_net_ip, sizeof(g_udp_net_ip));
     }
 
     bool wifi_ready = g_udp_net_wifi_connected && g_udp_net_wifi_has_ip;
     static bsp_wifi_mode_t last_mode = BSP_WIFI_MODE_STA;
-    bsp_wifi_mode_t curr_mode = bsp_wifi_get_mode();
 
     static char last_ip[BUF_IP] = {0};
 
