@@ -41,7 +41,7 @@ typedef void (*sle_disconnect_cb_t)(uint16_t conn_id);
  * @param data 接收到的数据指针
  * @param len 数据长度
  */
-typedef void (*sle_data_recv_cb_t)(const uint8_t* data, uint16_t len);
+typedef void (*sle_data_recv_cb_t)(const uint8_t *data, uint16_t len);
 
 /* ==================== 对外接口 ==================== */
 
@@ -77,7 +77,7 @@ void sle_device_register_data_callback(sle_data_recv_cb_t cb);
  * @return ERRCODE_SLE_SUCCESS 成功
  *         ERRCODE_SLE_FAIL 失败（无连接或发送失败）
  */
-errcode_t sle_device_send(const uint8_t* data, uint16_t len);
+errcode_t sle_device_send(const uint8_t *data, uint16_t len);
 
 /**
  * @brief 检查是否有设备连接

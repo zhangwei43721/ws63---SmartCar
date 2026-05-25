@@ -3,9 +3,8 @@
 
 /* 生成的字体点阵数据 扫描方式：列行扫描  取模走向：低位在前 */
 
-extern const char* g_font_dot_matrix_16_index[3891];
+extern const char *g_font_dot_matrix_16_index[3891];
 
 extern const char g_font_dot_matrix_16[3891][32];
 
 #endif
-

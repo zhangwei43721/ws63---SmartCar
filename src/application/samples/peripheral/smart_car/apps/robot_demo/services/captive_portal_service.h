@@ -26,12 +26,12 @@ bool captive_portal_service_is_running(void);
  * @brief 获取当前 AP 配网 IP 地址字符串
  * @return IP 地址字符串，如 "192.168.1.1"
  */
-const char* captive_portal_service_get_ap_ip(void);
+const char *captive_portal_service_get_ap_ip(void);
 
 /**
  * @brief 获取当前配网状态描述
  * @return 状态字符串，如 "等待配网" / "配网成功" / "配网失败"
  */
-const char* captive_portal_service_get_status_text(void);
+const char *captive_portal_service_get_status_text(void);
 
 #endif /* CAPTIVE_PORTAL_SERVICE_H */

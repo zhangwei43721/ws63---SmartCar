@@ -17,7 +17,6 @@
  * @param query      URL 查询字符串起始位置（path 中 '?' 之后），若无则为 NULL
  * @return true 表示请求已被处理并发送了响应；false 表示不是控制相关路径
  */
-bool captive_portal_control_handle(int client_fd, bool is_get,
-                                   const char *path, const char *query);
+bool captive_portal_control_handle(int client_fd, bool is_get, const char *path, const char *query);
 
 #endif /* CAPTIVE_PORTAL_CONTROL_H */

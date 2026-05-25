@@ -58,8 +58,8 @@ static void *tcrt5000_task(const char *arg)
         uapi_adc_auto_scan_ch_disable(TCRT5000_RIGHT_ADC_CHANNEL);
 
         // 打印三路模拟量值（ADC电压值 0-3600mV）
-        printf("TCRT5000 ADC: L=%4d, M=%4d, R=%4d mV\n",
-               tcrt5000_get_left_adc(), tcrt5000_get_middle_adc(), tcrt5000_get_right_adc());
+        printf("TCRT5000 ADC: L=%4d, M=%4d, R=%4d mV\n", tcrt5000_get_left_adc(), tcrt5000_get_middle_adc(),
+               tcrt5000_get_right_adc());
 
         osal_msleep(TCRT5000_DELAY_MS);
     }

@@ -41,9 +41,9 @@ extern const unsigned char g_f6X8[][6];
 extern const unsigned char g_f8X16[];
 
 typedef struct {
-  const unsigned char FontWidth; /*!< Font width in pixels */
-  unsigned char FontHeight;      /*!< Font height in pixels */
-  const unsigned short* data;    /*!< Pointer to data font data array */
+    const unsigned char FontWidth; /*!< Font width in pixels */
+    unsigned char FontHeight;      /*!< Font height in pixels */
+    const unsigned short *data;    /*!< Pointer to data font data array */
 } FontDef;
 
 extern FontDef Font_7x10;
@@ -55,4 +55,4 @@ extern FontDef Font_16x26;
 }
 #endif
 
-#endif  // SSD1306_FONTS_H
+#endif // SSD1306_FONTS_H

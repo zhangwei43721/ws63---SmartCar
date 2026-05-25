@@ -7,9 +7,9 @@
 #include "soc_osal.h"
 #include "osal_timer.h"
 
-#define MOTOR_EXEC_TIMEOUT_MS  400
-#define MOTOR_EXEC_STACK_SIZE  2048
-#define MOTOR_EXEC_PRIO        10
+#define MOTOR_EXEC_TIMEOUT_MS 400
+#define MOTOR_EXEC_STACK_SIZE 2048
+#define MOTOR_EXEC_PRIO 10
 
 static unsigned long g_motor_queue = 0;
 static osal_task *g_motor_task = NULL;
@@ -32,8 +32,7 @@ static int motor_executor_task(void *arg)
 
     while (1) {
         size = sizeof(cmd);
-        int ret = osal_msg_queue_read_copy(g_motor_queue, &cmd, &size,
-                                           OSAL_WAIT_FOREVER);
+        int ret = osal_msg_queue_read_copy(g_motor_queue, &cmd, &size, OSAL_WAIT_FOREVER);
         if (ret == OSAL_SUCCESS) {
             l9110s_set_differential(cmd.left, cmd.right);
             osal_timer_stop(&g_motor_timer);
@@ -45,10 +44,10 @@ static int motor_executor_task(void *arg)
 
 void motor_executor_init(void)
 {
-    if (g_motor_queue != 0) return;
+    if (g_motor_queue != 0)
+        return;
 
-    if (osal_msg_queue_create("motor_q", 1, &g_motor_queue, 0,
-                              sizeof(MotorCmdMsg)) != OSAL_SUCCESS) {
+    if (osal_msg_queue_create("motor_q", 1, &g_motor_queue, 0, sizeof(MotorCmdMsg)) != OSAL_SUCCESS) {
         printf("[Motor] 队列创建失败\r\n");
         return;
     }
@@ -62,8 +61,8 @@ void motor_executor_init(void)
     }
 
     osal_kthread_lock();
-    g_motor_task = osal_kthread_create((osal_kthread_handler)motor_executor_task,
-                                        NULL, "motor_exec", MOTOR_EXEC_STACK_SIZE);
+    g_motor_task =
+        osal_kthread_create((osal_kthread_handler)motor_executor_task, NULL, "motor_exec", MOTOR_EXEC_STACK_SIZE);
     if (g_motor_task != NULL) {
         osal_kthread_set_priority(g_motor_task, MOTOR_EXEC_PRIO);
     }
@@ -78,12 +77,17 @@ void motor_executor_init(void)
 
 bool motor_executor_push_cmd(int8_t left, int8_t right)
 {
-    if (g_motor_queue == 0) return false;
+    if (g_motor_queue == 0)
+        return false;
 
-    if (left < -100) left = -100;
-    if (left > 100) left = 100;
-    if (right < -100) right = -100;
-    if (right > 100) right = 100;
+    if (left < -100)
+        left = -100;
+    if (left > 100)
+        left = 100;
+    if (right < -100)
+        right = -100;
+    if (right > 100)
+        right = 100;
 
     MotorCmdMsg msg = {left, right};
 

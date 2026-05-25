@@ -12,19 +12,19 @@
 #include "soc_osal.h"
 
 /* ================= 参数配置 ================= */
-#define OBSTACLE_LIMIT 20.0f  // 障碍物判定距离 (cm)
-#define TIME_BACK_MS 300      // 后退一下的时间
-#define TIME_TURN_90_MS 650   // 原地转90度所需时间
-#define TIME_WAIT_STABLE 300  // 每次转完停顿检测的时间
+#define OBSTACLE_LIMIT 20.0f // 障碍物判定距离 (cm)
+#define TIME_BACK_MS 300     // 后退一下的时间
+#define TIME_TURN_90_MS 650  // 原地转90度所需时间
+#define TIME_WAIT_STABLE 300 // 每次转完停顿检测的时间
 
-#define OBST_FWD_SPEED   60
-#define OBST_BACK_SPEED  60
-#define OBST_TURN_SPEED  60
+#define OBST_FWD_SPEED 60
+#define OBST_BACK_SPEED 60
+#define OBST_TURN_SPEED 60
 
 #define OBST_TICK_MS 20
 #define OBST_TASK_STACK_SIZE 2048
-#define OBST_TASK_PRIO       22
-#define OBST_EVENT_STOP      0x01
+#define OBST_TASK_PRIO 22
+#define OBST_EVENT_STOP 0x01
 
 /* ================= 非阻塞状态机 ================= */
 typedef enum {
@@ -135,8 +135,7 @@ static int obstacle_task_entry(void *arg)
     printf("[Obstacle] 避障任务启动\r\n");
 
     while (g_obst_running) {
-        int ret = osal_event_read(&g_obst_event, OBST_EVENT_STOP, OBST_TICK_MS,
-                                  OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
+        int ret = osal_event_read(&g_obst_event, OBST_EVENT_STOP, OBST_TICK_MS, OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
         if (ret > 0 && ((unsigned int)ret & OBST_EVENT_STOP)) {
             break;
         }
@@ -145,11 +144,12 @@ static int obstacle_task_entry(void *arg)
 
     motor_executor_push_cmd(0, 0);
     printf("[Obstacle] 避障任务退出\r\n");
-    g_obst_task = NULL;   /* 退出前自清句柄，供 exit 同步 */
+    g_obst_task = NULL; /* 退出前自清句柄，供 exit 同步 */
     return 0;
 }
 
-void mode_obstacle_enter(void) {
+void mode_obstacle_enter(void)
+{
     printf("进入智能避障模式\r\n");
     obst_transition(OBST_STATE_FORWARD);
     motor_executor_push_cmd(0, 0);
@@ -163,19 +163,21 @@ void mode_obstacle_enter(void) {
         }
     }
 
-    if (g_obst_task != NULL) return;
+    if (g_obst_task != NULL)
+        return;
 
     g_obst_running = true;
     osal_kthread_lock();
-    g_obst_task = osal_kthread_create((osal_kthread_handler)obstacle_task_entry,
-                                       NULL, "obst_task", OBST_TASK_STACK_SIZE);
+    g_obst_task =
+        osal_kthread_create((osal_kthread_handler)obstacle_task_entry, NULL, "obst_task", OBST_TASK_STACK_SIZE);
     if (g_obst_task != NULL) {
         osal_kthread_set_priority(g_obst_task, OBST_TASK_PRIO);
     }
     osal_kthread_unlock();
 }
 
-void mode_obstacle_exit(void) {
+void mode_obstacle_exit(void)
+{
     if (g_obst_task != NULL) {
         g_obst_running = false;
         if (g_event_inited) {
@@ -187,7 +189,7 @@ void mode_obstacle_exit(void) {
             osal_msleep(10);
             wait++;
         }
-        g_obst_task = NULL;  /* 兜底 */
+        g_obst_task = NULL; /* 兜底 */
     }
     motor_executor_push_cmd(0, 0);
     obst_transition(OBST_STATE_FORWARD);

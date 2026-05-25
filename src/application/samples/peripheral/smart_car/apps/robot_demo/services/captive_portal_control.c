@@ -25,13 +25,17 @@ static const char s_html_control[] =
     "<title>小车控制</title>"
     "<style>"
     "*{box-sizing:border-box;margin:0;padding:0}"
-    "body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#f2f3f5;min-height:100vh;padding:16px}"
-    ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.08);padding:20px;max-width:360px;margin:0 auto}"
+    "body{font-family:-apple-system,BlinkMacSystemFont,Segoe "
+    "UI,Roboto,sans-serif;background:#f2f3f5;min-height:100vh;padding:16px}"
+    ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px "
+    "rgba(0,0,0,.08);padding:20px;max-width:360px;margin:0 auto}"
     "h1{font-size:20px;color:#1a1a1a;margin-bottom:16px;text-align:center}"
     ".mode-box{display:flex;gap:8px;margin-bottom:16px}"
-    ".mode-btn{flex:1;padding:10px 4px;border:none;border-radius:8px;background:#e5e5ea;color:#333;font-size:13px;cursor:pointer}"
+    ".mode-btn{flex:1;padding:10px "
+    "4px;border:none;border-radius:8px;background:#e5e5ea;color:#333;font-size:13px;cursor:pointer}"
     ".mode-btn.on{background:#007aff;color:#fff}"
-    ".sensor-box{background:#f8f8f8;border-radius:12px;padding:16px;margin-bottom:16px;min-height:80px;text-align:center}"
+    ".sensor-box{background:#f8f8f8;border-radius:12px;padding:16px;margin-bottom:16px;min-height:80px;text-align:"
+    "center}"
     ".sensor-box h3{font-size:14px;color:#666;margin-bottom:10px}"
     ".trace-leds{display:flex;justify-content:center;gap:24px}"
     ".trace-led{width:36px;height:36px;border-radius:50%;background:#ddd;border:3px solid #ccc}"
@@ -40,7 +44,8 @@ static const char s_html_control[] =
     ".avoid-bar{width:100%;height:8px;background:#ddd;border-radius:4px;margin-top:8px;overflow:hidden}"
     ".avoid-bar-in{height:100%;background:#34c759;width:0%;border-radius:4px;transition:width .3s}"
     ".dpad{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;max-width:280px;margin:0 auto}"
-    ".dpad-btn{height:64px;border:none;border-radius:12px;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,.1);font-size:22px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none}"
+    ".dpad-btn{height:64px;border:none;border-radius:12px;background:#fff;box-shadow:0 4px 12px "
+    "rgba(0,0,0,.1);font-size:22px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none}"
     ".dpad-btn:active{background:#007aff;color:#fff}"
     ".dpad-btn.stop{background:#ff3b30;color:#fff}"
     ".tip{margin-top:12px;font-size:12px;color:#999;text-align:center}"
@@ -48,7 +53,8 @@ static const char s_html_control[] =
     "<div class=\"card\">"
     "<h1>小车控制</h1>"
     "<div style=\"text-align:center;margin-bottom:12px\">"
-    "<a href=\"#\" onclick=\"resetMode();return false;\" style=\"font-size:13px;color:#007aff;text-decoration:none\">返回配网</a>"
+    "<a href=\"#\" onclick=\"resetMode();return false;\" "
+    "style=\"font-size:13px;color:#007aff;text-decoration:none\">返回配网</a>"
     "</div>"
     "<div class=\"mode-box\">"
     "<button class=\"mode-btn\" id=\"m0\" onclick=\"setMode(0)\">停止</button>"
@@ -77,11 +83,15 @@ static const char s_html_control[] =
     "</div>"
     "</div>"
     "<div class=\"dpad\" id=\"dpad\">"
-    "<button class=\"dpad-btn\" style=\"grid-column:2\" onpointerdown=\"move(100,100)\" onpointerup=\"move(0,0)\">上</button>"
-    "<button class=\"dpad-btn\" style=\"grid-column:1;grid-row:2\" onpointerdown=\"move(0,100)\" onpointerup=\"move(0,0)\">左</button>"
+    "<button class=\"dpad-btn\" style=\"grid-column:2\" onpointerdown=\"move(100,100)\" "
+    "onpointerup=\"move(0,0)\">上</button>"
+    "<button class=\"dpad-btn\" style=\"grid-column:1;grid-row:2\" onpointerdown=\"move(0,100)\" "
+    "onpointerup=\"move(0,0)\">左</button>"
     "<button class=\"dpad-btn stop\" style=\"grid-column:2;grid-row:2\" onclick=\"move(0,0)\">停</button>"
-    "<button class=\"dpad-btn\" style=\"grid-column:3;grid-row:2\" onpointerdown=\"move(100,0)\" onpointerup=\"move(0,0)\">右</button>"
-    "<button class=\"dpad-btn\" style=\"grid-column:2;grid-row:3\" onpointerdown=\"move(-100,-100)\" onpointerup=\"move(0,0)\">下</button>"
+    "<button class=\"dpad-btn\" style=\"grid-column:3;grid-row:2\" onpointerdown=\"move(100,0)\" "
+    "onpointerup=\"move(0,0)\">右</button>"
+    "<button class=\"dpad-btn\" style=\"grid-column:2;grid-row:3\" onpointerdown=\"move(-100,-100)\" "
+    "onpointerup=\"move(0,0)\">下</button>"
     "</div>"
     "<p class=\"tip\">按住方向键控制，松开自动停止</p>"
     "</div>"
@@ -89,12 +99,14 @@ static const char s_html_control[] =
     "var curMode=-1;var pendingMove=null;"
     "function setMode(m){fetch('/api/mode?m='+m).then(function(){poll();});}"
     "function resetMode(){fetch('/api/reset').then(function(){location.href='/';});}"
-    "function move(l,r){if(pendingMove){pendingMove.abort();}pendingMove=new AbortController();fetch('/api/move?l='+l+'&r='+r,{signal:pendingMove.signal}).catch(function(){});}"
+    "function move(l,r){if(pendingMove){pendingMove.abort();}pendingMove=new "
+    "AbortController();fetch('/api/move?l='+l+'&r='+r,{signal:pendingMove.signal}).catch(function(){});}"
     "function poll(){"
     "fetch('/api/status').then(function(r){return r.json();}).then(function(d){"
     "curMode=d.mode;var names=['停止','循迹','避障','遥控'];"
     "document.getElementById('modeText').textContent=names[d.mode]||'未知';"
-    "['m0','m1','m2','m3'].forEach(function(id,i){document.getElementById(id).className='mode-btn'+(i==d.mode?' on':'');});"
+    "['m0','m1','m2','m3'].forEach(function(id,i){document.getElementById(id).className='mode-btn'+(i==d.mode?' "
+    "on':'');});"
     "document.getElementById('sDefault').style.display=(d.mode==0||d.mode==3)?'block':'none';"
     "document.getElementById('sTrace').style.display=d.mode==1?'block':'none';"
     "document.getElementById('sAvoid').style.display=d.mode==2?'block':'none';"
@@ -134,14 +146,16 @@ static void send_response_and_close(int client_fd, const char *response)
  */
 static int query_get_int(const char *query, const char *key)
 {
-    if (query == NULL || key == NULL) return 0;
+    if (query == NULL || key == NULL)
+        return 0;
 
     size_t key_len = strlen(key);
     const char *p = query;
 
     while (*p != '\0') {
         /* 跳过开头的 '?' 或 '&' */
-        if (*p == '?' || *p == '&') p++;
+        if (*p == '?' || *p == '&')
+            p++;
 
         /* 检查是否匹配 key */
         if (strncmp(p, key, key_len) == 0 && p[key_len] == '=') {
@@ -171,12 +185,11 @@ static void handle_api_status(int client_fd)
 
     char json[256];
     int json_len = snprintf(json, sizeof(json),
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: application/json\r\n"
-        "Connection: close\r\n\r\n"
-        "{\"mode\":%d,\"dist\":%.1f,\"ir\":[%u,%u,%u]}\r\n",
-        (int)st.mode, st.distance,
-        st.ir_left, st.ir_middle, st.ir_right);
+                            "HTTP/1.1 200 OK\r\n"
+                            "Content-Type: application/json\r\n"
+                            "Connection: close\r\n\r\n"
+                            "{\"mode\":%d,\"dist\":%.1f,\"ir\":[%u,%u,%u]}\r\n",
+                            (int)st.mode, st.distance, st.ir_left, st.ir_middle, st.ir_right);
     if (json_len < 0 || (size_t)json_len >= sizeof(json)) {
         json[sizeof(json) - 1] = '\0';
     }
@@ -197,10 +210,11 @@ static void handle_api_mode(int client_fd, const char *query)
 
     char json[128];
     (void)snprintf(json, sizeof(json),
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: application/json\r\n"
-        "Connection: close\r\n\r\n"
-        "{\"ok\":true,\"mode\":%d}\r\n", mode);
+                   "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: application/json\r\n"
+                   "Connection: close\r\n\r\n"
+                   "{\"ok\":true,\"mode\":%d}\r\n",
+                   mode);
 
     send_response_and_close(client_fd, json);
 }
@@ -210,7 +224,7 @@ static void handle_api_mode(int client_fd, const char *query)
  */
 static void handle_api_move(int client_fd, const char *query)
 {
-    int left  = query_get_int(query, "l");
+    int left = query_get_int(query, "l");
     int right = query_get_int(query, "r");
 
     /* 推入 Motor Executor 命令队列，由独立高优先级任务执行 */
@@ -218,10 +232,10 @@ static void handle_api_move(int client_fd, const char *query)
 
     char json[128];
     (void)snprintf(json, sizeof(json),
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: application/json\r\n"
-        "Connection: close\r\n\r\n"
-        "{\"ok\":true}\r\n");
+                   "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: application/json\r\n"
+                   "Connection: close\r\n\r\n"
+                   "{\"ok\":true}\r\n");
 
     send_response_and_close(client_fd, json);
 }
@@ -233,18 +247,17 @@ static void handle_api_reset(int client_fd)
 {
     char json[128];
     (void)snprintf(json, sizeof(json),
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: application/json\r\n"
-        "Connection: close\r\n\r\n"
-        "{\"ok\":true}\r\n");
+                   "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: application/json\r\n"
+                   "Connection: close\r\n\r\n"
+                   "{\"ok\":true}\r\n");
 
     send_response_and_close(client_fd, json);
 }
 
 /* ---------- 公共接口 ---------- */
 
-bool captive_portal_control_handle(int client_fd, bool is_get,
-                                   const char *path, const char *query)
+bool captive_portal_control_handle(int client_fd, bool is_get, const char *path, const char *query)
 {
     if (is_get && strcmp(path, "/control") == 0) {
         send_response_and_close(client_fd, s_html_control);
