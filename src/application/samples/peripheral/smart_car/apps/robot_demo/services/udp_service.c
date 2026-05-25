@@ -23,14 +23,14 @@
 #include "ui_service.h"
 #include "udp_net_common.h"
 
-/* --- 配置常量 --- */
+// --- 配置常量 ---
 #define BROADCAST_INTERVAL_MS 500 // 寻找期：高频广播，快速被发现
 #define CONNECTED_HEART_MS 2000   // 连接期：低频心跳
 #define TIMEOUT_LIMIT_MS 5000     // 增加容错到 5秒，防止网络抖动导致的误判
 #define UDP_RECV_TIMEOUT_MS 10    // 接收阻塞时间 (短时间，保证循环响应)
 #define KEEPALIVE_MAX_COUNT 3     // 容错计次：连续3次未收到心跳才判定断连
 
-/* --- 协议定义 --- */
+// --- 协议定义 ---
 #pragma pack(1)
 typedef struct {
     uint8_t type; // 01=控制, 02=状态, 03=模式, 04=PID, FE=心跳, FF=广播
@@ -46,7 +46,7 @@ typedef struct {
     char name[16];
 } discovery_packet_t;
 
-/* WiFi 配置扩展包（变长，最大 70 字节） */
+// WiFi 配置扩展包（变长，最大 70 字节）
 typedef struct {
     uint8_t type;     // 0xE0~0xE2
     uint8_t ssid_len; // SSID 长度（0~32）
@@ -55,7 +55,7 @@ typedef struct {
 } wifi_config_pkt_t;
 #pragma pack()
 
-/* --- 全局变量 --- */
+// --- 全局变量 ---
 static int g_sockfd = -1;
 static osal_task *g_udp_task = NULL;
 static volatile bool g_udp_should_exit = false;
@@ -70,15 +70,15 @@ static uint8_t g_keepalive_count = KEEPALIVE_MAX_COUNT; // 容错计次（生命
 static discovery_packet_t g_discovery_pkt;
 static bool g_discovery_ready = false; // 发现包是否已构建(MAC是否获取)
 
-/* --- 内部函数声明 --- */
+// --- 内部函数声明 ---
 static int udp_service_task(void *arg);
 static void handle_udp_receive(void);
 static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender);
 static void build_discovery_packet(void);
 
-/* -------------------------------------------------------------------------- */
-/* 外部接口实现                                      */
-/* -------------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// 外部接口实现
+// --------------------------------------------------------------------------
 
 void udp_service_init(void)
 {
@@ -129,9 +129,9 @@ void udp_service_push_cmd(int8_t m1, int8_t m2)
     motor_executor_push_cmd(m1, m2);
 }
 
-/* -------------------------------------------------------------------------- */
-/* 内部逻辑实现                                      */
-/* -------------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// 内部逻辑实现
+// --------------------------------------------------------------------------
 
 /**
  * @brief 在WiFi连接成功后，延迟构建发现包(确保获取到MAC)
@@ -199,9 +199,9 @@ static void handle_wifi_config(uint8_t *data, size_t len, struct sockaddr_in *se
                 (void)memcpy_s(pwd, sizeof(pwd), pkt->payload + pkt->ssid_len, pkt->pwd_len);
                 pwd[pkt->pwd_len] = '\0';
             }
-            /* 先保存 */
+            // 先保存
             (void)storage_service_save_wifi_config(ssid, pwd);
-            /* 再切换 */
+            // 再切换
             int ret = bsp_wifi_connect_ap(ssid, pwd);
             send_wifi_config_ack(pkt->type, (ret == 0) ? 0x00 : 0x01, sender);
             printf("[UDP] WiFi切换STA: SSID='%s' 结果=%d\r\n", ssid, ret);
@@ -214,7 +214,7 @@ static void handle_wifi_config(uint8_t *data, size_t len, struct sockaddr_in *se
             storage_service_get_wifi_config(ssid, pwd);
             uint8_t ack[70] = {0};
             ack[0] = pkt->type;
-            ack[1] = 0x00; // success
+            ack[1] = 0x00; // 成功
             size_t ssid_len = strlen(ssid);
             size_t pwd_len = strlen(pwd);
             if (ssid_len > 32)
@@ -260,7 +260,7 @@ static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender
                 break;
             case 0x04: // PID
                 if (pkt->cmd == 0xFF) {
-                    /* 显式保存当前 PID 到 NV */
+                    // 显式保存当前 PID 到 NV
                     mode_trace_save_pid();
                 } else {
                     mode_trace_set_pid(pkt->cmd, (int16_t)((pkt->motor1 << 8) | (uint8_t)pkt->motor2));
@@ -275,7 +275,7 @@ static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender
                 ack.type = 0x05;
                 if (pkt->cmd == 0x01) { // 启动 OTA
                     if (ota_service_start(0)) {
-                        ack.cmd = 0x00; // OK
+                        ack.cmd = 0x00; // 成功
                     } else {
                         ack.cmd = 0x01; // Busy 或 Error
                     }
@@ -380,7 +380,7 @@ static int udp_service_task(void *arg)
     bool wifi_was_ready = false;
 
     while (!g_udp_should_exit) {
-        /* 模式切换后 socket 可能绑定在已关闭的接口上，需重建 */
+        // 模式切换后 socket 可能绑定在已关闭的接口上，需重建
         if (g_sockfd < 0) {
             g_sockfd = udp_net_common_open_and_bind(UDP_SERVER_PORT, UDP_RECV_TIMEOUT_MS, true);
             if (g_sockfd < 0)
@@ -389,7 +389,7 @@ static int udp_service_task(void *arg)
 
         uint64_t now = osal_get_jiffies();
 
-        /* WiFi 状态直接查询 BSP（由 Manager task 自动维护） */
+        // WiFi 状态直接查询 BSP（由 Manager task 自动维护）
         bsp_wifi_mode_t curr_mode = bsp_wifi_get_mode();
         bsp_wifi_status_t wifi_status = bsp_wifi_get_status();
 
@@ -410,12 +410,12 @@ static int udp_service_task(void *arg)
 
         static char last_ip[BUF_IP] = {0};
 
-        /* 模式变化时重置边沿标记，确保切换后一定会刷新一次 */
+        // 模式变化时重置边沿标记，确保切换后一定会刷新一次
         if (curr_mode != last_mode) {
             wifi_was_ready = false;
             last_ip[0] = '\0';
-            g_discovery_ready = false; /* 模式变化后重新构建发现包（MAC可能不同） */
-            /* 重建 socket：AP/STA 接口不同，旧 socket 绑定在已关闭接口上无法广播 */
+            g_discovery_ready = false; // 模式变化后重新构建发现包（MAC可能不同）
+            // 重建 socket：AP/STA 接口不同，旧 socket 绑定在已关闭接口上无法广播
             if (g_sockfd >= 0) {
                 lwip_close(g_sockfd);
                 g_sockfd = -1;

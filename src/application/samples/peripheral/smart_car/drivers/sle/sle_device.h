@@ -22,7 +22,7 @@
 #include "errcode.h"
 #include "sle_errcode.h"
 
-/* ==================== 回调函数类型定义 ==================== */
+// ==================== 回调函数类型定义 ====================
 
 /**
  * @brief 连接成功回调
@@ -43,7 +43,7 @@ typedef void (*sle_disconnect_cb_t)(uint16_t conn_id);
  */
 typedef void (*sle_data_recv_cb_t)(const uint8_t *data, uint16_t len);
 
-/* ==================== 对外接口 ==================== */
+// ==================== 对外接口 ====================
 
 /**
  * @brief 初始化 SLE 设备（服务器模式）
@@ -86,4 +86,4 @@ errcode_t sle_device_send(const uint8_t *data, uint16_t len);
  */
 bool sle_device_is_connected(void);
 
-#endif /* SLE_DEVICE_H */
+#endif // SLE_DEVICE_H

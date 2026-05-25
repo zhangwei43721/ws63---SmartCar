@@ -23,7 +23,7 @@ char g_udp_net_ip[BUF_IP] = "0.0.0.0";
 int g_udp_net_socket_fd = -1;
 bool g_udp_net_bound = false;
 
-/** @brief 8位累加校验和 */
+//* @brief 8位累加校验和
 uint8_t udp_net_common_checksum8_add(const uint8_t *data, size_t len)
 {
     uint8_t sum = 0;
@@ -56,7 +56,7 @@ int udp_net_get_mac_address(uint8_t *mac_buf)
     return -1;
 }
 
-/* 内部辅助：发送数据到指定地址 */
+// 内部辅助：发送数据到指定地址
 static int send_udp_raw(const void *buf, size_t len, const struct sockaddr_in *addr)
 {
     if (!buf || len == 0 || !addr)
@@ -68,7 +68,7 @@ static int send_udp_raw(const void *buf, size_t len, const struct sockaddr_in *a
     return (bound && fd >= 0) ? (int)lwip_sendto(fd, buf, len, 0, (struct sockaddr *)addr, sizeof(*addr)) : -1;
 }
 
-/** @brief 向指定端口发送 UDP 广播包 */
+//* @brief 向指定端口发送 UDP 广播包
 int udp_net_common_send_broadcast(const void *buf, size_t len, uint16_t port)
 {
     struct sockaddr_in addr = {0};
@@ -78,13 +78,13 @@ int udp_net_common_send_broadcast(const void *buf, size_t len, uint16_t port)
     return send_udp_raw(buf, len, &addr);
 }
 
-/** @brief 向指定地址发送 UDP 数据包 */
+//* @brief 向指定地址发送 UDP 数据包
 int udp_net_common_send_to_addr(const void *buf, size_t len, const struct sockaddr_in *addr)
 {
     return send_udp_raw(buf, len, addr);
 }
 
-/** @brief 初始化网络模块互斥锁 */
+//* @brief 初始化网络模块互斥锁
 void udp_net_common_init(void)
 {
     if (!g_net_mutex_inited && osal_mutex_init(&g_net_mutex) == OSAL_SUCCESS) {
@@ -92,7 +92,7 @@ void udp_net_common_init(void)
     }
 }
 
-/** @brief 创建 UDP 套接字并绑定到指定端口 */
+//* @brief 创建 UDP 套接字并绑定到指定端口
 int udp_net_common_open_and_bind(uint16_t port, unsigned int recv_timeout_ms, bool enable_broadcast)
 {
     int sockfd = lwip_socket(AF_INET, SOCK_DGRAM, 0);

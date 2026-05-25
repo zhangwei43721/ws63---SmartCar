@@ -24,25 +24,25 @@
 
 #include <stdint.h>
 
-/* 蓝牙SPP连接状态 */
+// 蓝牙SPP连接状态
 typedef enum {
-    BSP_BT_SPP_STATUS_IDLE = 0,     /* 空闲：未连接状态 */
-    BSP_BT_SPP_STATUS_CONNECTING,   /* 连接中：正在等待客户端连接 */
-    BSP_BT_SPP_STATUS_CONNECTED,    /* 已连接：客户端已连接，可进行数据传输 */
-    BSP_BT_SPP_STATUS_DISCONNECTED, /* 已断开：连接已断开 */
+    BSP_BT_SPP_STATUS_IDLE = 0,     // 空闲：未连接状态
+    BSP_BT_SPP_STATUS_CONNECTING,   // 连接中：正在等待客户端连接
+    BSP_BT_SPP_STATUS_CONNECTED,    // 已连接：客户端已连接，可进行数据传输
+    BSP_BT_SPP_STATUS_DISCONNECTED, // 已断开：连接已断开
 } bsp_bt_spp_status_t;
 
-/* 蓝牙SPP事件类型 */
+// 蓝牙SPP事件类型
 typedef enum {
-    BSP_BT_SPP_EVENT_CONNECTED = 0, /* 已连接：客户端成功建立连接 */
-    BSP_BT_SPP_EVENT_DISCONNECTED,  /* 已断开：客户端断开连接 */
-    BSP_BT_SPP_EVENT_DATA_RECEIVED, /* 接收到数据：收到客户端发送的数据 */
+    BSP_BT_SPP_EVENT_CONNECTED = 0, // 已连接：客户端成功建立连接
+    BSP_BT_SPP_EVENT_DISCONNECTED,  // 已断开：客户端断开连接
+    BSP_BT_SPP_EVENT_DATA_RECEIVED, // 接收到数据：收到客户端发送的数据
 } bsp_bt_spp_event_t;
 
-/* 蓝牙SPP数据接收回调函数类型 */
+// 蓝牙SPP数据接收回调函数类型
 typedef void (*bsp_bt_spp_data_handler_t)(const uint8_t *data, uint32_t len);
 
-/* 蓝牙SPP事件回调函数类型 */
+// 蓝牙SPP事件回调函数类型
 typedef void (*bsp_bt_spp_event_handler_t)(bsp_bt_spp_event_t event, void *data);
 
 /**
@@ -80,4 +80,4 @@ int bsp_bt_spp_register_data_handler(bsp_bt_spp_data_handler_t handler);
  */
 int bsp_bt_spp_register_event_handler(bsp_bt_spp_event_handler_t handler);
 
-#endif /* __BSP_BT_SPP_H__ */
+#endif // __BSP_BT_SPP_H__

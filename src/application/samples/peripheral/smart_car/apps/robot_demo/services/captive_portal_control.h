@@ -19,4 +19,4 @@
  */
 bool captive_portal_control_handle(int client_fd, bool is_get, const char *path, const char *query);
 
-#endif /* CAPTIVE_PORTAL_CONTROL_H */
+#endif // CAPTIVE_PORTAL_CONTROL_H

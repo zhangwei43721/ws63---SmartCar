@@ -10,23 +10,23 @@
 #include "soc_osal.h"
 #include "uart.h"
 
-/* UART配置参数 */
+// UART配置参数
 #define UART_BAUDRATE 9600
 #define UART_RX_BUFFER_SIZE 64
 
-/* UART引脚配置 */
+// UART引脚配置
 #define UART_TXD_PIN 8
 #define UART_RXD_PIN 7
 #define UART_TXD_PIN_MODE 1
 #define UART_RXD_PIN_MODE 1
 
-/* UART总线ID */
+// UART总线ID
 #define UART_BUS_ID 2
 
-/* 接收缓冲区 */
+// 接收缓冲区
 static uint8_t g_uart_rx_buffer[UART_RX_BUFFER_SIZE] = {0};
 
-/* 回调函数指针 */
+// 回调函数指针
 static uart_data_callback_t g_data_callback = NULL;
 
 /**

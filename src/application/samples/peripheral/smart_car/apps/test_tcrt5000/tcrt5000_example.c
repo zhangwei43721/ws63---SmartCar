@@ -32,9 +32,9 @@
 /**
  * @brief TCRT5000红外循迹传感器任务
  * @param arg 任务参数
- * @return NULL
+ * @return 0
  */
-static void *tcrt5000_task(const char *arg)
+static int tcrt5000_task(void *arg)
 {
     UNUSED(arg);
     adc_scan_config_t config = {.type = 0, .freq = 1};
@@ -64,7 +64,7 @@ static void *tcrt5000_task(const char *arg)
         osal_msleep(TCRT5000_DELAY_MS);
     }
 
-    return NULL;
+    return 0;
 }
 
 /**

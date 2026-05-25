@@ -90,7 +90,7 @@ static void voice_rx_callback(const uint8_t *data, uint16_t length)
     }
 }
 
-/* 看门狗任务：等到 expire 后推停车命令 */
+// 看门狗任务：等到 expire 后推停车命令
 static int voice_watchdog_task(void *arg)
 {
     (void)arg;

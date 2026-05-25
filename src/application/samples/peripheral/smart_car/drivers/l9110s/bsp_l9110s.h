@@ -47,4 +47,4 @@ void l9110s_init(void);
  */
 void l9110s_set_differential(int8_t left_speed, int8_t right_speed);
 
-#endif /* __BSP_L9110S_H__ */
+#endif // __BSP_L9110S_H__

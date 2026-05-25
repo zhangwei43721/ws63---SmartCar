@@ -19,12 +19,12 @@
 #include "uart.h"
 #include "watchdog.h"
 
-/* 状态字符串表 */
+// 状态字符串表
 #define OTA_STATE_EXPAND(s, str) str,
 static const char *const g_ota_state_str[] = {OTA_STATE_MAP(OTA_STATE_EXPAND)};
 #define OTA_STATE_TO_STR(state) (((uint32_t)(state) < OTA_STATE_MAX) ? g_ota_state_str[(uint32_t)(state)] : "UNKNOWN")
 
-/* ---------- 内部状态 ---------- */
+// ---------- 内部状态 ----------
 static volatile ota_state_t g_ota_state = OTA_STATE_IDLE;
 static volatile uint8_t g_ota_progress = 0;
 static volatile uint32_t g_ota_received = 0;
@@ -36,7 +36,7 @@ static osal_task *g_ota_task_handle = NULL;
 static osal_mutex g_ota_mutex;
 static bool g_ota_mutex_inited = false;
 
-/* ---------- UPG 回调 ---------- */
+// ---------- UPG 回调 ----------
 static void *fota_upg_malloc(const uint32_t size)
 {
     return osal_kmalloc(size, OSAL_GFP_ATOMIC);
@@ -57,7 +57,7 @@ static const upg_func_t s_upg_funcs = {.malloc = fota_upg_malloc,
                                        .free = fota_upg_free,
                                        .serial_putc = fota_upg_serial_putc};
 
-/* ---------- UPG 校验 ---------- */
+// ---------- UPG 校验 ----------
 static errcode_t fota_upg_verify_stored_package(void)
 {
     upg_package_header_t hdr;
@@ -76,7 +76,7 @@ static errcode_t fota_upg_verify_stored_package(void)
     return ERRCODE_SUCC;
 }
 
-/* ---------- UPG 预准备 ---------- */
+// ---------- UPG 预准备 ----------
 static errcode_t fota_upg_prepare_once(uint32_t package_len)
 {
     if (package_len == 0U) {
@@ -101,7 +101,7 @@ static errcode_t fota_upg_prepare_once(uint32_t package_len)
     return ret;
 }
 
-/* ---------- UI 进度更新 ---------- */
+// ---------- UI 进度更新 ----------
 static void ota_update_ui(void)
 {
     if (!ui_service_is_ready())
@@ -136,7 +136,7 @@ const char *ota_state_to_str(ota_state_t state)
     return OTA_STATE_TO_STR(state);
 }
 
-/* ---------- 状态管理 ---------- */
+// ---------- 状态管理 ----------
 static void ota_set_state(ota_state_t s)
 {
     if (g_ota_mutex_inited)
@@ -146,7 +146,7 @@ static void ota_set_state(ota_state_t s)
         osal_mutex_unlock(&g_ota_mutex);
 
     printf("[OTA] 状态切换 -> %s\r\n", OTA_STATE_TO_STR(s));
-    /* OTA 活跃阶段独占 OLED，IDLE 时释放，避免与 standby/mode 页面交替刷屏 */
+    // OTA 活跃阶段独占 OLED，IDLE 时释放，避免与 standby/mode 页面交替刷屏
     if (s == OTA_STATE_IDLE) {
         ui_service_release();
     } else {
@@ -163,7 +163,7 @@ static void ota_set_progress(uint8_t pct)
     if (g_ota_mutex_inited)
         osal_mutex_unlock(&g_ota_mutex);
 
-    /* OLED 通过 I2C@400KHz 全屏刷写 ~50ms，刷太频繁会卡死接收 */
+    // OLED 通过 I2C@400KHz 全屏刷写 ~50ms，刷太频繁会卡死接收
     static uint8_t last_ui_pct = 0xFF;
     if (last_ui_pct == 0xFF || pct == 100 || (pct / 10) != (last_ui_pct / 10)) {
         last_ui_pct = pct;
@@ -195,7 +195,7 @@ void ota_service_get_status(ota_status_t *out)
         osal_mutex_unlock(&g_ota_mutex);
 }
 
-/* ---------- TCP 接收与 UPG 写入 ---------- */
+// ---------- TCP 接收与 UPG 写入 ----------
 
 /**
  * @brief 接收固定长度的数据（处理 lwip_recv 可能返回部分数据的情况）
@@ -209,16 +209,16 @@ static int recv_all(int sock, uint8_t *buf, int want_len, int timeout_ms)
     while (received < want_len) {
         int64_t now = (int64_t)osal_get_jiffies();
         if ((now - start) > timeout_ticks) {
-            return -1; /* 超时 */
+            return -1; // 超时
         }
         int n = lwip_recv(sock, buf + received, want_len - received, 0);
         if (n < 0) {
-            /* lwIP 非阻塞/超时返回负值，短暂等待后重试 */
+            // lwIP 非阻塞/超时返回负值，短暂等待后重试
             osal_msleep(10);
             continue;
         }
         if (n == 0) {
-            return received; /* 对端关闭 */
+            return received; // 对端关闭
         }
         received += n;
     }
@@ -257,15 +257,15 @@ static int ota_tcp_server_task(void *arg)
 
     printf("[OTA] TCP 服务任务已启动，监听端口=%d\r\n", OTA_TCP_PORT);
 
-    /* 1. 创建监听 socket */
+    // 1. 创建监听 socket
     listen_fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
-    g_tcp_listen_fd = listen_fd; /* 同步到全局，供 cancel 使用 */
+    g_tcp_listen_fd = listen_fd; // 同步到全局，供 cancel 使用
     if (listen_fd < 0) {
         printf("[OTA] 创建 socket 失败\r\n");
         goto cleanup;
     }
 
-    /* 允许地址复用 */
+    // 允许地址复用
     lwip_setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     srv_addr.sin_family = AF_INET;
@@ -285,26 +285,26 @@ static int ota_tcp_server_task(void *arg)
     ota_set_state(OTA_STATE_WAITING);
     printf("[OTA] 正在监听端口 %d，等待连接...\r\n", OTA_TCP_PORT);
 
-    /* 2. 接受连接（带超时） */
+    // 2. 接受连接（带超时）
     tv.tv_sec = 30;
     tv.tv_usec = 0;
     lwip_setsockopt(listen_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     conn_fd = lwip_accept(listen_fd, (struct sockaddr *)&cli_addr, &cli_len);
-    g_tcp_conn_fd = conn_fd; /* 同步到全局，供 cancel 使用 */
+    g_tcp_conn_fd = conn_fd; // 同步到全局，供 cancel 使用
     if (conn_fd < 0) {
         printf("[OTA] 接受连接超时或失败\r\n");
         goto cleanup;
     }
     printf("[OTA] 客户端已连接: %s\r\n", inet_ntoa(cli_addr.sin_addr));
 
-    /* 关闭 Nagle：避免 1 字节 ACK 与小报文被合并延迟 */
+    // 关闭 Nagle：避免 1 字节 ACK 与小报文被合并延迟
     {
         int nodelay = 1;
         (void)lwip_setsockopt(conn_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
     }
 
-    /* 3. 接收 8 字节 Header */
+    // 3. 接收 8 字节 Header
     n = recv_all(conn_fd, header, sizeof(header), 10000);
     if (n != sizeof(header)) {
         printf("[OTA] 接收包头失败，已收 %d 字节\r\n", n);
@@ -328,7 +328,7 @@ static int ota_tcp_server_task(void *arg)
         goto cleanup;
     }
 
-    /* 4. UPG 预准备 */
+    // 4. UPG 预准备
     ret = fota_upg_prepare_once(total_size);
     if (ret != ERRCODE_SUCC) {
         printf("[OTA] 升级预准备失败\r\n");
@@ -336,10 +336,10 @@ static int ota_tcp_server_task(void *arg)
         goto cleanup;
     }
 
-    /* 回复 OK */
+    // 回复 OK
     tcp_send_ack(conn_fd, 0x00);
 
-    /* 5. 接收固件数据 */
+    // 5. 接收固件数据
     ota_set_state(OTA_STATE_RECEIVING);
     g_ota_total = total_size;
     g_ota_received = 0;
@@ -353,7 +353,7 @@ static int ota_tcp_server_task(void *arg)
 
     offset = 0;
     while (offset < total_size) {
-        /* 喂狗 */
+        // 喂狗
         uapi_watchdog_kick();
 
         to_recv = (total_size - offset > OTA_RECV_CHUNK_SIZE) ? OTA_RECV_CHUNK_SIZE : (int)(total_size - offset);
@@ -363,7 +363,7 @@ static int ota_tcp_server_task(void *arg)
             goto cleanup;
         }
 
-        /* 写入 UPG */
+        // 写入 UPG
         ret = uapi_upg_write_package_sync(offset, recv_buf, (uint16_t)n);
         if (ret != ERRCODE_SUCC) {
             printf("[OTA] 写入升级分区失败，偏移=%u 错误码=0x%x\r\n", offset, (unsigned)ret);
@@ -377,7 +377,7 @@ static int ota_tcp_server_task(void *arg)
         pct = (uint8_t)((offset * 100ULL) / total_size);
         ota_set_progress(pct);
 
-        /* 每 32KB 打印一次日志 */
+        // 每 32KB 打印一次日志
         if (offset % 32768 == 0 || offset == total_size) {
             printf("[OTA] 已接收 %u/%u 字节 (%u%%)\r\n", offset, total_size, pct);
         }
@@ -385,7 +385,7 @@ static int ota_tcp_server_task(void *arg)
 
     printf("[OTA] 固件接收完成，共 %u 字节\r\n", offset);
 
-    /* 6. UPG 校验 */
+    // 6. UPG 校验
     ota_set_state(OTA_STATE_VERIFYING);
     ret = fota_upg_verify_stored_package();
     if (ret != ERRCODE_SUCC) {
@@ -394,11 +394,11 @@ static int ota_tcp_server_task(void *arg)
         goto cleanup;
     }
 
-    /* 回复最终成功 */
+    // 回复最终成功
     tcp_send_ack(conn_fd, 0x00);
-    osal_msleep(100); /* 确保 ACK 发出去 */
+    osal_msleep(100); // 确保 ACK 发出去
 
-    /* 7. 请求升级并重启 */
+    // 7. 请求升级并重启
     ota_set_state(OTA_STATE_UPGRADING);
     printf("[OTA] 请求升级并重启...\r\n");
     ret = uapi_upg_request_upgrade(true);
@@ -407,7 +407,7 @@ static int ota_tcp_server_task(void *arg)
         goto cleanup;
     }
 
-    /* 正常情况下 request_upgrade(true) 会立即重启，不会执行到这里 */
+    // 正常情况下 request_upgrade(true) 会立即重启，不会执行到这里
     printf("[OTA] 等待重启中...\r\n");
 
 cleanup:
@@ -433,7 +433,7 @@ cleanup:
     return 0;
 }
 
-/* ---------- 公共接口 ---------- */
+// ---------- 公共接口 ----------
 
 void ota_service_init(void)
 {
@@ -506,5 +506,5 @@ void ota_service_cancel(void)
         lwip_close(g_tcp_listen_fd);
         g_tcp_listen_fd = -1;
     }
-    /* 任务会在 socket 关闭后自行退出 */
+    // 任务会在 socket 关闭后自行退出
 }

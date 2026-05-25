@@ -11,7 +11,7 @@
 #include "pinctrl.h"
 #include "securec.h"
 
-/* I2C 总线配置（用于 OLED 显示屏通信） */
+// I2C 总线配置（用于 OLED 显示屏通信）
 #define ROBOT_I2C_BUS_ID 1        // I2C 总线编号
 #define ROBOT_I2C_BAUDRATE 400000 // I2C 通信速率
 #define ROBOT_I2C_HS_CODE 0x0     // I2C 高速模式(标志为0，即不使用)
@@ -21,7 +21,7 @@
 
 void ui_service_init(void);
 
-/* 以下接口为非阻塞：仅向 UI 任务消息队列投递请求，由 UI 任务异步刷屏 */
+// 以下接口为非阻塞：仅向 UI 任务消息队列投递请求，由 UI 任务异步刷屏
 void ui_show_mode_page(CarStatus status);
 void ui_render_standby(WifiConnectStatus wifi_state, const char *ip_addr);
 void ui_show_ota_progress(uint8_t percent, const char *status_line);

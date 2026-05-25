@@ -14,7 +14,7 @@
 #include "../robot_common.h"
 #include "lwip/sockets.h"
 
-/* ---------- 内嵌控制页面 ---------- */
+// ---------- 内嵌控制页面 ----------
 static const char s_html_control[] =
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html; charset=utf-8\r\n"
@@ -125,7 +125,7 @@ static const char s_html_control[] =
     "</script>"
     "</body></html>";
 
-/* ---------- 工具函数 ---------- */
+// ---------- 工具函数 ----------
 
 /**
  * @brief 发送 HTTP 响应并关闭 socket
@@ -153,16 +153,16 @@ static int query_get_int(const char *query, const char *key)
     const char *p = query;
 
     while (*p != '\0') {
-        /* 跳过开头的 '?' 或 '&' */
+        // 跳过开头的 '?' 或 '&'
         if (*p == '?' || *p == '&')
             p++;
 
-        /* 检查是否匹配 key */
+        // 检查是否匹配 key
         if (strncmp(p, key, key_len) == 0 && p[key_len] == '=') {
             return atoi(p + key_len + 1);
         }
 
-        /* 跳到下一个参数 */
+        // 跳到下一个参数
         const char *amp = strchr(p, '&');
         if (amp != NULL) {
             p = amp + 1;
@@ -173,7 +173,7 @@ static int query_get_int(const char *query, const char *key)
     return 0;
 }
 
-/* ---------- API 处理 ---------- */
+// ---------- API 处理 ----------
 
 /**
  * @brief GET /api/status -> 返回 JSON 状态
@@ -227,7 +227,7 @@ static void handle_api_move(int client_fd, const char *query)
     int left = query_get_int(query, "l");
     int right = query_get_int(query, "r");
 
-    /* 推入 Motor Executor 命令队列，由独立高优先级任务执行 */
+    // 推入 Motor Executor 命令队列，由独立高优先级任务执行
     motor_executor_push_cmd((int8_t)left, (int8_t)right);
 
     char json[128];
@@ -255,7 +255,7 @@ static void handle_api_reset(int client_fd)
     send_response_and_close(client_fd, json);
 }
 
-/* ---------- 公共接口 ---------- */
+// ---------- 公共接口 ----------
 
 bool captive_portal_control_handle(int client_fd, bool is_get, const char *path, const char *query)
 {

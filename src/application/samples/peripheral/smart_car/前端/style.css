@@ -319,7 +319,7 @@ header {
 
 /* --- 仪表盘悬浮 --- */
 .dashboard-stats {
-  min-width: 220px; 
+  min-width: 220px;
   white-space: nowrap;
   justify-content: space-around;
   padding: 10px 20px;
@@ -655,8 +655,15 @@ header {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .status-box {
@@ -857,7 +864,7 @@ header {
     order: 2;
     /* 放在右侧 */
   }
-  
+
 }
 
 @media (max-width: 420px) {

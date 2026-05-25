@@ -4,7 +4,7 @@
 #include "ssd1306.h"
 #include "ssd1306_fonts.h"
 
-/* Helper to get UTF-8 character length */
+// 获取UTF-8字符长度的辅助函数
 static int GetUtf8CharLength(const char *target)
 {
     unsigned char c = (unsigned char)target[0];
@@ -19,7 +19,7 @@ static int GetUtf8CharLength(const char *target)
     return 1;
 }
 
-/* Find index in the font array */
+// 在字体数组中查找索引
 static int FindFontIndex(const char *target, int len)
 {
     int i;
@@ -44,16 +44,16 @@ void ssd1306_DrawString16(uint8_t x, uint8_t y, const char *str, SSD1306_COLOR c
         int len = GetUtf8CharLength(p);
 
         if (len == 1) {
-            // ASCII character
-            // Center 7x10 font in 16px height: offset = (16-10)/2 = 3
+            // ASCII字符
+            // 7x10字体在16像素高度中居中: 偏移量 = (16-10)/2 = 3
             ssd1306_SetCursor(curr_x, curr_y + 3);
             ssd1306_DrawChar(*p, Font_7x10, color);
-            curr_x += 7; // Font width
+            curr_x += 7; // 字体宽度
         } else {
             int index = FindFontIndex(p, len);
 
             if (index >= 0) {
-                // Draw 16x16 bitmap
+                // 绘制16x16位图
                 const char *bitmap = g_font_dot_matrix_16[index];
                 for (int i = 0; i < 16; i++) {
                     uint8_t byte = bitmap[i];

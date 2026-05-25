@@ -17,13 +17,13 @@
 static volatile bool s_should_exit = false;
 static osal_task *s_ap_task = NULL;
 
-/** @brief 设置 AP 任务退出标志 */
+//* @brief 设置 AP 任务退出标志
 void ap_set_should_exit(bool v)
 {
     s_should_exit = v;
 }
 
-/** @brief 启动 AP（热点）任务 */
+//* @brief 启动 AP（热点）任务
 bool ap_task_start(void)
 {
     if (s_ap_task)
@@ -42,7 +42,7 @@ bool ap_task_start(void)
     return true;
 }
 
-/** @brief 停止 AP 任务 */
+//* @brief 停止 AP 任务
 void ap_task_stop(void)
 {
     if (!s_ap_task)
@@ -57,7 +57,7 @@ void ap_task_stop(void)
     s_ap_task = NULL;
 }
 
-/** @brief AP 任务主函数：启动热点、配置 IP/DHCP、循环等待退出 */
+//* @brief AP 任务主函数：启动热点、配置 IP/DHCP、循环等待退出
 int ap_task_main(void *arg)
 {
     (void)arg;

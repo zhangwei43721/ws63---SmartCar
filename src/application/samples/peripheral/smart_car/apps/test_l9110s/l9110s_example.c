@@ -31,9 +31,9 @@
 /**
  * @brief L9110S电机测试任务
  * @param arg 任务参数
- * @return NULL
+ * @return 0
  */
-static void *l9110s_task(const char *arg)
+static int l9110s_task(void *arg)
 {
     UNUSED(arg);
 
@@ -69,7 +69,7 @@ static void *l9110s_task(const char *arg)
         osal_msleep(L9110S_DELAY_MS);
     }
 
-    return NULL;
+    return 0;
 }
 
 /**

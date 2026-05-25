@@ -12,16 +12,16 @@
 #include "errcode.h"
 
 #define OTA_TCP_PORT 8890
-#define OTA_TCP_STACK_SIZE (1024 * 16) /* 16KB 栈，TCP+UPG 操作需要较大空间 */
+#define OTA_TCP_STACK_SIZE (1024 * 16) // 16KB 栈，TCP+UPG 操作需要较大空间
 #define OTA_TCP_TASK_PRIORITY 23
 
-#define OTA_RECV_CHUNK_SIZE 32768  /* 每次 recv 缓冲大小 */
-#define OTA_WRITE_CHUNK_SIZE 32768 /* 每次写入 UPG 的块大小 */
+#define OTA_RECV_CHUNK_SIZE 32768  // 每次 recv 缓冲大小
+#define OTA_WRITE_CHUNK_SIZE 32768 // 每次写入 UPG 的块大小
 
 #define OTA_MAGIC_STR "OTAx"
 #define OTA_MAGIC_LEN 4
 
-/* 状态机定义 */
+// 状态机定义
 #define OTA_STATE_MAP(OP)                \
     OP(OTA_STATE_IDLE, "IDLE")           \
     OP(OTA_STATE_WAITING, "WAITING")     \
@@ -37,10 +37,10 @@ typedef enum { OTA_STATE_MAP(OTA_STATE_ENUM) OTA_STATE_MAX } ota_state_t;
 
 const char *ota_state_to_str(ota_state_t state);
 
-/* 公共进度/状态查询 */
+// 公共进度/状态查询
 typedef struct {
     ota_state_t state;
-    uint8_t progress_percent; /* 0~100 */
+    uint8_t progress_percent; // 0~100
     uint32_t received_size;
     uint32_t total_size;
 } ota_status_t;
@@ -60,4 +60,4 @@ bool ota_service_is_active(void);
 
 void ota_service_get_status(ota_status_t *out);
 
-#endif /* OTA_SERVICE_H */
+#endif // OTA_SERVICE_H

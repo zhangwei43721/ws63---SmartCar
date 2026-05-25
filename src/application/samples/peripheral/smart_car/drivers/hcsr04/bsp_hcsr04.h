@@ -55,4 +55,4 @@ void hcsr04_init(void);
  */
 float hcsr04_get_distance(void);
 
-#endif /* __BSP_HCSR04_H__ */
+#endif // __BSP_HCSR04_H__

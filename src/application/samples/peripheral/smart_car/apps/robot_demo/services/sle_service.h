@@ -31,4 +31,4 @@ void sle_service_init(void);
  */
 bool sle_service_is_connected(void);
 
-#endif /* SLE_SERVICE_H */
+#endif // SLE_SERVICE_H

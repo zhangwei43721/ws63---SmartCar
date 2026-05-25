@@ -60,7 +60,7 @@ static void spp_event_handler(bsp_bt_spp_event_t event, void *data)
     }
 }
 
-static void *bt_spp_task(const char *arg)
+static int bt_spp_task(void *arg)
 {
     UNUSED(arg);
     int ret;
@@ -77,7 +77,7 @@ static void *bt_spp_task(const char *arg)
     ret = bsp_bt_spp_init(BT_DEVICE_NAME);
     if (ret != 0) {
         printf("BT Init Failed!\r\n");
-        return NULL;
+        return 0;
     }
 
     printf("BT Init Success. Waiting for connection...\r\n");
@@ -103,7 +103,7 @@ static void *bt_spp_task(const char *arg)
 
         osal_msleep(2000); // 延时2秒
     }
-    return NULL;
+    return 0;
 }
 
 static void bt_spp_example_entry(void)

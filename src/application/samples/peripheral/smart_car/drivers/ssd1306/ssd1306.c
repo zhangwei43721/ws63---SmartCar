@@ -35,7 +35,7 @@
 
 void ssd1306_Reset(void)
 {
-    // Wait for the screen to boot,1ms  The delay here is very important
+    // 等待屏幕启动，1ms。此处的延时非常重要
     osal_mdelay(1);
 }
 
@@ -60,13 +60,13 @@ static uint32_t ssd1306_WriteByte(uint8_t regAddr, uint8_t byte)
     return ssd1306_SendData(buffer, sizeof(buffer));
 }
 
-// Send a byte to the command register
+// 向命令寄存器发送一个字节
 void ssd1306_WriteCommand(uint8_t byte)
 {
     ssd1306_WriteByte(SSD1306_CTRL_CMD, byte);
 }
 
-// Send data
+// 发送数据
 void ssd1306_WriteData(uint8_t *buffer, uint32_t buff_size)
 {
     uint8_t data[SSD1306_WIDTH * DOUBLE] = {0};
@@ -78,13 +78,13 @@ void ssd1306_WriteData(uint8_t *buffer, uint32_t buff_size)
     ssd1306_SendData(data, sizeof(data));
 }
 
-// Screenbuffer
+// 屏幕缓冲区
 static uint8_t SSD1306_Buffer[SSD1306_BUFFER_SIZE];
 
-// Screen object
+// 屏幕对象
 static SSD1306_t SSD1306;
 
-/* Fills the Screenbuffer with values from a given buffer of a fixed length */
+// 用给定缓冲区的数据填充屏幕缓冲区
 SSD1306_Error_t ssd1306_FillBuffer(uint8_t *buf, uint32_t len)
 {
     SSD1306_Error_t ret = SSD1306_ERR;
@@ -97,18 +97,18 @@ SSD1306_Error_t ssd1306_FillBuffer(uint8_t *buf, uint32_t len)
 
 void ssd1306_Init_CMD(void)
 {
-    ssd1306_WriteCommand(0xA4); // 0xa4,Output follows RAM content;0xa5,Output ignores RAM content
+    ssd1306_WriteCommand(0xA4); // 0xa4,输出跟随RAM内容;0xa5,输出忽略RAM内容
 
-    ssd1306_WriteCommand(0xD3); // -set display offset - CHECK
-    ssd1306_WriteCommand(0x00); // -not offset
+    ssd1306_WriteCommand(0xD3); // -设置显示偏移 - 校验
+    ssd1306_WriteCommand(0x00); // -无偏移
 
-    ssd1306_WriteCommand(0xD5); // --set display clock divide ratio/oscillator frequency
-    ssd1306_WriteCommand(0xF0); // --set divide ratio
+    ssd1306_WriteCommand(0xD5); // --设置显示时钟分频比/振荡器频率
+    ssd1306_WriteCommand(0xF0); // --设置分频比
 
-    ssd1306_WriteCommand(0xD9); // --set pre-charge period
-    ssd1306_WriteCommand(0x11); // 0x22 by default
+    ssd1306_WriteCommand(0xD9); // --设置预充电周期
+    ssd1306_WriteCommand(0x11); // 默认为0x22
 
-    ssd1306_WriteCommand(0xDA); // --set com pins hardware configuration - CHECK
+    ssd1306_WriteCommand(0xDA); // --设置COM引脚硬件配置 - 校验
 #if (SSD1306_HEIGHT == 32)
     ssd1306_WriteCommand(0x02);
 #elif (SSD1306_HEIGHT == 64)
@@ -119,15 +119,15 @@ void ssd1306_Init_CMD(void)
 #error "Only 32, 64, or 128 lines of height are supported!"
 #endif
 
-    ssd1306_WriteCommand(0xDB); // --set vcomh
-    ssd1306_WriteCommand(0x30); // 0x20,0.77xVcc, 0x30,0.83xVcc
+    ssd1306_WriteCommand(0xDB); // --设置VCOMH
+    ssd1306_WriteCommand(0x30); // 0x20对应0.77xVcc, 0x30对应0.83xVcc
 
-    ssd1306_WriteCommand(0x8D); // --set DC-DC enable
+    ssd1306_WriteCommand(0x8D); // --设置DC-DC使能
     ssd1306_WriteCommand(0x14); //
-    ssd1306_SetDisplayOn(1);    // --turn on SSD1306 panel
+    ssd1306_SetDisplayOn(1);    // --打开SSD1306面板
 }
 
-// Initialize the oled screen
+// 初始化OLED屏幕
 bool ssd1306_Init(void)
 {
     // 尝试探测设备是否存在（发送一个简单命令测试）
@@ -139,48 +139,48 @@ bool ssd1306_Init(void)
     if (probe_ret != 0)
         return false; // 设备探测失败，OLED 不存在或通信失败
 
-    // Reset OLED
+    // 复位OLED
     ssd1306_Reset();
-    // Init OLED
-    ssd1306_SetDisplayOn(0); // display off
+    // 初始化OLED
+    ssd1306_SetDisplayOn(0); // 关闭显示
 
-    ssd1306_WriteCommand(0x20); // Set Memory Addressing Mode
-    ssd1306_WriteCommand(0x00); // 00b,Horizontal Addressing Mode; 01b,Vertical Addressing Mode;
-                                // 10b,Page Addressing Mode (RESET); 11b,Invalid
+    ssd1306_WriteCommand(0x20); // 设置存储器寻址模式
+    ssd1306_WriteCommand(0x00); // 00b,水平寻址模式; 01b,垂直寻址模式;
+                                // 10b,页寻址模式(复位值); 11b,无效
 
-    ssd1306_WriteCommand(0xB0); // Set Page Start Address for Page Addressing Mode,0-7
+    ssd1306_WriteCommand(0xB0); // 设置页寻址模式的页起始地址,0-7
 
 #ifdef SSD1306_MIRROR_VERT
-    ssd1306_WriteCommand(0xC0); // Mirror vertically
+    ssd1306_WriteCommand(0xC0); // 垂直镜像
 #else
-    ssd1306_WriteCommand(0xC8); // Set COM Output Scan Direction
+    ssd1306_WriteCommand(0xC8); // 设置COM输出扫描方向
 #endif
 
-    ssd1306_WriteCommand(0x00); // ---set low column address
-    ssd1306_WriteCommand(0x10); // ---set high column address
+    ssd1306_WriteCommand(0x00); // ---设置低列地址
+    ssd1306_WriteCommand(0x10); // ---设置高列地址
 
-    ssd1306_WriteCommand(0x40); // --set start line address - CHECK
+    ssd1306_WriteCommand(0x40); // --设置起始行地址 - 校验
 
     ssd1306_SetContrast(0xFF);
 
 #ifdef SSD1306_MIRROR_HORIZ
-    ssd1306_WriteCommand(0xA0); // Mirror horizontally
+    ssd1306_WriteCommand(0xA0); // 水平镜像
 #else
-    ssd1306_WriteCommand(0xA1); // --set segment re-map 0 to 127 - CHECK
+    ssd1306_WriteCommand(0xA1); // --设置段重映射0到127 - 校验
 #endif
 
 #ifdef SSD1306_INVERSE_COLOR
-    ssd1306_WriteCommand(0xA7); // --set inverse color
+    ssd1306_WriteCommand(0xA7); // --设置反色
 #else
-    ssd1306_WriteCommand(0xA6); // --set normal color
+    ssd1306_WriteCommand(0xA6); // --设置正常颜色
 #endif
 
-// Set multiplex ratio.
+// 设置多路复用率
 #if (SSD1306_HEIGHT == 128)
-    // Found in the Luma Python lib for SH1106.
+    // 在SH1106的Luma Python库中发现
     ssd1306_WriteCommand(0xFF);
 #else
-    ssd1306_WriteCommand(0xA8); // --set multiplex ratio(1 to 64) - CHECK
+    ssd1306_WriteCommand(0xA8); // --设置多路复用率(1到64) - 校验
 #endif
 
 #if (SSD1306_HEIGHT == 32)
@@ -188,18 +188,18 @@ bool ssd1306_Init(void)
 #elif (SSD1306_HEIGHT == 64)
     ssd1306_WriteCommand(0x3F); //
 #elif (SSD1306_HEIGHT == 128)
-    ssd1306_WriteCommand(0x3F); // Seems to work for 128px high displays too.
+    ssd1306_WriteCommand(0x3F); // 对128像素高的显示屏也有效
 #else
 #error "Only 32, 64, or 128 lines of height are supported!"
 #endif
     ssd1306_Init_CMD();
-    // Clear screen
+    // 清屏
     ssd1306_Fill(Black);
 
-    // Flush buffer to screen
+    // 将缓冲区刷新到屏幕
     ssd1306_UpdateScreen();
 
-    // Set default values for screen object
+    // 设置屏幕对象的默认值
     SSD1306.CurrentX = 0;
     SSD1306.CurrentY = 0;
 
@@ -207,10 +207,10 @@ bool ssd1306_Init(void)
     return true; // 初始化成功
 }
 
-// Fill the whole screen with the given color
+// 用给定颜色填充整个屏幕
 void ssd1306_Fill(SSD1306_COLOR color)
 {
-    /* Set memory */
+    // 设置存储器
     uint32_t i;
 
     for (i = 0; i < sizeof(SSD1306_Buffer); i++) {
@@ -218,15 +218,15 @@ void ssd1306_Fill(SSD1306_COLOR color)
     }
 }
 
-// Write the screenbuffer with changed to the screen
+// 将修改后的屏幕缓冲区写入屏幕
 void ssd1306_UpdateScreen(void)
 {
-    // Write data to each page of RAM. Number of pages
-    // depends on the screen height:
+    // 向RAM的每一页写入数据。页数
+    // 取决于屏幕高度：
     //
-    //  * 32px   ==  4 pages
-    //  * 64px   ==  8 pages
-    //  * 128px  ==  16 pages
+    // * 32像素  ==  4页
+    // * 64像素  ==  8页
+    // * 128像素 ==  16页
 
     uint8_t cmd[] = {
         0X21, // 设置列起始和结束地址
@@ -239,41 +239,41 @@ void ssd1306_UpdateScreen(void)
     uint32_t count = 0;
     uint8_t data[sizeof(cmd) * DOUBLE + SSD1306_BUFFER_SIZE + 1] = {};
 
-    // copy cmd
+    // 复制命令
     for (uint32_t i = 0; i < sizeof(cmd) / sizeof(cmd[0]); i++) {
         data[count++] = SSD1306_CTRL_CMD | SSD1306_MASK_CONT;
         data[count++] = cmd[i];
     }
 
-    // copy frame data
+    // 复制帧数据
     data[count++] = SSD1306_CTRL_DATA;
     memcpy_s(&data[count], SSD1306_BUFFER_SIZE + 1, SSD1306_Buffer, SSD1306_BUFFER_SIZE);
     count += sizeof(SSD1306_Buffer);
 
-    // send to i2c bus
+    // 发送到I2C总线
     uint32_t retval = ssd1306_SendData(data, count);
     if (retval != 0) {
         printf("ssd1306_UpdateScreen send frame data filed: %d!\r\n", retval);
     }
 }
 
-//    Draw one pixel in the screenbuffer
-//    X => X Coordinate
-//    Y => Y Coordinate
-//    color => Pixel color
+// 在屏幕缓冲区中绘制一个像素
+// X => X坐标
+// Y => Y坐标
+// color => 像素颜色
 void ssd1306_DrawPixel(uint8_t x, uint8_t y, SSD1306_COLOR color)
 {
     if (x >= SSD1306_WIDTH || y >= SSD1306_HEIGHT) {
-        // Don't write outside the buffer
+        // 不要写入缓冲区外部
         return;
     }
     SSD1306_COLOR color1 = color;
-    // Check if pixel should be inverted
+    // 检查像素是否应反转
     if (SSD1306.Inverted) {
         color1 = (SSD1306_COLOR)!color1;
     }
 
-    // Draw in the right color
+    // 以正确的颜色绘制
     uint32_t c = 8; // 8
     if (color == White) {
         SSD1306_Buffer[x + (y / c) * SSD1306_WIDTH] |= 1 << (y % c);
@@ -282,28 +282,28 @@ void ssd1306_DrawPixel(uint8_t x, uint8_t y, SSD1306_COLOR color)
     }
 }
 
-// Draw 1 char to the screen buffer
-// ch       => char om weg te schrijven
-// Font     => Font waarmee we gaan schrijven
-// color    => Black or White
+// 在屏幕缓冲区绘制1个字符
+// ch       => 要写入的字符
+// Font     => 用于写入的字体
+// color    => 黑或白
 char ssd1306_DrawChar(char ch, FontDef Font, SSD1306_COLOR color)
 {
     uint32_t i, b, j;
 
-    // Check if character is valid
+    // 检查字符是否有效
     uint32_t ch_min = 32;  // 32
     uint32_t ch_max = 126; // 126
     if ((uint32_t)ch < ch_min || (uint32_t)ch > ch_max) {
         return 0;
     }
 
-    // Check remaining space on current line
+    // 检查当前行剩余空间
     if (SSD1306_WIDTH < (SSD1306.CurrentX + Font.FontWidth) || SSD1306_HEIGHT < (SSD1306.CurrentY + Font.FontHeight)) {
-        // Not enough space on current line
+        // 当前行空间不足
         return 0;
     }
 
-    // Use the font to write
+    // 使用字体写入
     for (i = 0; i < Font.FontHeight; i++) {
         b = Font.data[(ch - ch_min) * Font.FontHeight + i];
         for (j = 0; j < Font.FontWidth; j++) {
@@ -315,39 +315,39 @@ char ssd1306_DrawChar(char ch, FontDef Font, SSD1306_COLOR color)
         }
     }
 
-    // The current space is now taken
+    // 当前空间已被占用
     SSD1306.CurrentX += Font.FontWidth;
 
-    // Return written char for validation
+    // 返回写入的字符以用于校验
     return ch;
 }
 
-// Write full string to screenbuffer
+// 将完整字符串写入屏幕缓冲区
 char ssd1306_DrawString(char *str, FontDef Font, SSD1306_COLOR color)
 {
-    // Write until null-byte
+    // 写入直到空字节
     char *str1 = str;
     while (*str1) {
         if (ssd1306_DrawChar(*str1, Font, color) != *str1) {
-            // Char could not be written
+            // 字符无法写入
             return *str1;
         }
-        // Next char
+        // 下一个字符
         str1++;
     }
 
-    // Everything ok
+    // 一切正常
     return *str1;
 }
 
-// Position the cursor
+// 定位光标
 void ssd1306_SetCursor(uint8_t x, uint8_t y)
 {
     SSD1306.CurrentX = x;
     SSD1306.CurrentY = y;
 }
 
-// Draw line by Bresenhem's algorithm
+// 使用Bresenham算法画线
 void ssd1306_DrawLine(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, SSD1306_COLOR color)
 {
     uint8_t x = x1;
@@ -366,18 +366,18 @@ void ssd1306_DrawLine(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, SSD1306_CO
             error -= deltaY;
             x += signX;
         } else {
-            /* nothing to do */
+            // 无需操作
         }
         if (error2 < deltaX) {
             error += deltaX;
             y += signY;
         } else {
-            /* nothing to do */
+            // 无需操作
         }
     }
 }
 
-// Draw polyline
+// 绘制折线
 void ssd1306_DrawPolyline(const SSD1306_VERTEX *par_vertex, uint16_t par_size, SSD1306_COLOR color)
 {
     uint16_t i;
@@ -386,12 +386,12 @@ void ssd1306_DrawPolyline(const SSD1306_VERTEX *par_vertex, uint16_t par_size, S
             ssd1306_DrawLine(par_vertex[i - 1].x, par_vertex[i - 1].y, par_vertex[i].x, par_vertex[i].y, color);
         }
     } else {
-        /* nothing to do */
+        // 无需操作
     }
     return;
 }
 
-// Draw circle by Bresenhem's algorithm
+// 使用Bresenham算法画圆
 void ssd1306_DrawCircle(uint8_t par_x, uint8_t par_y, uint8_t par_r, SSD1306_COLOR par_color)
 {
     int32_t x = -par_r;
@@ -416,23 +416,23 @@ void ssd1306_DrawCircle(uint8_t par_x, uint8_t par_y, uint8_t par_r, SSD1306_COL
             if (-x == y && e2 <= x) {
                 e2 = 0;
             } else {
-                /* nothing to do */
+                // 无需操作
             }
         } else {
-            /* nothing to do */
+            // 无需操作
         }
         if (e2 > x) {
             x++;
             err = err + (x * b + 1);
         } else {
-            /* nothing to do */
+            // 无需操作
         }
     } while (x <= 0);
 
     return;
 }
 
-// Draw rectangle
+// 绘制矩形
 void ssd1306_DrawRectangle(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, SSD1306_COLOR color)
 {
     ssd1306_DrawLine(x1, y1, x2, y1, color);
@@ -495,10 +495,10 @@ void ssd1306_SetDisplayOn(const uint8_t on)
 {
     uint8_t value;
     if (on) {
-        value = 0xAF; // Display on
+        value = 0xAF; // 打开显示
         SSD1306.DisplayOn = 1;
     } else {
-        value = 0xAE; // Display off
+        value = 0xAE; // 关闭显示
         SSD1306.DisplayOn = 0;
     }
     ssd1306_WriteCommand(value);

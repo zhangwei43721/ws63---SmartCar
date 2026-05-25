@@ -22,12 +22,12 @@
 
 #include "ssd1306_fonts.h"
 
-// SSD1306 OLED height in pixels
+// SSD1306 OLED高度（像素）
 #ifndef SSD1306_HEIGHT
 #define SSD1306_HEIGHT 64
 #endif
 
-// SSD1306 width in pixels
+// SSD1306宽度（像素）
 #ifndef SSD1306_WIDTH
 #define SSD1306_WIDTH 128
 #endif
@@ -36,33 +36,33 @@
 #define SSD1306_BUFFER_SIZE (SSD1306_WIDTH * SSD1306_HEIGHT / 8)
 #endif
 
-// Enumeration for screen colors
+// 屏幕颜色枚举
 typedef enum {
-    Black = 0x00, /* 黑色：清除像素（不点亮） */
-    White = 0x01  /* 白色：设置像素（点亮），实际显示颜色取决于OLED类型 */
+    Black = 0x00, // 黑色：清除像素（不点亮）
+    White = 0x01  // 白色：设置像素（点亮），实际显示颜色取决于OLED类型
 } SSD1306_COLOR;
 
 typedef enum {
-    SSD1306_OK = 0x00, /* 成功：操作正常完成 */
-    SSD1306_ERR = 0x01 /* 失败：通用错误 */
+    SSD1306_OK = 0x00, // 成功：操作正常完成
+    SSD1306_ERR = 0x01 // 失败：通用错误
 } SSD1306_Error_t;
 
-// Struct to store transformations
+// 存储变换参数的结构体
 typedef struct {
-    uint16_t CurrentX;   /* 当前光标 X 坐标（像素） */
-    uint16_t CurrentY;   /* 当前光标 Y 坐标（像素） */
-    uint8_t Inverted;    /* 显示反转状态：0=正常，1=反色 */
-    uint8_t Initialized; /* 初始化状态：0=未初始化，1=已初始化 */
-    uint8_t DisplayOn;   /* 显示开关状态：0=关闭，1=开启 */
+    uint16_t CurrentX;   // 当前光标 X 坐标（像素）
+    uint16_t CurrentY;   // 当前光标 Y 坐标（像素）
+    uint8_t Inverted;    // 显示反转状态：0=正常，1=反色
+    uint8_t Initialized; // 初始化状态：0=未初始化，1=已初始化
+    uint8_t DisplayOn;   // 显示开关状态：0=关闭，1=开启
 } SSD1306_t;
 
-/* 顶点坐标结构体，用于绘制多边形 */
+// 顶点坐标结构体，用于绘制多边形
 typedef struct {
-    uint8_t x; /* X 坐标（像素） */
-    uint8_t y; /* Y 坐标（像素） */
+    uint8_t x; // X 坐标（像素）
+    uint8_t y; // Y 坐标（像素）
 } SSD1306_VERTEX;
 
-// Procedure definitions
+// 函数声明
 bool ssd1306_Init(void); // 返回 true 表示初始化成功，false 表示失败
 void ssd1306_Fill(SSD1306_COLOR color);
 void ssd1306_SetCursor(uint8_t x, uint8_t y);
@@ -99,7 +99,7 @@ void ssd1306_SetDisplayOn(const uint8_t on);
  */
 uint8_t ssd1306_GetDisplayOn(void);
 
-// Low-level procedures
+// 底层函数
 void ssd1306_Reset(void);
 void ssd1306_WriteCommand(uint8_t byte);
 void ssd1306_WriteData(uint8_t *buffer, size_t buff_size);

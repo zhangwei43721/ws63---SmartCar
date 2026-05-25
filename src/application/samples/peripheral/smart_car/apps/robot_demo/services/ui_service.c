@@ -30,14 +30,14 @@ typedef struct {
     char text[32];
 } ui_msg_t;
 
-static bool g_oled_ready = false; /* OLED 是否已初始化并可用 */
-static bool g_ui_busy = false;    /* OLED 是否被独占（OTA 等高优场景） */
+static bool g_oled_ready = false; // OLED 是否已初始化并可用
+static bool g_ui_busy = false;    // OLED 是否被独占（OTA 等高优场景）
 
 static unsigned long g_ui_queue = 0;
 static bool g_queue_inited = false;
 static osal_task *g_ui_task = NULL;
 
-/* UI 当前缓存的模式，用于待机页面判断 */
+// UI 当前缓存的模式，用于待机页面判断
 static CarStatus g_ui_current_mode = CAR_STOP_STATUS;
 
 /**
@@ -59,19 +59,19 @@ typedef struct {
  * @brief 模式显示信息查找表（按 CarStatus 枚举值索引）
  */
 static const ModeDisplayInfo g_mode_display[] = {
-    // CAR_STOP_STATUS (0)
+    // 停止状态 (0)
     {"模式: 停止", "等待...", ""},
-    // CAR_TRACE_STATUS (1)
+    // 循迹状态 (1)
     {"模式: 循迹", "循迹中...", ""},
-    // CAR_OBSTACLE_AVOIDANCE_STATUS (2)
+    // 避障状态 (2)
     {"模式: 避障", "避障中...", ""},
-    // CAR_WIFI_CONTROL_STATUS (3)
+    // WiFi遥控状态 (3)
     {"模式: 遥控", "遥控中...", ""},
-    // CAR_BT_CONTROL_STATUS (4)
+    // 蓝牙遥控状态 (4)
     {"模式: 蓝牙", "未启用", ""},
 };
 
-/* ---------- 实际渲染函数（仅 UI 任务调用） ---------- */
+// ---------- 实际渲染函数（仅 UI 任务调用） ----------
 
 static void ui_render_mode(CarStatus status)
 {
@@ -126,7 +126,7 @@ static void ui_render_ota(uint8_t percent, const char *status_line)
     ssd1306_UpdateScreen();
 }
 
-/* ---------- UI 任务主循环 ---------- */
+// ---------- UI 任务主循环 ----------
 
 static int ui_task_entry(void *arg)
 {
@@ -143,7 +143,7 @@ static int ui_task_entry(void *arg)
             case UI_MSG_MODE:
                 g_ui_current_mode = msg.mode;
                 if (msg.mode == CAR_STOP_STATUS) {
-                    /* 待机模式：直接读取网络层缓存的 IP，无轮询 */
+                    // 待机模式：直接读取网络层缓存的 IP，无轮询
                     WifiConnectStatus wifi_status = udp_service_get_wifi_status();
                     char ip_line[32] = {0};
                     if (wifi_status == WIFI_STATUS_AP_MODE) {
@@ -174,7 +174,7 @@ static int ui_task_entry(void *arg)
     return 0;
 }
 
-/* ---------- 初始化 ---------- */
+// ---------- 初始化 ----------
 
 void ui_service_init(void)
 {
@@ -199,7 +199,7 @@ void ui_service_init(void)
     printf("[OLED] 显示屏初始化成功\r\n");
     g_oled_ready = true;
 
-    /* 创建消息队列 + UI 任务（即使 OLED 失败也创建任务，避免接口堆积） */
+    // 创建消息队列 + UI 任务（即使 OLED 失败也创建任务，避免接口堆积）
     if (!g_queue_inited) {
         if (osal_msg_queue_create("ui_msgq", UI_MSG_QUEUE_DEPTH, &g_ui_queue, 0, sizeof(ui_msg_t)) == OSAL_SUCCESS) {
             g_queue_inited = true;
@@ -221,7 +221,7 @@ void ui_service_init(void)
     ui_show_mode_page(CAR_STOP_STATUS);
 }
 
-/* ---------- 对外接口：仅投递消息 ---------- */
+// ---------- 对外接口：仅投递消息 ----------
 
 static void ui_post(const ui_msg_t *msg)
 {

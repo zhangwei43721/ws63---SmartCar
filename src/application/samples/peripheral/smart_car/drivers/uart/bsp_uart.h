@@ -32,4 +32,4 @@ int bsp_uart_init(uart_data_callback_t callback);
  */
 int bsp_uart_send(const uint8_t *data, uint16_t length);
 
-#endif /* BSP_UART_H */
+#endif // BSP_UART_H

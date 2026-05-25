@@ -106,4 +106,4 @@ uint32_t tcrt5000_get_middle_adc(void);
  */
 uint32_t tcrt5000_get_right_adc(void);
 
-#endif /* __BSP_TCRT5000_H__ */
+#endif // __BSP_TCRT5000_H__

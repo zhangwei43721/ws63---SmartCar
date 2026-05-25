@@ -16,7 +16,7 @@
 #include "wifi_event.h"
 #include "wifi_hotspot.h"
 
-/* ---------- 状态 ---------- */
+// ---------- 状态 ----------
 static bsp_wifi_status_t s_status = BSP_WIFI_STATUS_IDLE;
 static bsp_wifi_mode_t s_mode = BSP_WIFI_MODE_STA;
 static char s_ip[16] = "0.0.0.0";
@@ -24,14 +24,14 @@ static char s_ip[16] = "0.0.0.0";
 static bsp_wifi_event_cb_t s_event_cb = NULL;
 static void *s_event_arg = NULL;
 
-/* ---------- Task 句柄 ---------- */
+// ---------- Task 句柄 ----------
 static osal_task *s_sta_task = NULL;
 
-/* ---------- 当前 WiFi 配置 ---------- */
+// ---------- 当前 WiFi 配置 ----------
 static char s_ssid[33] = {0};
 static char s_pwd[64] = {0};
 
-/* ---------- 信号量 ---------- */
+// ---------- 信号量 ----------
 static osal_semaphore s_conn_sem;
 static osal_semaphore s_wait_sem;
 static bool s_wait_sem_inited = false;
@@ -39,33 +39,33 @@ static osal_semaphore s_sync_sem;
 static bool s_sync_inited = false;
 static volatile bool s_should_exit = false;
 
-/* ---------- 公共状态管理 ---------- */
+// ---------- 公共状态管理 ----------
 
-/** @brief 获取当前 WiFi 状态 */
+//* @brief 获取当前 WiFi 状态
 bsp_wifi_status_t bsp_wifi_get_status(void)
 {
     return s_status;
 }
 
-/** @brief 获取当前 WiFi 模式（STA/AP） */
+//* @brief 获取当前 WiFi 模式（STA/AP）
 bsp_wifi_mode_t bsp_wifi_get_mode(void)
 {
     return s_mode;
 }
 
-/** @brief 设置 WiFi 状态 */
+//* @brief 设置 WiFi 状态
 void bsp_wifi_set_status(bsp_wifi_status_t st)
 {
     s_status = st;
 }
 
-/** @brief 设置 WiFi 模式 */
+//* @brief 设置 WiFi 模式
 void bsp_wifi_set_mode(bsp_wifi_mode_t m)
 {
     s_mode = m;
 }
 
-/** @brief 获取本机 IP 地址字符串 */
+//* @brief 获取本机 IP 地址字符串
 int bsp_wifi_get_ip(char *ip_str, uint32_t len)
 {
     if (!ip_str || len < 16)
@@ -82,16 +82,16 @@ int bsp_wifi_get_ip(char *ip_str, uint32_t len)
     return 0;
 }
 
-/* ---------- 事件回调 ---------- */
+// ---------- 事件回调 ----------
 
-/** @brief 注册 WiFi 事件回调函数 */
+//* @brief 注册 WiFi 事件回调函数
 void bsp_wifi_register_event_cb(bsp_wifi_event_cb_t cb, void *arg)
 {
     s_event_cb = cb;
     s_event_arg = arg;
 }
 
-/** @brief 通知 WiFi 事件（同步信号量用于阻塞连接） */
+//* @brief 通知 WiFi 事件（同步信号量用于阻塞连接）
 void bsp_wifi_notify_event(bsp_wifi_event_t event)
 {
     if (s_event_cb) {
@@ -103,9 +103,9 @@ void bsp_wifi_notify_event(bsp_wifi_event_t event)
     }
 }
 
-/* ---------- 配置管理 ---------- */
+// ---------- 配置管理 ----------
 
-/** @brief 设置要连接的 WiFi SSID 和密码 */
+//* @brief 设置要连接的 WiFi SSID 和密码
 void bsp_wifi_set_current_config(const char *ssid, const char *pwd)
 {
     if (ssid)
@@ -114,7 +114,7 @@ void bsp_wifi_set_current_config(const char *ssid, const char *pwd)
         strncpy_s(s_pwd, sizeof(s_pwd), pwd, sizeof(s_pwd) - 1);
 }
 
-/** @brief 获取当前配置的 WiFi SSID 和密码 */
+//* @brief 获取当前配置的 WiFi SSID 和密码
 void bsp_wifi_get_current_config(char *ssid, uint32_t ssid_len, char *pwd, uint32_t pwd_len)
 {
     if (ssid && ssid_len > 0) {
@@ -125,9 +125,9 @@ void bsp_wifi_get_current_config(char *ssid, uint32_t ssid_len, char *pwd, uint3
     }
 }
 
-/* ---------- 同步阻塞连接 ---------- */
+// ---------- 同步阻塞连接 ----------
 
-/** @brief 同步阻塞方式连接指定 WiFi，超时返回 */
+//* @brief 同步阻塞方式连接指定 WiFi，超时返回
 int bsp_wifi_connect_sync(const char *ssid, const char *pwd)
 {
     if (!s_sync_inited) {
@@ -135,7 +135,7 @@ int bsp_wifi_connect_sync(const char *ssid, const char *pwd)
         s_sync_inited = true;
     }
 
-    /* 清除旧信号，防止误触发 */
+    // 清除旧信号，防止误触发
     while (osal_sem_trydown(&s_sync_sem) == OSAL_SUCCESS) {
     }
 
@@ -152,9 +152,9 @@ int bsp_wifi_connect_sync(const char *ssid, const char *pwd)
     return (ret == OSAL_SUCCESS && bsp_wifi_get_status() == BSP_WIFI_STATUS_GOT_IP) ? 0 : -1;
 }
 
-/* ---------- 扫描 ---------- */
+// ---------- 扫描 ----------
 
-/** @brief 扫描周围 WiFi 并填充结果列表 */
+//* @brief 扫描周围 WiFi 并填充结果列表
 int bsp_wifi_scan_list(bsp_wifi_scan_item_t *items, uint32_t max_count, uint32_t *out_count)
 {
     if (!items || !out_count || !max_count)
@@ -206,27 +206,27 @@ int bsp_wifi_scan_list(bsp_wifi_scan_item_t *items, uint32_t max_count, uint32_t
     return 0;
 }
 
-/* ---------- Task 控制 ---------- */
+// ---------- Task 控制 ----------
 
-/** @brief 设置 STA 任务退出标志 */
+//* @brief 设置 STA 任务退出标志
 void sta_set_should_exit(bool v)
 {
     s_should_exit = v;
 }
 
-/** @brief 获取 STA 任务退出标志 */
+//* @brief 获取 STA 任务退出标志
 bool sta_get_should_exit(void)
 {
     return s_should_exit;
 }
 
-/** @brief 唤醒 STA 任务（用于断线后重连） */
+//* @brief 唤醒 STA 任务（用于断线后重连）
 void sta_task_wakeup(void)
 {
     osal_sem_up(&s_wait_sem);
 }
 
-/** @brief 启动 STA（WiFi 客户端）任务 */
+//* @brief 启动 STA（WiFi 客户端）任务
 bool sta_task_start(void)
 {
     if (s_sta_task)
@@ -245,7 +245,7 @@ bool sta_task_start(void)
     return true;
 }
 
-/** @brief 停止 STA 任务 */
+//* @brief 停止 STA 任务
 void sta_task_stop(void)
 {
     if (!s_sta_task)
@@ -263,12 +263,12 @@ void sta_task_stop(void)
     s_sta_task = NULL;
 }
 
-/* ---------- 内部回调 ---------- */
+// ---------- 内部回调 ----------
 
-/** @brief WiFi SDK 连接状态变化回调 */
+//* @brief WiFi SDK 连接状态变化回调
 static void wifi_cb(td_s32 state, const wifi_linked_info_stru *info, td_s32 reason);
 
-/** @brief WiFi SDK 扫描完成回调 */
+//* @brief WiFi SDK 扫描完成回调
 static void scan_cb(td_s32 state, td_s32 size);
 
 static void wifi_cb(td_s32 state, const wifi_linked_info_stru *info, td_s32 reason)
@@ -285,7 +285,7 @@ static void wifi_cb(td_s32 state, const wifi_linked_info_stru *info, td_s32 reas
     }
 }
 
-/** @brief 扫描完成后通知 STA 任务继续 */
+//* @brief 扫描完成后通知 STA 任务继续
 static void scan_cb(td_s32 state, td_s32 size)
 {
     (void)state;
@@ -293,9 +293,9 @@ static void scan_cb(td_s32 state, td_s32 size)
     osal_sem_up(&s_conn_sem);
 }
 
-/* ---------- Task 入口 ---------- */
+// ---------- Task 入口 ----------
 
-/** @brief STA 任务主函数：扫描→连接→DHCP→阻塞等待断线→重连循环 */
+//* @brief STA 任务主函数：扫描→连接→DHCP→阻塞等待断线→重连循环
 int sta_task_main(void *arg)
 {
     (void)arg;
@@ -328,7 +328,7 @@ int sta_task_main(void *arg)
             continue;
         }
 
-        /* 扫描 */
+        // 扫描
         if (wifi_sta_scan() != ERRCODE_SUCC) {
             osal_msleep(5000);
             continue;
@@ -370,7 +370,7 @@ int sta_task_main(void *arg)
             continue;
         }
 
-        /* 连接 */
+        // 连接
         bsp_wifi_set_status(BSP_WIFI_STATUS_CONNECTING);
         while (osal_sem_trydown(&s_conn_sem) == OSAL_SUCCESS) {
         }
@@ -398,7 +398,7 @@ int sta_task_main(void *arg)
             continue;
         }
 
-        /* DHCP */
+        // DHCP获取IP
         struct netif *n = netifapi_netif_find("wlan0");
         if (n) {
             netifapi_dhcp_start(n);
@@ -422,11 +422,11 @@ int sta_task_main(void *arg)
             continue;
         }
 
-        /* 成功 */
+        // 成功
         printf("[STA] 已连接\r\n");
         bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_GOT_IP);
 
-        /* 阻塞等待断线 */
+        // 阻塞等待断线
         osal_sem_down(&s_wait_sem);
         if (s_should_exit)
             break;

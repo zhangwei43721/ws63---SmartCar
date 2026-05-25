@@ -73,7 +73,7 @@ static void test_data_recv_callback(const uint8_t *data, uint16_t len)
 
 /* ==================== 主任务 ==================== */
 
-static void *sle_test_task(const char *arg)
+static int sle_test_task(void *arg)
 {
     unused(arg);
 
@@ -95,7 +95,7 @@ static void *sle_test_task(const char *arg)
     if (ret != ERRCODE_SLE_SUCCESS) {
         printf("[SLE_TEST] SLE 初始化失败: %d\r\n", ret);
         printf("[SLE_TEST] 测试应用退出\r\n");
-        return NULL;
+        return 0;
     }
 
     printf("[SLE_TEST] SLE 初始化成功，等待设备连接...\r\n");
@@ -114,7 +114,7 @@ static void *sle_test_task(const char *arg)
         }
     }
 
-    return NULL;
+    return 0;
 }
 
 /* ==================== 初始化入口 ==================== */

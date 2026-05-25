@@ -11,7 +11,7 @@
 #include "../robot_common.h"
 #include "soc_osal.h"
 
-/* ================= 参数配置 ================= */
+// ================= 参数配置 =================
 #define OBSTACLE_LIMIT 20.0f // 障碍物判定距离 (cm)
 #define TIME_BACK_MS 300     // 后退一下的时间
 #define TIME_TURN_90_MS 650  // 原地转90度所需时间
@@ -26,7 +26,7 @@
 #define OBST_TASK_PRIO 22
 #define OBST_EVENT_STOP 0x01
 
-/* ================= 非阻塞状态机 ================= */
+// ================= 非阻塞状态机 =================
 typedef enum {
     OBST_STATE_FORWARD = 0,
     OBST_STATE_STOP_BEFORE_BACK,
@@ -144,7 +144,7 @@ static int obstacle_task_entry(void *arg)
 
     motor_executor_push_cmd(0, 0);
     printf("[Obstacle] 避障任务退出\r\n");
-    g_obst_task = NULL; /* 退出前自清句柄，供 exit 同步 */
+    g_obst_task = NULL; // 退出前自清句柄，供 exit 同步
     return 0;
 }
 
@@ -183,13 +183,13 @@ void mode_obstacle_exit(void)
         if (g_event_inited) {
             osal_event_write(&g_obst_event, OBST_EVENT_STOP);
         }
-        /* 等待任务自行退出（最多 200ms），避免 enter 时跳过创建 */
+        // 等待任务自行退出（最多 200ms），避免 enter 时跳过创建
         int wait = 0;
         while (g_obst_task != NULL && wait < 20) {
             osal_msleep(10);
             wait++;
         }
-        g_obst_task = NULL; /* 兜底 */
+        g_obst_task = NULL; // 兜底
     }
     motor_executor_push_cmd(0, 0);
     obst_transition(OBST_STATE_FORWARD);

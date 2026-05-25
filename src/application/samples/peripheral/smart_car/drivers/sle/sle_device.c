@@ -25,22 +25,22 @@
 #include "sle_transmition_manager.h"
 #include "soc_osal.h"
 
-/* ==================== 配置参数 ==================== */
+// ==================== 配置参数 ====================
 
 #define SLE_DEVICE_NAME "SmartCar_SLE"
 #define SLE_DEVICE_NAME_MAX_LEN 15
 
-/* UUID 定义（2 字节短 UUID） */
+// UUID 定义（2 字节短 UUID）
 #define SLE_UUID_SERVICE 0xA001 // 服务 UUID
 #define SLE_UUID_DATA 0xA002    // 数据特征 UUID
 
-/* 连接参数 */
+// 连接参数
 #define SLE_CONN_INTERVAL_MIN 0x10 // 20ms (125us * 0x10)
 #define SLE_CONN_INTERVAL_MAX 0x10 // 20ms
 #define SLE_CONN_TIMEOUT 0x1F4     // 5000ms (10ms * 0x1F4)
 #define SLE_CONN_MAX_LATENCY 0
 
-/* 广播参数 */
+// 广播参数
 #define SLE_ADV_INTERVAL_MIN 0xA0 // 20ms
 #define SLE_ADV_INTERVAL_MAX 0xA0 // 20ms
 #define SLE_ADV_TX_POWER 20       // 20dBm
@@ -48,29 +48,29 @@
 #define SLE_ADV_DATA_LEN_MAX 251
 #define SLE_MTU_SIZE 247 // 默认 MTU 大小
 
-/* SLE 广播常量定义（从示例代码复制） */
+// SLE 广播常量定义（从示例代码复制）
 #define SLE_ADV_HANDLE_DEFAULT 1 // 默认广播句柄
 
-/* 广播信道映射 */
+// 广播信道映射
 #define SLE_ADV_CHANNEL_MAP_77 0x01
 #define SLE_ADV_CHANNEL_MAP_78 0x02
 #define SLE_ADV_CHANNEL_MAP_79 0x04
 #define SLE_ADV_CHANNEL_MAP_DEFAULT 0x07
 
-/* 广播数据类型 */
+// 广播数据类型
 #define SLE_ADV_DATA_TYPE_DISCOVERY_LEVEL 0x01
 #define SLE_ADV_DATA_TYPE_ACCESS_MODE 0x02
 #define SLE_ADV_DATA_TYPE_COMPLETE_LOCAL_NAME 0x0B
 #define SLE_ADV_DATA_TYPE_TX_POWER_LEVEL 0x0C
 
-/* SLE 广播数据结构（从示例代码复制） */
+// SLE 广播数据结构（从示例代码复制）
 struct sle_adv_common_value {
     uint8_t length;
     uint8_t type;
     uint8_t value;
 };
 
-/* ==================== 内部状态 ==================== */
+// ==================== 内部状态 ====================
 
 static uint8_t g_server_id = 0;
 static uint16_t g_service_handle = 0;
@@ -78,15 +78,15 @@ static uint16_t g_property_handle = 0;
 static uint16_t g_conn_id = 0xFFFF; // 0xFFFF 表示未连接
 static bool g_connected = false;
 
-/* 回调函数指针 */
+// 回调函数指针
 static sle_connect_cb_t g_connect_cb = NULL;
 static sle_disconnect_cb_t g_disconnect_cb = NULL;
 static sle_data_recv_cb_t g_data_recv_cb = NULL;
 
-/* 特征值存储（8 字节） */
+// 特征值存储（8 字节）
 static uint8_t g_property_value[8] = {0};
 
-/* ==================== UUID 辅助函数 ==================== */
+// ==================== UUID 辅助函数 ====================
 
 static void sle_uuid_set_base(sle_uuid_t *out)
 {
@@ -109,7 +109,7 @@ static void sle_uuid_set_u2(uint16_t u2, sle_uuid_t *out)
         *(uint8_t *)(ptr) = (uint8_t)(data);              \
     } while (0)
 
-/* ==================== SSAP 回调函数 ==================== */
+// ==================== SSAP 回调函数 ====================
 
 static void ssaps_read_request_cbk(uint8_t server_id,
                                    uint16_t conn_id,
@@ -165,7 +165,7 @@ static void sle_ssaps_register_cbks(void)
     ssaps_register_callbacks(&ssaps_cbk);
 }
 
-/* ==================== 连接管理回调 ==================== */
+// ==================== 连接管理回调 ====================
 
 static void sle_connect_state_changed_cbk(uint16_t conn_id,
                                           const sle_addr_t *addr,
@@ -224,7 +224,7 @@ static void sle_conn_register_cbks(void)
     sle_connection_register_callbacks(&conn_cbks);
 }
 
-/* ==================== 广播相关 ==================== */
+// ==================== 广播相关 ====================
 
 static void sle_announce_enable_cbk(uint32_t announce_id, errcode_t status)
 {
@@ -353,7 +353,7 @@ static errcode_t sle_set_announce_param_and_data(void)
     return ERRCODE_SLE_SUCCESS;
 }
 
-/* ==================== 服务添加 ==================== */
+// ==================== 服务添加 ====================
 
 static errcode_t sle_add_service(void)
 {
@@ -452,7 +452,7 @@ static errcode_t sle_add_service_and_property(void)
     return ERRCODE_SLE_SUCCESS;
 }
 
-/* ==================== 对外接口实现 ==================== */
+// ==================== 对外接口实现 ====================
 
 errcode_t sle_device_init(void)
 {

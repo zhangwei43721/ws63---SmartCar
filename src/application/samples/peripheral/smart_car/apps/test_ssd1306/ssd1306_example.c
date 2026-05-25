@@ -49,9 +49,9 @@ static void app_i2c_init_pin(void)
 /**
  * @brief OLED显示任务
  * @param arg 任务参数
- * @return NULL
+ * @return 0
  */
-static void *ssd1306_task(const char *arg)
+static int ssd1306_task(void *arg)
 {
     UNUSED(arg);
     uint32_t baudrate = I2C_SET_BANDRATE;
@@ -67,7 +67,7 @@ static void *ssd1306_task(const char *arg)
     ret = uapi_i2c_master_init(1, baudrate, hscode);
     if (ret != 0) {
         printf("I2C init failed, ret = 0x%x\n", ret);
-        return NULL;
+        return 0;
     }
     printf("I2C master initialized successfully\n");
 
@@ -105,7 +105,7 @@ static void *ssd1306_task(const char *arg)
         osal_msleep(1000);
     }
 
-    return NULL;
+    return 0;
 }
 
 /**

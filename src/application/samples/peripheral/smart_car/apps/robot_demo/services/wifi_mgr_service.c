@@ -14,12 +14,12 @@
 #include "soc_osal.h"
 #include "storage_service.h"
 
-/* ---------- 配置 ---------- */
+// ---------- 配置 ----------
 #define MGR_STACK_SIZE 2048
 #define MGR_PRIO 20
 #define STA_FAIL_MAX 1
 
-/* ---------- Manager 私有状态 ---------- */
+// ---------- Manager 私有状态 ----------
 typedef enum {
     MGR_STATE_IDLE = 0,
     MGR_STATE_STA,
@@ -31,7 +31,7 @@ static osal_task *s_mgr_task = NULL;
 static unsigned long s_msg_queue = 0;
 static int s_sta_fail_cnt = 0;
 
-/* ---------- 事件回调（写入队列唤醒 Manager） ---------- */
+// ---------- 事件回调（写入队列唤醒 Manager） ----------
 static void wifi_event_cb(bsp_wifi_event_t event, void *arg)
 {
     (void)arg;
@@ -60,7 +60,7 @@ static void wifi_event_cb(bsp_wifi_event_t event, void *arg)
     printf("[WiFi Mgr CB] send msg.id=%d ret=%d\r\n", (int)msg.id, ret);
 }
 
-/* ---------- 状态机处理 ---------- */
+// ---------- 状态机处理 ----------
 
 static void on_start(void)
 {
@@ -113,13 +113,13 @@ static int mgr_task_main(void *arg)
     (void)arg;
     printf("[WiFi Mgr] 启动\r\n");
 
-    /* 注册事件回调 */
+    // 注册事件回调
     bsp_wifi_register_event_cb(wifi_event_cb, NULL);
 
     while (1) {
         bsp_wifi_msg_t msg;
         unsigned int sz = sizeof(msg);
-        /* 纯事件驱动：消息队列永久阻塞，无消息时让出 CPU */
+        // 纯事件驱动：消息队列永久阻塞，无消息时让出 CPU
         if (osal_msg_queue_read_copy(s_msg_queue, &msg, &sz, OSAL_WAIT_FOREVER) != OSAL_SUCCESS)
             continue;
 
@@ -148,14 +148,14 @@ static int mgr_task_main(void *arg)
     return 0;
 }
 
-/* ---------- 对外接口 ---------- */
+// ---------- 对外接口 ----------
 
 int bsp_wifi_mgr_init(void)
 {
     if (s_mgr_task)
         return 0;
 
-    /* 队列深度 4：与 robot_main_task 保持一致，规避深度为 1 时的潜在唤醒异常 */
+    // 队列深度 4：与 robot_main_task 保持一致，规避深度为 1 时的潜在唤醒异常
     if (osal_msg_queue_create("wifi_mgr", 8, &s_msg_queue, 0, sizeof(bsp_wifi_msg_t)) != OSAL_SUCCESS) {
         printf("[WiFi Mgr] 队列创建失败\r\n");
         return -1;
@@ -180,7 +180,7 @@ int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg)
     if (s_msg_queue == 0)
         return -1;
 
-    /* 有旧消息则丢弃，确保新事件能写入（完全复刻 motor_executor_push_cmd） */
+    // 有旧消息则丢弃，确保新事件能写入（完全复刻 motor_executor_push_cmd）
     unsigned int msg_num = osal_msg_queue_get_msg_num(s_msg_queue);
     if (msg_num > 0) {
         bsp_wifi_msg_t dummy;
@@ -192,7 +192,7 @@ int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg)
     return (ret == OSAL_SUCCESS) ? 0 : -1;
 }
 
-/* ---------- 向后兼容 ---------- */
+// ---------- 向后兼容 ----------
 
 int bsp_wifi_smart_init(void)
 {

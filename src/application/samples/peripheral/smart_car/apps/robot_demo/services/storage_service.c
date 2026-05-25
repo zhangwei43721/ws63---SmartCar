@@ -25,13 +25,13 @@ typedef struct {
     uint16_t version;  // 配置版本号
     uint16_t checksum; // 16 位校验和（整个结构体累加，计算时此字段置 0）
 
-    /* PID 参数（使用整数存储，避免 float 二进制兼容问题） */
+    // PID 参数（使用整数存储，避免 float 二进制兼容问题）
     int32_t pid_kp_x1000;   // Kp * 1000
     int32_t pid_ki_x10000;  // Ki * 10000
     int32_t pid_kd_x500;    // Kd * 500
     int16_t pid_base_speed; // 基础速度
 
-    /* WiFi 配置 */
+    // WiFi 配置
     char wifi_ssid[32];     // WiFi SSID
     char wifi_password[64]; // WiFi 密码
 
@@ -42,9 +42,9 @@ typedef struct {
 #define ROBOT_NV_CONFIG_MAGIC ((uint32_t)0x524F4254) // "ROBT"
 #define ROBOT_NV_CONFIG_VERSION ((uint16_t)2)
 
-static robot_nv_config_t g_nv_cfg = {0};    /* NV 存储的配置数据 */
-static osal_mutex g_storage_mutex;          /* 保护 NV 存储访问的互斥锁 */
-static bool g_storage_mutex_inited = false; /* 互斥锁是否已初始化 */
+static robot_nv_config_t g_nv_cfg = {0};    // NV 存储的配置数据
+static osal_mutex g_storage_mutex;          // 保护 NV 存储访问的互斥锁
+static bool g_storage_mutex_inited = false; // 互斥锁是否已初始化
 
 // 使用 robot_config.h 中的通用锁宏
 #define STORAGE_LOCK() MUTEX_LOCK(g_storage_mutex, g_storage_mutex_inited)
@@ -131,14 +131,14 @@ void storage_service_init(void)
     uint16_t out_len = 0;
     errcode_t ret = uapi_nv_read(ROBOT_NV_CONFIG_KEY, (uint16_t)sizeof(g_nv_cfg), &out_len, (uint8_t *)&g_nv_cfg);
 
-    /* 输出详细诊断日志 */
+    // 输出详细诊断日志
     printf("[存储] NV 读取: 返回值=%d, 长度=%d/%zu\r\n", ret, out_len, sizeof(g_nv_cfg));
     if (ret == ERRCODE_SUCC && out_len == sizeof(g_nv_cfg)) {
         printf("[存储] 魔术字=0x%X, 版本=%d, 校验和=0x%X\r\n", g_nv_cfg.magic, g_nv_cfg.version, g_nv_cfg.checksum);
         printf("[存储] WiFi SSID: %s\r\n", g_nv_cfg.wifi_ssid);
     }
 
-    /* 检查 NV 数据是否有效，无效则使用默认值 */
+    // 检查 NV 数据是否有效，无效则使用默认值
     if (ret != ERRCODE_SUCC || out_len != sizeof(g_nv_cfg) || !nv_validate(&g_nv_cfg)) {
         printf("[存储] NV 数据无效或不存在，使用默认值并写入\r\n");
         nv_set_defaults(&g_nv_cfg);
@@ -177,7 +177,7 @@ errcode_t storage_service_save_pid_params(float kp, float ki, float kd, int16_t 
     g_nv_cfg.pid_kd_x500 = (int32_t)(kd * 500.0f);
     g_nv_cfg.pid_base_speed = speed;
 
-    /* 重新计算校验和 */
+    // 重新计算校验和
     g_nv_cfg.checksum = 0;
     g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
 
@@ -219,7 +219,7 @@ errcode_t storage_service_save_wifi_config(const char *ssid, const char *passwor
     strncpy(g_nv_cfg.wifi_password, password, 63);
     g_nv_cfg.wifi_password[63] = '\0';
 
-    /* 重新计算校验和 */
+    // 重新计算校验和
     g_nv_cfg.checksum = 0;
     g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
 

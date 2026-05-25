@@ -36,7 +36,7 @@ static osal_event g_trace_event;
 static bool g_event_inited = false;
 static volatile bool g_trace_running = false;
 
-/* PID 参数互斥锁：保护 set_pid 与 tick 的并发访问 */
+// PID 参数互斥锁：保护 set_pid 与 tick 的并发访问
 static osal_mutex g_pid_mutex;
 static bool g_pid_mutex_inited = false;
 
@@ -174,7 +174,7 @@ static int trace_task_entry(void *arg)
 
     motor_executor_push_cmd(0, 0);
     printf("[Trace] 循迹任务退出\r\n");
-    g_trace_task = NULL; /* 退出前自清句柄，供 exit 同步 */
+    g_trace_task = NULL; // 退出前自清句柄，供 exit 同步
     return 0;
 }
 
@@ -262,13 +262,13 @@ void mode_trace_exit(void)
         if (g_event_inited) {
             osal_event_write(&g_trace_event, TRACE_EVENT_STOP);
         }
-        /* 等待任务自行退出（最多 200ms），避免 enter 时跳过创建 */
+        // 等待任务自行退出（最多 200ms），避免 enter 时跳过创建
         int wait = 0;
         while (g_trace_task != NULL && wait < 20) {
             osal_msleep(10);
             wait++;
         }
-        g_trace_task = NULL; /* 兜底 */
+        g_trace_task = NULL; // 兜底
     }
     motor_executor_push_cmd(0, 0);
 }

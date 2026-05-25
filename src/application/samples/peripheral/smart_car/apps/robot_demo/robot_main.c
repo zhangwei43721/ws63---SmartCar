@@ -257,21 +257,21 @@ static int robot_main_task(void *arg)
         ModeCmdMsg msg;
         unsigned int sz = sizeof(msg);
 
-        /* 阻塞等待模式切换消息 */
+        // 阻塞等待模式切换消息
         int ret = osal_msg_queue_read_copy(g_mode_queue, &msg, &sz, OSAL_WAIT_FOREVER);
         if (ret != OSAL_SUCCESS)
             continue;
 
-        /* 应用最后一条消息的状态 */
+        // 应用最后一条消息的状态
         robot_mgr_apply_status(msg.status);
 
-        /* 消费队列中剩余消息（只保留最后意图） */
+        // 消费队列中剩余消息（只保留最后意图）
         while (osal_msg_queue_read_copy(g_mode_queue, &msg, &sz, OSAL_MSGQ_NO_WAIT) == OSAL_SUCCESS) {
             robot_mgr_apply_status(msg.status);
             sz = sizeof(msg);
         }
 
-        /* 执行状态转移 */
+        // 执行状态转移
         if (g_status != g_last_status) {
             robot_mgr_do_exit(g_last_status);
             robot_mgr_do_enter(g_status);

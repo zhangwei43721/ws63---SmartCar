@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* ========== 消息（Worker -> Manager） ========== */
+// ========== 消息（Worker -> Manager） ==========
 typedef enum {
     WIFI_MSG_START = 0,
     WIFI_MSG_STA_GOT_IP,
@@ -18,11 +18,11 @@ typedef struct {
     wifi_msg_id_t id;
 } bsp_wifi_msg_t;
 
-/* ========== Manager ========== */
+// ========== Manager ==========
 int bsp_wifi_mgr_init(void);
 int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg);
 
-/* ========== 向后兼容接口 ========== */
+// ========== 向后兼容接口 ==========
 int bsp_wifi_smart_init(void);
 int bsp_wifi_connect_ap(const char *ssid, const char *password);
 int bsp_wifi_switch_to_ap(void);

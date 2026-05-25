@@ -34,4 +34,4 @@ const char *captive_portal_service_get_ap_ip(void);
  */
 const char *captive_portal_service_get_status_text(void);
 
-#endif /* CAPTIVE_PORTAL_SERVICE_H */
+#endif // CAPTIVE_PORTAL_SERVICE_H

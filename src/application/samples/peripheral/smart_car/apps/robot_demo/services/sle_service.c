@@ -30,7 +30,7 @@
 #include "soc_osal.h"
 #include "stdio.h"
 
-/* ==================== 协议定义（与 UDP 保持一致） ==================== */
+// ==================== 协议定义（与 UDP 保持一致） ====================
 
 #pragma pack(1)
 typedef struct {
@@ -42,12 +42,12 @@ typedef struct {
 } sle_packet_t;
 #pragma pack()
 
-/* ==================== 内部状态 ==================== */
+// ==================== 内部状态 ====================
 
 // 连接状态
 static bool g_connected = false;
 
-/* ==================== 内部辅助函数 ==================== */
+// ==================== 内部辅助函数 ====================
 
 /**
  * @brief 处理接收到的数据包
@@ -88,7 +88,7 @@ static void process_packet(const uint8_t *data, uint16_t len)
     }
 }
 
-/* ==================== SLE 设备回调 ==================== */
+// ==================== SLE 设备回调 ====================
 
 static void sle_connect_callback(uint16_t conn_id)
 {
@@ -111,7 +111,7 @@ static void sle_data_recv_callback(const uint8_t *data, uint16_t len)
     process_packet(data, len);
 }
 
-/* ==================== 对外接口实现 ==================== */
+// ==================== 对外接口实现 ====================
 
 void sle_service_init(void)
 {

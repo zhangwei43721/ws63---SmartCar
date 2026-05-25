@@ -31,9 +31,9 @@
 /**
  * @brief HC-SR04超声波测距任务
  * @param arg 任务参数
- * @return NULL
+ * @return 0
  */
-static void *hcsr04_task(const char *arg)
+static int hcsr04_task(void *arg)
 {
     UNUSED(arg);
     float distance = 0.0;
@@ -59,7 +59,7 @@ static void *hcsr04_task(const char *arg)
         osal_msleep(HCSR04_DELAY_MS);
     }
 
-    return NULL;
+    return 0;
 }
 
 /**
