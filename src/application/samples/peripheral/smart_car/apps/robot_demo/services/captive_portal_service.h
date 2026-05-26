@@ -34,4 +34,8 @@ const char *captive_portal_service_get_ap_ip(void);
  */
 const char *captive_portal_service_get_status_text(void);
 
+// wifi_mgr 在 AP_READY / AP_STOPPED 时通知 portal，让 portal_task 立即唤醒
+void captive_portal_service_notify_ap_ready(void);
+void captive_portal_service_notify_ap_stopped(void);
+
 #endif // CAPTIVE_PORTAL_SERVICE_H

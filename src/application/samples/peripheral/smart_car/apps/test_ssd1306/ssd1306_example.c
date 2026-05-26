@@ -72,31 +72,31 @@ static int ssd1306_task(void *arg)
     printf("I2C master initialized successfully\n");
 
     // 初始化OLED
-    ssd1306_Init();
+        bsp_ssd1306_init();
     printf("SSD1306 initialized\n");
 
     // 清屏
-    ssd1306_Fill(Black);
-    ssd1306_UpdateScreen();
+    bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
+    bsp_ssd1306_update_screen();
 
     // 显示欢迎信息
-    ssd1306_SetCursor(0, 0);
-    ssd1306_DrawString("Smart Car OLED", Font_7x10, White);
+    bsp_ssd1306_set_cursor(0, 0);
+    bsp_ssd1306_draw_string("Smart Car OLED", Font_7x10, BSP_SSD1306_COLOR_WHITE);
 
-    ssd1306_SetCursor(0, 12);
-    ssd1306_DrawString("==============", Font_7x10, White);
+    bsp_ssd1306_set_cursor(0, 12);
+    bsp_ssd1306_draw_string("==============", Font_7x10, BSP_SSD1306_COLOR_WHITE);
 
-    ssd1306_SetCursor(0, 24);
-    ssd1306_DrawString("WS63 Platform", Font_7x10, White);
+    bsp_ssd1306_set_cursor(0, 24);
+    bsp_ssd1306_draw_string("WS63 Platform", Font_7x10, BSP_SSD1306_COLOR_WHITE);
 
-    ssd1306_SetCursor(0, 36);
-    ssd1306_DrawString("128x64 Pixels", Font_7x10, White);
+    bsp_ssd1306_set_cursor(0, 36);
+    bsp_ssd1306_draw_string("128x64 Pixels", Font_7x10, BSP_SSD1306_COLOR_WHITE);
 
-    ssd1306_SetCursor(0, 48);
-    ssd1306_DrawString("I2C Display", Font_7x10, White);
+    bsp_ssd1306_set_cursor(0, 48);
+    bsp_ssd1306_draw_string("I2C Display", Font_7x10, BSP_SSD1306_COLOR_WHITE);
 
     // 更新屏幕
-    ssd1306_UpdateScreen();
+    bsp_ssd1306_update_screen();
 
     printf("OLED display updated\n");
 

@@ -1,109 +1,95 @@
 /**
  ****************************************************************************************************
  * @file        bsp_hcsr04.c
- * @author      SkyForever
- * @version     V1.0
- * @date        2025-01-12
- * @brief       HC-SR04超声波测距传感器BSP层实现
+ * @brief       HC-SR04 超声波测距（中断 + 信号量 / 整数计算）
  * @license     Copyright (c) 2024-2034
- ****************************************************************************************************
- * @attention
- *
- * 实验平台:WS63
- *
- ****************************************************************************************************
- * 实验现象：HC-SR04超声波测距模块进行距离测量
- *
  ****************************************************************************************************
  */
 
 #include "bsp_hcsr04.h"
 
-/**
- * @brief 初始化HC-SR04超声波传感器
- * @return 无
- */
+// ECHO 上下沿时间戳（us），由中断写入
+static volatile uint32_t s_echo_rise_us = 0;
+static volatile uint32_t s_echo_fall_us = 0;
+static volatile bool     s_echo_rose    = false;
+
+// 测量完成信号
+static osal_semaphore s_done_sem;
+static bool           s_done_sem_inited = false;
+static osal_mutex     s_meas_lock;
+static bool           s_meas_lock_inited = false;
+
+static void hcsr04_echo_isr(pin_t pin, uintptr_t param)
+{
+    UNUSED(param);
+    uint32_t now = uapi_tcxo_get_us();
+    gpio_level_t lv = uapi_gpio_get_val(pin);
+    if (lv == GPIO_LEVEL_HIGH) {
+        s_echo_rise_us = now;
+        s_echo_rose    = true;
+    } else {
+        s_echo_fall_us = now;
+        if (s_done_sem_inited) {
+            osal_sem_up(&s_done_sem);
+        }
+    }
+}
+
 void hcsr04_init(void)
 {
-    // 1. 先配置引脚复用为 GPIO 模式
-    uapi_pin_set_mode(HCSR04_TRIG_GPIO, HCSR04_GPIO_FUNC);
-    uapi_pin_set_mode(HCSR04_ECHO_GPIO, HCSR04_GPIO_FUNC);
+    if (!s_done_sem_inited) {
+        osal_sem_binary_sem_init(&s_done_sem, 0);
+        s_done_sem_inited = true;
+    }
+    if (!s_meas_lock_inited) {
+        osal_mutex_init(&s_meas_lock);
+        s_meas_lock_inited = true;
+    }
 
-    // 2. 初始化触发引脚为输出
+    // TRIG: 输出
+    uapi_pin_set_mode(HCSR04_TRIG_GPIO, HCSR04_GPIO_FUNC);
     uapi_gpio_set_dir(HCSR04_TRIG_GPIO, GPIO_DIRECTION_OUTPUT);
     uapi_gpio_set_val(HCSR04_TRIG_GPIO, 0);
 
-    // 3. 初始化回响引脚为输入
+    // ECHO: 输入 + 双边沿中断
+    uapi_pin_set_mode(HCSR04_ECHO_GPIO, HCSR04_GPIO_FUNC);
     uapi_gpio_set_dir(HCSR04_ECHO_GPIO, GPIO_DIRECTION_INPUT);
+    (void)uapi_gpio_unregister_isr_func(HCSR04_ECHO_GPIO);
+    (void)uapi_gpio_register_isr_func(HCSR04_ECHO_GPIO, GPIO_INTERRUPT_DEDGE, hcsr04_echo_isr);
 }
 
-/**
- * @brief 获取距离测量值
- * @return 距离值 (单位: cm), 测量失败返回0
- */
 float hcsr04_get_distance(void)
 {
-    unsigned int start_time = 0;
-    unsigned int end_time = 0;
-    unsigned int pulse_width = 0;
-    gpio_level_t echo_value = 0;
-    float distance = 0.0;
+    if (!s_done_sem_inited || !s_meas_lock_inited) {
+        return 0.0f;
+    }
 
-    // 发送触发信号: 至少10us的高电平脉冲
+    (void)osal_mutex_lock(&s_meas_lock);
+
+    s_echo_rose = false;
+    s_echo_rise_us = 0;
+    s_echo_fall_us = 0;
+    while (osal_sem_trydown(&s_done_sem) == OSAL_SUCCESS) { }
+
+    // 发送 >=10us 触发脉冲
     uapi_gpio_set_val(HCSR04_TRIG_GPIO, GPIO_LEVEL_HIGH);
     uapi_tcxo_delay_us(20);
     uapi_gpio_set_val(HCSR04_TRIG_GPIO, GPIO_LEVEL_LOW);
 
-    // 等待回响信号变高
-    unsigned int timeout = HCSR04_TIMEOUT_US;
-    while (timeout > 0) {
-        echo_value = uapi_gpio_get_val(HCSR04_ECHO_GPIO);
-        if (echo_value == GPIO_LEVEL_HIGH) {
-            break;
-        }
-        uapi_tcxo_delay_us(1);
-        timeout--;
-    }
-
-    if (timeout == 0) {
-        printf("HC-SR04：等待高电平回声超时\n");
-        return 0.0;
-    }
-
-    // 记录开始时间
-    start_time = uapi_tcxo_get_us();
-
-    // 等待回响信号变低
-    timeout = HCSR04_TIMEOUT_US;
-    while (timeout > 0) {
-        echo_value = uapi_gpio_get_val(HCSR04_ECHO_GPIO);
-        if (echo_value == GPIO_LEVEL_LOW) {
-            break;
-        }
-        uapi_tcxo_delay_us(1);
-        timeout--;
-    }
-
-    if (timeout == 0) {
-        printf("HC-SR04：等待低回声超时\n");
-        return 0.0;
-    }
-
-    // 记录结束时间
-    end_time = uapi_tcxo_get_us();
-
-    // 计算脉冲宽度
-    pulse_width = end_time - start_time;
-
-    // 计算距离: 距离 = 高电平时间 * 声速 / 2
-    // 声速约为 340m/s = 0.034 cm/us
-    distance = (float)pulse_width * 0.034f / 2.0f;
-
-    // 限制在有效测量范围内 (2cm ~ 500cm)
-    // 超出范围的值通常表示测量异常或超出量程
-    if (distance < HCSR04_MIN_DISTANCE_CM || distance > HCSR04_MAX_DISTANCE_CM) {
+    uint32_t timeout_ms = (HCSR04_TIMEOUT_US * 2u) / 1000u + 5u;
+    if (osal_sem_down_timeout(&s_done_sem, timeout_ms) != OSAL_SUCCESS || !s_echo_rose) {
+        (void)osal_mutex_unlock(&s_meas_lock);
         return 0.0f;
     }
 
-    return distance;
+    uint32_t pulse_us = s_echo_fall_us - s_echo_rise_us;
+    (void)osal_mutex_unlock(&s_meas_lock);
+
+    // distance(mm) = pulse_us * 0.34 / 2 ≈ pulse_us * 17 / 100；下方在整数域比较范围避免引入浮点
+    uint32_t distance_mm = (pulse_us * 17u) / 100u;
+    if (distance_mm < (uint32_t)(HCSR04_MIN_DISTANCE_CM * 10) ||
+        distance_mm > (uint32_t)(HCSR04_MAX_DISTANCE_CM * 10)) {
+        return 0.0f;
+    }
+    return (float)distance_mm / 10.0f;
 }

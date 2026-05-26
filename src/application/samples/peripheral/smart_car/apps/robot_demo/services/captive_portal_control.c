@@ -10,9 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../core/motor_executor.h"
+#include "../../../drivers/motor_control/bsp_motor.h"
 #include "../robot_common.h"
 #include "lwip/sockets.h"
+#include "udp_net_common.h"
 
 // ---------- 内嵌控制页面 ----------
 static const char s_html_control[] =
@@ -128,17 +129,6 @@ static const char s_html_control[] =
 // ---------- 工具函数 ----------
 
 /**
- * @brief 发送 HTTP 响应并关闭 socket
- */
-static void send_response_and_close(int client_fd, const char *response)
-{
-    if (client_fd >= 0) {
-        (void)lwip_send(client_fd, response, strlen(response), 0);
-        lwip_close(client_fd);
-    }
-}
-
-/**
  * @brief 从 query string 中提取指定键的整数值
  * @param query  查询字符串，如 "m=1&r=100"
  * @param key    要查找的键，如 "m"
@@ -188,13 +178,14 @@ static void handle_api_status(int client_fd)
                             "HTTP/1.1 200 OK\r\n"
                             "Content-Type: application/json\r\n"
                             "Connection: close\r\n\r\n"
-                            "{\"mode\":%d,\"dist\":%.1f,\"ir\":[%u,%u,%u]}\r\n",
-                            (int)st.mode, st.distance, st.ir_left, st.ir_middle, st.ir_right);
+                            "{\"mode\":%d,\"dist\":%d.%d,\"ir\":[%u,%u,%u]}\r\n",
+                            (int)st.mode, (int)st.distance, ((int)(st.distance * 10)) % 10,
+                            st.ir_left, st.ir_middle, st.ir_right);
     if (json_len < 0 || (size_t)json_len >= sizeof(json)) {
         json[sizeof(json) - 1] = '\0';
     }
 
-    send_response_and_close(client_fd, json);
+    http_send_response_and_close(client_fd, json);
 }
 
 /**
@@ -216,7 +207,7 @@ static void handle_api_mode(int client_fd, const char *query)
                    "{\"ok\":true,\"mode\":%d}\r\n",
                    mode);
 
-    send_response_and_close(client_fd, json);
+    http_send_response_and_close(client_fd, json);
 }
 
 /**
@@ -228,7 +219,7 @@ static void handle_api_move(int client_fd, const char *query)
     int right = query_get_int(query, "r");
 
     // 推入 Motor Executor 命令队列，由独立高优先级任务执行
-    motor_executor_push_cmd((int8_t)left, (int8_t)right);
+    bsp_motor_push_cmd((int8_t)left, (int8_t)right);
 
     char json[128];
     (void)snprintf(json, sizeof(json),
@@ -237,7 +228,7 @@ static void handle_api_move(int client_fd, const char *query)
                    "Connection: close\r\n\r\n"
                    "{\"ok\":true}\r\n");
 
-    send_response_and_close(client_fd, json);
+    http_send_response_and_close(client_fd, json);
 }
 
 /**
@@ -252,7 +243,7 @@ static void handle_api_reset(int client_fd)
                    "Connection: close\r\n\r\n"
                    "{\"ok\":true}\r\n");
 
-    send_response_and_close(client_fd, json);
+    http_send_response_and_close(client_fd, json);
 }
 
 // ---------- 公共接口 ----------
@@ -260,7 +251,7 @@ static void handle_api_reset(int client_fd)
 bool captive_portal_control_handle(int client_fd, bool is_get, const char *path, const char *query)
 {
     if (is_get && strcmp(path, "/control") == 0) {
-        send_response_and_close(client_fd, s_html_control);
+        http_send_response_and_close(client_fd, s_html_control);
         return true;
     }
 

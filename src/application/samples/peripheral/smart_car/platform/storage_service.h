@@ -44,4 +44,9 @@ void storage_service_get_wifi_config(char *ssid, char *password);
  */
 errcode_t storage_service_save_wifi_config(const char *ssid, const char *password);
 
+/**
+ * @brief 保存 WiFi 配置并触发切换到 STA
+ * @return 0 成功，-1 失败
+ */
+
 #endif

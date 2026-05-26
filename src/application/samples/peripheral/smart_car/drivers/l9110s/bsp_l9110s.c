@@ -17,24 +17,38 @@
 #include "pwm.h"
 #include "soc_osal.h"
 
+// 驱动电机 PWM 通道：4, 5, 0, 2
+static const uint8_t MOTOR_CH[] = {4, 5, 0, 2};
+
+// 保护 PWM 占空更新（差速调用可能来自多个任务：UDP/SLE/语音）
+static osal_mutex g_motor_lock;
+static bool g_motor_lock_inited = false;
+
 static void pwm_update(uint8_t ch, uint32_t duty)
 {
-    // 配置结构体 (利用 C99 指定初始化，未指定成员自动为0)
+    // WS63(V151) 无 uapi_pwm_update_duty_ratio，运行期沿用 open 重配；用 mutex 保证并发安全
+    if (duty > PWM_PERIOD)
+        duty = PWM_PERIOD;
     pwm_config_t cfg = {.low_time = PWM_PERIOD - duty, .high_time = duty, .repeat = true};
-    uapi_pwm_open(ch, &cfg); // 打开单通道 PWM
+    uapi_pwm_open(ch, &cfg);
 }
 
 void l9110s_init(void)
 {
-    uapi_pwm_init(); // 初始化 PWM
+    uapi_pwm_init();
 
-    for (int i = 0; i < 4; i++) {
-        uapi_pin_set_mode(MOTOR_CH[i], 1); // 设置为模式 1 （PWM）
-        pwm_update(MOTOR_CH[i], 0);        // 初始占空比 0
+    if (!g_motor_lock_inited) {
+        if (osal_mutex_init(&g_motor_lock) == OSAL_SUCCESS)
+            g_motor_lock_inited = true;
     }
 
-    uapi_pwm_set_group(0, (uint8_t *)MOTOR_CH, 4); // 设置 PWM 分组
-    uapi_pwm_start_group(0);                       // 启动分组
+    for (int i = 0; i < 4; i++) {
+        uapi_pin_set_mode(MOTOR_CH[i], 1);
+        pwm_update(MOTOR_CH[i], 0);
+    }
+
+    uapi_pwm_set_group(0, (uint8_t *)MOTOR_CH, 4);
+    uapi_pwm_start_group(0);
 }
 
 // 辅助内联：处理单边电机逻辑
@@ -58,7 +72,12 @@ static inline void set_side(uint8_t idx_a, uint8_t idx_b, int8_t speed)
 
 void l9110s_set_differential(int8_t left, int8_t right)
 {
-    set_side(0, 1, left);    // 设置左轮
-    set_side(2, 3, right);   // 设置右轮
-    uapi_pwm_start_group(0); // 使能
+    if (g_motor_lock_inited)
+        (void)osal_mutex_lock(&g_motor_lock);
+    set_side(0, 1, left);
+    set_side(2, 3, right);
+    // pwm_update 内部 uapi_pwm_open 会让通道脱离 group 启动状态，需要重新 start group
+    uapi_pwm_start_group(0);
+    if (g_motor_lock_inited)
+        (void)osal_mutex_unlock(&g_motor_lock);
 }

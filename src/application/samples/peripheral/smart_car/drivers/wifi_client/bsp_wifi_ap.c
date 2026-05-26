@@ -1,6 +1,6 @@
 /**
  * @file bsp_wifi_ap.c
- * @brief AP Task：启动热点，轮询循环
+ * @brief AP Task：启动热点，事件驱动退出
  */
 
 #include "bsp_wifi_ap.h"
@@ -16,19 +16,34 @@
 
 static volatile bool s_should_exit = false;
 static osal_task *s_ap_task = NULL;
+// 退出同步：任务结束 up，stop 端 down
+static osal_semaphore s_ap_exit_sem;
+static bool s_ap_exit_sem_inited = false;
+// 唤醒主循环（替代 msleep(500) 轮询）
+static osal_semaphore s_ap_wake_sem;
+static bool s_ap_wake_sem_inited = false;
 
-//* @brief 设置 AP 任务退出标志
 void ap_set_should_exit(bool v)
 {
     s_should_exit = v;
 }
 
-//* @brief 启动 AP（热点）任务
 bool ap_task_start(void)
 {
     if (s_ap_task)
         return true;
     s_should_exit = false;
+    if (!s_ap_exit_sem_inited) {
+        osal_sem_binary_sem_init(&s_ap_exit_sem, 0);
+        s_ap_exit_sem_inited = true;
+    }
+    if (!s_ap_wake_sem_inited) {
+        osal_sem_binary_sem_init(&s_ap_wake_sem, 0);
+        s_ap_wake_sem_inited = true;
+    }
+    while (osal_sem_trydown(&s_ap_exit_sem) == OSAL_SUCCESS) { }
+    while (osal_sem_trydown(&s_ap_wake_sem) == OSAL_SUCCESS) { }
+
     osal_kthread_lock();
     s_ap_task = osal_kthread_create((osal_kthread_handler)ap_task_main, NULL, "wifi_ap", 4096);
     if (s_ap_task)
@@ -42,22 +57,21 @@ bool ap_task_start(void)
     return true;
 }
 
-//* @brief 停止 AP 任务
 void ap_task_stop(void)
 {
     if (!s_ap_task)
         return;
     printf("[AP] 停止 task\r\n");
     s_should_exit = true;
-    int to = 0;
-    while (s_ap_task && to < 100) {
-        osal_msleep(10);
-        to++;
+    if (s_ap_wake_sem_inited) {
+        osal_sem_up(&s_ap_wake_sem);
+    }
+    if (s_ap_exit_sem_inited) {
+        (void)osal_sem_down_timeout(&s_ap_exit_sem, 2000);
     }
     s_ap_task = NULL;
 }
 
-//* @brief AP 任务主函数：启动热点、配置 IP/DHCP、循环等待退出
 int ap_task_main(void *arg)
 {
     (void)arg;
@@ -82,7 +96,7 @@ int ap_task_main(void *arg)
     if (wifi_softap_enable(&conf) != 0) {
         printf("[AP] 启动失败\r\n");
         bsp_wifi_notify_event(BSP_WIFI_EVENT_AP_STOPPED);
-        s_ap_task = NULL;
+        if (s_ap_exit_sem_inited) osal_sem_up(&s_ap_exit_sem);
         return 0;
     }
 
@@ -102,9 +116,9 @@ int ap_task_main(void *arg)
 
     bsp_wifi_notify_event(BSP_WIFI_EVENT_AP_READY);
 
-    s_should_exit = false;
+    // 阻塞等待 stop 信号，不再 msleep 轮询
     while (!s_should_exit) {
-        osal_msleep(500);
+        (void)osal_sem_down(&s_ap_wake_sem);
     }
 
     wifi_softap_disable();
@@ -114,6 +128,8 @@ int ap_task_main(void *arg)
 
     bsp_wifi_notify_event(BSP_WIFI_EVENT_AP_STOPPED);
     printf("[AP] 退出\r\n");
-    s_ap_task = NULL;
+    if (s_ap_exit_sem_inited) {
+        osal_sem_up(&s_ap_exit_sem);
+    }
     return 0;
 }

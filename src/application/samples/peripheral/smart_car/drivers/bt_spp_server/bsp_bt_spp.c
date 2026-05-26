@@ -4,7 +4,7 @@
  * @author      SkyForever
  * @version     V1.1
  * @date        2025-01-13
- * @brief       蓝牙SPP BSP层实现 (基于BLE GATT透传 - 优化版)
+ * @brief       蓝牙SPP BSP层实现
  * @license     Copyright (c) 2024-2034
  ****************************************************************************************************
  * @attention
@@ -22,6 +22,7 @@
 
 #include "bsp_bt_spp.h"
 
+#include "../../board_config.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -78,16 +79,27 @@
 
 // ==================== 全局变量 ====================
 static uint8_t g_server_id = BSP_BT_SPP_SERVER_ID; // BLE SPP 服务器 ID
-static uint16_t g_conn_hdl = 0;                    // 连接句柄
+static volatile uint16_t g_conn_hdl = 0;           // 连接句柄
 static uint16_t g_char_handle = 0;                 // 特征值句柄 - 用于接收数据
 static uint16_t g_cccd_handle = 0;                 // CCCD句柄 - 用于检测通知开启
-static bool g_notify_enabled = false;              // 手机是否订阅了通知
+static volatile bool g_notify_enabled = false;     // 手机是否订阅了通知
+
+// 共享状态互斥锁：保护 conn_hdl / status / notify_enabled / remote_addr
+static osal_mutex g_state_lock;
+static bool g_state_lock_inited = false;
+
+// 重新广播 worker：断连回调里 sem_up，worker 任务 sleep 100ms 后调用 start_adv
+// 避免在协议栈回调上下文里调用 msleep 引发协议栈阻塞
+static osal_semaphore g_restart_adv_sem;
+static bool g_restart_adv_inited = false;
+static osal_task *g_adv_worker_task = NULL;
+static volatile bool g_adv_worker_run = false;
 static uint8_t g_device_name[NAME_MAX_LENGTH] = {'W', 'S', '6', '3', '_', 'U', 'A', 'R', 'T'}; // 蓝牙设备名称
 
 // 蓝牙设备地址
 static bd_addr_t g_bt_spp_addr = {
     .type = 0,
-    .addr = {0x11, 0x22, 0x33, 0x63, 0x88, 0x99},
+    .addr = ROBOT_LOCAL_MAC,
 };
 
 // 连接的远程设备地址
@@ -296,6 +308,40 @@ static uint8_t bsp_bt_spp_start_adv(void)
     return 0;
 }
 
+// ==================== 重启广播 Worker ====================
+// 协议栈回调里不能 msleep，否则会阻塞协议栈线程。
+// 这里用独立任务承接断连事件，sleep 后再调 start_adv。
+static int bsp_bt_spp_adv_worker(void *arg)
+{
+    (void)arg;
+    while (g_adv_worker_run) {
+        if (osal_sem_down(&g_restart_adv_sem) != OSAL_SUCCESS) {
+            continue;
+        }
+        if (!g_adv_worker_run)
+            break;
+        osal_msleep(100);
+        bsp_bt_spp_start_adv();
+    }
+    return 0;
+}
+
+static void bsp_bt_spp_adv_worker_start(void)
+{
+    if (!g_restart_adv_inited) {
+        osal_sem_binary_sem_init(&g_restart_adv_sem, 0);
+        g_restart_adv_inited = true;
+    }
+    if (g_adv_worker_task != NULL)
+        return;
+    g_adv_worker_run = true;
+    osal_kthread_lock();
+    g_adv_worker_task = osal_kthread_create((osal_kthread_handler)bsp_bt_spp_adv_worker, NULL, "bt_adv_w", 2048);
+    if (g_adv_worker_task)
+        osal_kthread_set_priority(g_adv_worker_task, 25);
+    osal_kthread_unlock();
+}
+
 // ==================== GATT服务函数 ====================
 
 /**
@@ -306,7 +352,6 @@ static void bsp_bt_spp_add_ccc_descriptor(uint32_t server_id, uint32_t srvc_hand
     bt_uuid_t ccc_uuid = {0};
     uint8_t ccc_data_val[] = {0x00, 0x00};
 
-    printf("BSP BT SPP: Adding CCCD descriptor\r\n");
     fill_uuid16(&ccc_uuid, BSP_BT_SPP_CCCD_UUID);
 
     gatts_add_desc_info_t descriptor;
@@ -325,7 +370,6 @@ static void bsp_bt_spp_add_characteristic(uint32_t server_id, uint32_t srvc_hand
     bt_uuid_t char_uuid = {0};
     uint8_t char_value[] = {0x00};
 
-    printf("BSP BT SPP: Adding characteristic\r\n");
     fill_uuid16(&char_uuid, BSP_BT_SPP_CHAR_UUID);
 
     gatts_add_chara_info_t character;
@@ -349,15 +393,12 @@ static void bsp_bt_spp_add_characteristic(uint32_t server_id, uint32_t srvc_hand
 static void bsp_bt_spp_service_add_cbk(uint8_t server_id, bt_uuid_t *uuid, uint16_t handle, errcode_t status)
 {
     bt_uuid_t service_uuid = {0};
-    printf("BSP BT SPP: Service added - server: %d, status: %d, handle: %d\r\n", server_id, status, handle);
+    UNUSED(status);
 
     fill_uuid16(&service_uuid, BSP_BT_SPP_SERVICE_UUID);
     if (compare_service_uuid(uuid, &service_uuid) == ERRCODE_BT_SUCCESS) {
         bsp_bt_spp_add_characteristic(server_id, handle);
-        printf("BSP BT SPP: Starting service\r\n");
         gatts_start_service(server_id, handle);
-    } else {
-        printf("BSP BT SPP: Unknown service UUID\r\n");
     }
 }
 
@@ -377,7 +418,6 @@ static void bsp_bt_spp_char_add_cbk(uint8_t server_id,
 
     // 记录特征值句柄
     g_char_handle = result->value_handle;
-    printf("BSP BT SPP: Char added - Value Handle: 0x%x (Target for Write)\r\n", g_char_handle);
 }
 
 /**
@@ -396,7 +436,6 @@ static void bsp_bt_spp_desc_add_cbk(uint8_t server_id,
 
     // 记录CCCD句柄
     g_cccd_handle = handle;
-    printf("BSP BT SPP: CCCD added - Handle: 0x%x\r\n", g_cccd_handle);
 }
 
 /**
@@ -407,7 +446,6 @@ static void bsp_bt_spp_service_start_cbk(uint8_t server_id, uint16_t handle, err
     UNUSED(server_id);
     UNUSED(handle);
     UNUSED(status);
-    printf("BSP BT SPP: Service started\r\n");
 }
 
 /**
@@ -424,23 +462,10 @@ static void bsp_bt_spp_write_req_cbk(uint8_t server_id, uint16_t conn_id, gatts_
 
     // 情况1: 手机向特征值写入数据 (这就是我们要的 RX 数据)
     if (req->handle == g_char_handle) {
-        printf("[RX] Handle:0x%x, Len:%d\r\n", req->handle, req->length);
-
-        // 调用数据接收回调
+        // 调用数据接收回调（避免在协议栈回调里做 per-byte printf 刷屏）
         if (g_data_handler != NULL && req->value != NULL && req->length > 0) {
             g_data_handler(req->value, req->length);
         }
-
-        // 打印接收到的数据 (可打印字符直接显示，其他显示十六进制)
-        printf("[RX] Data: ");
-        for (uint16_t i = 0; i < req->length && i < 64; i++) {
-            if (req->value[i] >= 32 && req->value[i] <= 126) {
-                printf("%c", req->value[i]);
-            } else {
-                printf("%02X ", req->value[i]);
-            }
-        }
-        printf("\r\n");
         return;
     }
 
@@ -448,14 +473,17 @@ static void bsp_bt_spp_write_req_cbk(uint8_t server_id, uint16_t conn_id, gatts_
     if (req->handle == g_cccd_handle) {
         if (req->length == 2) {
             uint16_t ccc_val = req->value[0] | (req->value[1] << 8);
-            g_notify_enabled = (ccc_val & 0x0001) ? true : false;
-            printf("[CCCD] Notify %s\r\n", g_notify_enabled ? "ENABLED" : "DISABLED");
+            bool en = (ccc_val & 0x0001) ? true : false;
+            if (g_state_lock_inited)
+                osal_mutex_lock(&g_state_lock);
+            g_notify_enabled = en;
+            if (g_state_lock_inited)
+                osal_mutex_unlock(&g_state_lock);
         }
         return;
     }
 
     // 其他句柄的写入，忽略
-    printf("[IGNORE] Write to handle 0x%x\r\n", req->handle);
 }
 
 /**
@@ -476,8 +504,8 @@ static void bsp_bt_spp_mtu_changed_cbk(uint8_t server_id, uint16_t conn_id, uint
 {
     UNUSED(server_id);
     UNUSED(conn_id);
+    UNUSED(mtu_size);
     UNUSED(status);
-    printf("BSP BT SPP: MTU changed to %d\r\n", mtu_size);
 }
 
 /**
@@ -510,19 +538,20 @@ static void bsp_bt_spp_connect_change_cbk(uint16_t conn_id,
     UNUSED(pair_state);
     UNUSED(disc_reason);
 
-    printf("BSP BT SPP: Conn state - id:%d, state:%d\r\n", conn_id, conn_state);
-    g_conn_hdl = conn_id;
-
     if (conn_state == GAP_BLE_STATE_CONNECTED) {
-        // 保存远程设备地址
+        if (g_state_lock_inited)
+            osal_mutex_lock(&g_state_lock);
+        g_conn_hdl = conn_id;
         if (addr != NULL) {
             memcpy_s(&g_remote_addr, sizeof(g_remote_addr), addr, sizeof(bd_addr_t));
             g_remote_addr_valid = true;
         }
-
-        printf("[EVENT] Connected! Please enable Notify on APP\r\n");
         g_bt_spp_status = BSP_BT_SPP_STATUS_CONNECTED;
-        g_notify_enabled = false; // 重置通知状态
+        g_notify_enabled = false;
+        if (g_state_lock_inited)
+            osal_mutex_unlock(&g_state_lock);
+
+        printf("[BT] 已连接\r\n");
 
         // 交换MTU
         gattc_exchange_mtu_req(g_server_id, conn_id, BSP_BT_SPP_MTU_SIZE);
@@ -533,20 +562,26 @@ static void bsp_bt_spp_connect_change_cbk(uint16_t conn_id,
         }
 
     } else if (conn_state == GAP_BLE_STATE_DISCONNECTED) {
-        printf("[EVENT] Disconnected!\r\n");
+        if (g_state_lock_inited)
+            osal_mutex_lock(&g_state_lock);
         g_bt_spp_status = BSP_BT_SPP_STATUS_DISCONNECTED;
         g_conn_hdl = 0;
         g_remote_addr_valid = false;
         g_notify_enabled = false;
+        if (g_state_lock_inited)
+            osal_mutex_unlock(&g_state_lock);
+
+        printf("[BT] 已断开\r\n");
 
         // 触发断开事件
         if (g_event_handler != NULL) {
             g_event_handler(BSP_BT_SPP_EVENT_DISCONNECTED, NULL);
         }
 
-        // 重新开始广播
-        osal_msleep(100);
-        bsp_bt_spp_start_adv();
+        // 通知 worker 重新广播（不在协议栈回调里 sleep+start_adv）
+        if (g_restart_adv_inited) {
+            osal_sem_up(&g_restart_adv_sem);
+        }
     }
 }
 
@@ -653,6 +688,14 @@ int bsp_bt_spp_init(const char *device_name)
 
     printf("BSP BT SPP: Initializing with name '%s'...\r\n", device_name);
 
+    // 状态锁与 worker 提前准备好
+    if (!g_state_lock_inited) {
+        if (osal_mutex_init(&g_state_lock) == OSAL_SUCCESS) {
+            g_state_lock_inited = true;
+        }
+    }
+    bsp_bt_spp_adv_worker_start();
+
     // 更新设备名称
     uint8_t name_len = strlen(device_name);
     if (name_len > NAME_MAX_LENGTH - 1) {
@@ -714,26 +757,34 @@ int bsp_bt_spp_send(const uint8_t *data, uint32_t len)
 {
     errcode_t ret;
     gatts_ntf_ind_t param = {0};
-    uint8_t *buffer = NULL;
 
     if (data == NULL || len == 0) {
         return -1;
     }
 
-    // 检查连接状态
-    if (g_bt_spp_status != BSP_BT_SPP_STATUS_CONNECTED || !g_remote_addr_valid) {
-        printf("[TX] Not connected\r\n");
+    // 在锁内拿状态快照，避免回调线程在 send 中途清掉句柄
+    bsp_bt_spp_status_t st_snap;
+    bool remote_valid_snap;
+    bool notify_snap;
+    uint16_t conn_hdl_snap;
+    uint16_t char_handle_snap;
+    if (g_state_lock_inited)
+        osal_mutex_lock(&g_state_lock);
+    st_snap = g_bt_spp_status;
+    remote_valid_snap = g_remote_addr_valid;
+    notify_snap = g_notify_enabled;
+    conn_hdl_snap = g_conn_hdl;
+    char_handle_snap = g_char_handle;
+    if (g_state_lock_inited)
+        osal_mutex_unlock(&g_state_lock);
+
+    if (st_snap != BSP_BT_SPP_STATUS_CONNECTED || !remote_valid_snap) {
         return -1;
     }
-
-    // 检查特征句柄
-    if (g_char_handle == 0) {
-        printf("[TX] Characteristic handle not set\r\n");
+    if (char_handle_snap == 0) {
         return -1;
     }
-
-    // 检查Notify是否启用
-    if (!g_notify_enabled) {
+    if (!notify_snap) {
         // 静默失败，不打印日志避免刷屏
         return -2;
     }
@@ -743,23 +794,16 @@ int bsp_bt_spp_send(const uint8_t *data, uint32_t len)
         len = BSP_BT_SPP_BUFFER_SIZE;
     }
 
-    // 分配内存并复制数据
-    buffer = osal_vmalloc(len);
-    if (buffer == NULL) {
-        printf("[TX] Alloc failed\r\n");
-        return -1;
-    }
-    memcpy_s(buffer, len, data, len);
+    // 244 字节栈缓冲，避免每包 vmalloc/vfree 抖动
+    uint8_t buffer[BSP_BT_SPP_BUFFER_SIZE];
+    memcpy_s(buffer, sizeof(buffer), data, len);
 
-    param.attr_handle = g_char_handle;
+    param.attr_handle = char_handle_snap;
     param.value = buffer;
     param.value_len = len;
 
-    printf("[TX] Sending %u bytes via handle 0x%x\r\n", len, g_char_handle);
-
     // 发送通知
-    ret = gatts_notify_indicate(BSP_BT_SPP_SERVER_ID, g_conn_hdl, &param);
-    osal_vfree(buffer);
+    ret = gatts_notify_indicate(BSP_BT_SPP_SERVER_ID, conn_hdl_snap, &param);
 
     if (ret == ERRCODE_BT_SUCCESS) {
         return (int)len;

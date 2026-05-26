@@ -16,12 +16,8 @@ static bool g_net_mutex_inited = false;
 #define NET_LOCK() MUTEX_LOCK(g_net_mutex, g_net_mutex_inited)
 #define NET_UNLOCK() MUTEX_UNLOCK(g_net_mutex, g_net_mutex_inited)
 
-bool g_udp_net_wifi_connected = false;
-bool g_udp_net_wifi_has_ip = false;
-char g_udp_net_ip[BUF_IP] = "0.0.0.0";
-
-int g_udp_net_socket_fd = -1;
-bool g_udp_net_bound = false;
+static int g_udp_net_socket_fd = -1;
+static bool g_udp_net_bound = false;
 
 //* @brief 8位累加校验和
 uint8_t udp_net_common_checksum8_add(const uint8_t *data, size_t len)
@@ -90,6 +86,15 @@ void udp_net_common_init(void)
     if (!g_net_mutex_inited && osal_mutex_init(&g_net_mutex) == OSAL_SUCCESS) {
         g_net_mutex_inited = true;
     }
+}
+
+//* @brief 发送 HTTP 响应字符串并关闭 socket（lwip TCP）
+void http_send_response_and_close(int client_fd, const char *response)
+{
+    if (client_fd < 0 || response == NULL)
+        return;
+    (void)lwip_send(client_fd, response, strlen(response), 0);
+    lwip_close(client_fd);
 }
 
 //* @brief 创建 UDP 套接字并绑定到指定端口

@@ -30,8 +30,8 @@ typedef struct {
     char text[32];
 } ui_msg_t;
 
-static bool g_oled_ready = false; // OLED 是否已初始化并可用
-static bool g_ui_busy = false;    // OLED 是否被独占（OTA 等高优场景）
+static bool g_oled_ready = false;          // OLED 是否已初始化并可用
+static volatile bool g_ui_busy = false;    // OLED 是否被独占（OTA 写, ui_task 读，bool 32 位写入原子）
 
 static unsigned long g_ui_queue = 0;
 static bool g_queue_inited = false;
@@ -82,11 +82,11 @@ static void ui_render_mode(CarStatus status)
 
     size_t mode_count = sizeof(g_mode_display) / sizeof(g_mode_display[0]);
     if (status >= CAR_STOP_STATUS && (size_t)status < mode_count) {
-        ssd1306_Fill(Black);
-        ssd1306_DrawString16(0, 0, g_mode_display[status].line0, White);
-        ssd1306_DrawString16(0, 16, g_mode_display[status].line1, White);
-        ssd1306_DrawString16(0, 32, g_mode_display[status].line2, White);
-        ssd1306_UpdateScreen();
+                bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
+        bsp_ssd1306_draw_string16(0, 0, g_mode_display[status].line0, BSP_SSD1306_COLOR_WHITE);
+        bsp_ssd1306_draw_string16(0, 16, g_mode_display[status].line1, BSP_SSD1306_COLOR_WHITE);
+        bsp_ssd1306_draw_string16(0, 32, g_mode_display[status].line2, BSP_SSD1306_COLOR_WHITE);
+        bsp_ssd1306_update_screen();
     }
 }
 
@@ -105,11 +105,11 @@ static void ui_render_standby_impl(WifiConnectStatus wifi_state, const char *ip_
     };
     const char *state_str = (wifi_state >= 0 && wifi_state < 4) ? wifi_state_str[wifi_state] : "WiFi: 未知状态";
 
-    ssd1306_Fill(Black);
-    ssd1306_DrawString16(0, 0, "模式: 停止", White);
-    ssd1306_DrawString16(0, 16, state_str, White);
-    ssd1306_DrawString16(0, 32, ip_addr, White);
-    ssd1306_UpdateScreen();
+        bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
+    bsp_ssd1306_draw_string16(0, 0, "模式: 停止", BSP_SSD1306_COLOR_WHITE);
+    bsp_ssd1306_draw_string16(0, 16, state_str, BSP_SSD1306_COLOR_WHITE);
+    bsp_ssd1306_draw_string16(0, 32, ip_addr, BSP_SSD1306_COLOR_WHITE);
+    bsp_ssd1306_update_screen();
 }
 
 static void ui_render_ota(uint8_t percent, const char *status_line)
@@ -120,10 +120,10 @@ static void ui_render_ota(uint8_t percent, const char *status_line)
     char line2[32] = {0};
     (void)snprintf(line2, sizeof(line2), "%s %u%%", status_line, percent);
 
-    ssd1306_Fill(Black);
-    ssd1306_DrawString16(0, 0, "OTA 升级", White);
-    ssd1306_DrawString16(0, 16, line2, White);
-    ssd1306_UpdateScreen();
+        bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
+    bsp_ssd1306_draw_string16(0, 0, "OTA 升级", BSP_SSD1306_COLOR_WHITE);
+    bsp_ssd1306_draw_string16(0, 16, line2, BSP_SSD1306_COLOR_WHITE);
+    bsp_ssd1306_update_screen();
 }
 
 // ---------- UI 任务主循环 ----------
@@ -192,7 +192,7 @@ void ui_service_init(void)
         printf("[OLED] I2C 初始化失败，跳过显示屏功能\r\n");
         return;
     }
-    if (!ssd1306_Init()) {
+    if (!bsp_ssd1306_init()) {
         printf("[OLED] 屏幕初始化失败，跳过显示屏功能\r\n");
         return;
     }
@@ -210,12 +210,8 @@ void ui_service_init(void)
     }
 
     if (g_ui_task == NULL) {
-        osal_kthread_lock();
-        g_ui_task = osal_kthread_create((osal_kthread_handler)ui_task_entry, NULL, "ui_task", UI_TASK_STACK_SIZE);
-        if (g_ui_task != NULL) {
-            osal_kthread_set_priority(g_ui_task, UI_TASK_PRIO);
-        }
-        osal_kthread_unlock();
+        g_ui_task = robot_task_create_locked("ui_task", (osal_kthread_handler)ui_task_entry, NULL, UI_TASK_STACK_SIZE,
+                                             UI_TASK_PRIO);
     }
 
     ui_show_mode_page(CAR_STOP_STATUS);
@@ -228,14 +224,8 @@ static void ui_post(const ui_msg_t *msg)
     if (!g_queue_inited)
         return;
 
-    /* 与 motor_executor_push_cmd 一致：队列满则丢弃最旧的，
-     * 全程使用 NO_WAIT，保证 ISR 上下文也能安全投递。 */
-    if (osal_msg_queue_get_msg_num(g_ui_queue) >= UI_MSG_QUEUE_DEPTH) {
-        ui_msg_t dummy;
-        unsigned int sz = sizeof(dummy);
-        (void)osal_msg_queue_read_copy(g_ui_queue, &dummy, &sz, OSAL_MSGQ_NO_WAIT);
-    }
-    (void)osal_msg_queue_write_copy(g_ui_queue, (void *)msg, sizeof(*msg), OSAL_MSGQ_NO_WAIT);
+    /* 队列满则丢弃最旧的，保证 ISR/任意上下文都能安全投递。 */
+    (void)osal_msgq_overwrite(g_ui_queue, UI_MSG_QUEUE_DEPTH, msg, sizeof(*msg));
 }
 
 void ui_show_mode_page(CarStatus status)

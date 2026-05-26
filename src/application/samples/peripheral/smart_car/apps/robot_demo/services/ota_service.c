@@ -9,11 +9,13 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../robot_common.h"
 #include "errcode.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 #include "securec.h"
 #include "soc_osal.h"
+#include "osal_timer.h"
 #include "ui_service.h"
 #include "upg.h"
 #include "uart.h"
@@ -34,6 +36,18 @@ static int g_tcp_listen_fd = -1;
 static int g_tcp_conn_fd = -1;
 static osal_task *g_ota_task_handle = NULL;
 static osal_mutex g_ota_mutex;
+
+// FAILED→IDLE 由定时器异步切换，避免 TCP 任务退出前 osal_msleep(500) 占线程
+static osal_timer g_ota_failed_timer;
+static bool g_ota_failed_timer_inited = false;
+
+static void ota_set_state(ota_state_t s);
+
+static void ota_failed_to_idle_cb(unsigned long arg)
+{
+    (void)arg;
+    ota_set_state(OTA_STATE_IDLE);
+}
 static bool g_ota_mutex_inited = false;
 
 // ---------- UPG 回调 ----------
@@ -202,6 +216,7 @@ void ota_service_get_status(ota_status_t *out)
  */
 static int recv_all(int sock, uint8_t *buf, int want_len, int timeout_ms)
 {
+    // 调用方在 accept 后已为 sock 设置 SO_RCVTIMEO；这里只做"短读拼接 + 软超时"。
     int received = 0;
     int64_t start = (int64_t)osal_get_jiffies();
     int64_t timeout_ticks = osal_msecs_to_jiffies(timeout_ms);
@@ -213,8 +228,7 @@ static int recv_all(int sock, uint8_t *buf, int want_len, int timeout_ms)
         }
         int n = lwip_recv(sock, buf + received, want_len - received, 0);
         if (n < 0) {
-            // lwIP 非阻塞/超时返回负值，短暂等待后重试
-            osal_msleep(10);
+            // SO_RCVTIMEO 触发 / EAGAIN：让 socket 自己阻塞，不在用户态 spin
             continue;
         }
         if (n == 0) {
@@ -304,6 +318,12 @@ static int ota_tcp_server_task(void *arg)
         (void)lwip_setsockopt(conn_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
     }
 
+    // 对 conn_fd 设 SO_RCVTIMEO，避免 recv_all 内自旋
+    {
+        struct timeval rtv = {.tv_sec = 2, .tv_usec = 0};
+        (void)lwip_setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, &rtv, sizeof(rtv));
+    }
+
     // 3. 接收 8 字节 Header
     n = recv_all(conn_fd, header, sizeof(header), 10000);
     if (n != sizeof(header)) {
@@ -345,7 +365,7 @@ static int ota_tcp_server_task(void *arg)
     g_ota_received = 0;
     ota_set_progress(0);
 
-    recv_buf = (uint8_t *)osal_kmalloc(OTA_RECV_CHUNK_SIZE, OSAL_GFP_ATOMIC);
+    recv_buf = (uint8_t *)osal_kmalloc(OTA_RECV_CHUNK_SIZE, OSAL_GFP_KERNEL);
     if (recv_buf == NULL) {
         printf("[OTA] 申请接收缓冲区失败\r\n");
         goto cleanup;
@@ -385,6 +405,9 @@ static int ota_tcp_server_task(void *arg)
 
     printf("[OTA] 固件接收完成，共 %u 字节\r\n", offset);
 
+    // 让 OLED 上的 "100% 接收中" 停留一帧，避免被紧随其后的 VERIFYING/UPGRADING 状态切换瞬间覆盖
+    osal_msleep(200);
+
     // 6. UPG 校验
     ota_set_state(OTA_STATE_VERIFYING);
     ret = fota_upg_verify_stored_package();
@@ -394,9 +417,9 @@ static int ota_tcp_server_task(void *arg)
         goto cleanup;
     }
 
-    // 回复最终成功
+    // 回复最终成功；用 shutdown(WR) 让协议栈 flush 后再 close，避免 msleep 等 ACK 出去
     tcp_send_ack(conn_fd, 0x00);
-    osal_msleep(100); // 确保 ACK 发出去
+    (void)lwip_shutdown(conn_fd, SHUT_WR);
 
     // 7. 请求升级并重启
     ota_set_state(OTA_STATE_UPGRADING);
@@ -426,8 +449,13 @@ cleanup:
 
     if (g_ota_state != OTA_STATE_UPGRADING) {
         ota_set_state(OTA_STATE_FAILED);
-        osal_msleep(500);
-        ota_set_state(OTA_STATE_IDLE);
+        // FAILED→IDLE 500ms 由定时器异步触发，TCP 任务直接退出无需 sleep
+        if (g_ota_failed_timer_inited) {
+            // 单次延时：osal_timer_init 是 PERIOD 模式，需用 osal_timer_mod 重建为单次
+            osal_timer_mod(&g_ota_failed_timer, 500);
+        } else {
+            ota_set_state(OTA_STATE_IDLE);
+        }
     }
     printf("[OTA] TCP 服务任务已退出\r\n");
     return 0;
@@ -440,6 +468,15 @@ void ota_service_init(void)
     if (!g_ota_mutex_inited) {
         osal_mutex_init(&g_ota_mutex);
         g_ota_mutex_inited = true;
+    }
+
+    if (!g_ota_failed_timer_inited) {
+        g_ota_failed_timer.interval = 500;
+        g_ota_failed_timer.handler = ota_failed_to_idle_cb;
+        g_ota_failed_timer.data = 0;
+        if (osal_timer_init(&g_ota_failed_timer) == OSAL_SUCCESS) {
+            g_ota_failed_timer_inited = true;
+        }
     }
 
     g_ota_state = OTA_STATE_IDLE;
@@ -477,16 +514,10 @@ bool ota_service_start(uint32_t expected_size)
     g_ota_received = 0;
     g_ota_total = 0;
 
-    osal_kthread_lock();
-    g_ota_task_handle =
-        osal_kthread_create((osal_kthread_handler)ota_tcp_server_task, NULL, "ota_tcp_task", OTA_TCP_STACK_SIZE);
-    if (g_ota_task_handle != NULL) {
-        osal_kthread_set_priority(g_ota_task_handle, OTA_TCP_TASK_PRIORITY);
-    }
-    osal_kthread_unlock();
+    g_ota_task_handle = robot_task_create_locked("ota_tcp_task", (osal_kthread_handler)ota_tcp_server_task, NULL,
+                                                 OTA_TCP_STACK_SIZE, OTA_TCP_TASK_PRIORITY);
 
     if (g_ota_task_handle == NULL) {
-        printf("[OTA] 创建任务失败\r\n");
         ota_set_state(OTA_STATE_FAILED);
         return false;
     }

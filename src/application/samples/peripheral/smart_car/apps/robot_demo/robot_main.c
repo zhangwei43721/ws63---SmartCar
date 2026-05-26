@@ -13,10 +13,7 @@
 #include "common_def.h"
 #include "core/mode_obstacle.h"
 #include "core/mode_trace.h"
-#include "core/motor_executor.h"
-#include "core/robot_config.h"
 #include "robot_common.h"
-#include "core/sensor_task.h"
 #include "gpio.h"
 #include "hal_gpio.h"
 #include "osal_timer.h"
@@ -25,7 +22,7 @@
 #include "services/captive_portal_service.h"
 #include "services/ota_service.h"
 #include "services/sle_service.h"
-#include "services/storage_service.h"
+#include "../../platform/storage_service.h"
 #include "services/ui_service.h"
 #include "services/udp_service.h"
 #include "services/voice_service.h"
@@ -34,6 +31,7 @@
 
 #include "../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../drivers/l9110s/bsp_l9110s.h"
+#include "../../drivers/motor_control/bsp_motor.h"
 #include "../../drivers/tcrt5000/bsp_tcrt5000.h"
 #include "services/wifi_mgr_service.h"
 
@@ -75,11 +73,6 @@ static void robot_key_init(void)
 static CarStatus g_status = CAR_STOP_STATUS;
 static CarStatus g_last_status = CAR_STOP_STATUS;
 
-typedef struct {
-    CarStatus status;
-    uint32_t source;
-} ModeCmdMsg;
-
 #define MODE_CMD_QUEUE_DEPTH 4
 static unsigned long g_mode_queue = 0;
 static bool g_mode_queue_inited = false;
@@ -104,8 +97,7 @@ static void robot_mgr_apply_status(CarStatus status)
     if (g_status == status)
         return;
 
-    const char *mode_names[] = {"停止", "循迹", "避障", "遥控"};
-    printf("模式切换：%s -> %s\r\n", mode_names[g_status], mode_names[status]);
+    printf("模式切换：%s -> %s\r\n", robot_mode_name(g_status), robot_mode_name(status));
 
     g_status = status;
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
@@ -160,12 +152,7 @@ bool robot_mgr_post_mode(CarStatus status, uint32_t source)
     ModeCmdMsg msg = {.status = status, .source = source};
 
     uint32_t irq_sts = osal_irq_lock();
-    if (osal_msg_queue_get_msg_num(g_mode_queue) >= MODE_CMD_QUEUE_DEPTH) {
-        ModeCmdMsg dummy;
-        unsigned int sz = sizeof(dummy);
-        (void)osal_msg_queue_read_copy(g_mode_queue, &dummy, &sz, OSAL_MSGQ_NO_WAIT);
-    }
-    int ret = osal_msg_queue_write_copy(g_mode_queue, &msg, sizeof(msg), OSAL_MSGQ_NO_WAIT);
+    int ret = osal_msgq_overwrite(g_mode_queue, MODE_CMD_QUEUE_DEPTH, &msg, sizeof(msg));
     osal_irq_restore(irq_sts);
 
     return (ret == OSAL_SUCCESS);
@@ -203,27 +190,29 @@ void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned
 static void robot_system_init(void)
 {
     storage_service_init();
-    bsp_wifi_mgr_init();
 
-    bsp_wifi_msg_t wifi_start = {.id = WIFI_MSG_START};
-    bsp_wifi_mgr_send_msg(&wifi_start);
-
-    // 驱动初始化
+    // 驱动初始化（先于一切任务创建）
     l9110s_init();
     hcsr04_init();
     tcrt5000_adc_init();
 
-    // 服务初始化
+    // 关键控制任务先创建，确保任务池不会因后续网络服务耗尽而抢占
+    robot_mgr_state_mutex_init();
+    bsp_motor_init();
+    
+    // WiFi 管理任务
+    bsp_wifi_mgr_init();
+    bsp_wifi_msg_t wifi_start = {.id = WIFI_MSG_START};
+    bsp_wifi_mgr_send_msg(&wifi_start);
+
+    // 其它服务（UI / UDP / OTA / SLE / Portal / Voice）
     ui_service_init();
     udp_service_init();
     ota_service_init();
     sle_service_init();
     captive_portal_service_init();
     voice_service_init();
-    sensor_task_init();
 
-    robot_mgr_state_mutex_init();
-    motor_executor_init();
     robot_key_init();
     if (!g_mode_queue_inited) {
         if (osal_msg_queue_create("mode_q", MODE_CMD_QUEUE_DEPTH, &g_mode_queue, 0, sizeof(ModeCmdMsg)) == OSAL_SUCCESS)
@@ -239,7 +228,7 @@ static void robot_system_init(void)
     printf("[FIRMWARE] OTA_TEST_BUILD_20250519_V2\r\n");
 }
 
-#define ROBOT_TASK_STACK_SIZE (1024 * 10)
+#define ROBOT_TASK_STACK_SIZE (1024 * 4)
 #define ROBOT_TASK_PRIO 25
 
 /**
@@ -262,14 +251,16 @@ static int robot_main_task(void *arg)
         if (ret != OSAL_SUCCESS)
             continue;
 
-        // 应用最后一条消息的状态
-        robot_mgr_apply_status(msg.status);
-
-        // 消费队列中剩余消息（只保留最后意图）
-        while (osal_msg_queue_read_copy(g_mode_queue, &msg, &sz, OSAL_MSGQ_NO_WAIT) == OSAL_SUCCESS) {
-            robot_mgr_apply_status(msg.status);
-            sz = sizeof(msg);
+        // 排空队列中剩余消息，只保留最后一条意图，避免对中间状态做无意义的 enter/exit
+        ModeCmdMsg drain;
+        unsigned int dsz = sizeof(drain);
+        while (osal_msg_queue_read_copy(g_mode_queue, &drain, &dsz, OSAL_MSGQ_NO_WAIT) == OSAL_SUCCESS) {
+            msg = drain;
+            dsz = sizeof(drain);
         }
+
+        // 只对最终意图 apply 一次
+        robot_mgr_apply_status(msg.status);
 
         // 执行状态转移
         if (g_status != g_last_status) {
@@ -284,16 +275,9 @@ static int robot_main_task(void *arg)
 
 static void robot_demo_entry(void)
 {
-    osal_task *task_handle = NULL;
-    osal_kthread_lock();
-    task_handle =
-        osal_kthread_create((osal_kthread_handler)robot_main_task, NULL, "robot_main_task", ROBOT_TASK_STACK_SIZE);
-
-    if (task_handle != NULL) {
-        osal_kthread_set_priority(task_handle, ROBOT_TASK_PRIO);
-    }
+    (void)robot_task_create_locked("robot_main_task", (osal_kthread_handler)robot_main_task, NULL,
+                                   ROBOT_TASK_STACK_SIZE, ROBOT_TASK_PRIO);
     printf("智能小车主任务已创建\r\n");
-    osal_kthread_unlock();
 }
 
 app_run(robot_demo_entry);

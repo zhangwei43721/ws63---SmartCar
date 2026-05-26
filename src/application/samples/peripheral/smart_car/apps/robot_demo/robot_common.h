@@ -3,6 +3,76 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include "soc_osal.h"
+
+#include "../../board_config.h"
+
+// ================ 任务优先级 / 栈 / 时序常量（原 robot_config.h）================
+
+#define SENSOR_DELAY 50      // 传感器稳定等待（ms）
+#define BACKWARD_TIME 400    // 避障后退时长（ms）
+#define TURN_TIME 400        // 语音转向时长（ms）
+#define REMOTE_TIMEOUT 500   // 遥控命令超时（ms）
+#define LOOP_DELAY 20        // 主循环 tick 间隔（ms）
+#define STANDBY_DELAY 500    // 待机 UI 刷新间隔（ms）
+#define RECV_TIMEOUT 100     // 接收超时（ms）
+#define WIFI_RETRY_INTERVAL 5000 // WiFi 重试退避（ms）
+#define BUF_PAYLOAD 128      // 数据负载缓冲区（字节）
+#define BUF_IP 32            // IP 地址字符串缓冲区
+#define BUF_MODE 32          // 模式字符串缓冲区
+
+// 通用互斥锁操作宏。调用前需确保 inited==true（init 失败应 panic）。
+// 旧版在 inited==false 时"静默放行"让临界区裸跑；当前版打印一次 BUG 警告
+// 便于定位漏 init 的 bug，但仍然不调用 osal_mutex_lock（传未初始化句柄可能 crash）。
+#define MUTEX_LOCK(mutex, inited)                                                \
+    do {                                                                         \
+        if ((inited)) {                                                          \
+            (void)osal_mutex_lock(&(mutex));                                     \
+        } else {                                                                 \
+            static int _mutex_warned_##__LINE__ = 0;                             \
+            if (!_mutex_warned_##__LINE__) {                                     \
+                _mutex_warned_##__LINE__ = 1;                                    \
+                printf("[BUG] mutex used before init @ %s:%d\r\n", __FILE__,     \
+                       __LINE__);                                                \
+            }                                                                    \
+        }                                                                        \
+    } while (0)
+
+#define MUTEX_UNLOCK(mutex, inited)      \
+    do {                                 \
+        if (inited)                      \
+            osal_mutex_unlock(&(mutex)); \
+    } while (0)
+
+// 封装 osal_kthread_lock/create/set_priority/unlock 4 步模板，
+// 统一任务创建模式并保证 lock/unlock 配对。失败时打印 BUG 日志。
+static inline osal_task *robot_task_create_locked(const char *name, osal_kthread_handler entry, void *arg,
+                                                  unsigned int stack_size, unsigned int priority)
+{
+    osal_task *handle = NULL;
+    osal_kthread_lock();
+    handle = osal_kthread_create(entry, arg, name, stack_size);
+    if (handle != NULL) {
+        osal_kthread_set_priority(handle, priority);
+    }
+    osal_kthread_unlock();
+    if (handle == NULL) {
+        printf("[BUG] task create failed: %s\r\n", name ? name : "(null)");
+    }
+    return handle;
+}
+
+// 队满丢最旧→写入新消息。4 处复制模板的公共实现，避免全局暴露 queue handle。
+static inline int osal_msgq_overwrite(unsigned long qid, unsigned int depth, const void *msg, unsigned int size)
+{
+    if (osal_msg_queue_get_msg_num(qid) >= depth) {
+        unsigned char drop[64];
+        unsigned int dsz = size;
+        (void)osal_msg_queue_read_copy(qid, drop, &dsz, OSAL_MSGQ_NO_WAIT);
+    }
+    return osal_msg_queue_write_copy(qid, (void *)msg, size, OSAL_MSGQ_NO_WAIT);
+}
 
 /**
  * @brief 小车运行模式枚举
@@ -13,6 +83,11 @@ typedef enum {
     CAR_OBSTACLE_AVOIDANCE_STATUS, // 避障模式：根据超声波传感器自动避障
     CAR_WIFI_CONTROL_STATUS,       // WiFi遥控模式：通过UDP/WiFi接收控制命令
 } CarStatus;
+
+// 模式切换命令（投递到 mode_q，由 robot_main_task 消费）
+typedef struct { CarStatus status; uint32_t source; } ModeCmdMsg;
+// 电机控制命令（投递到 motor_q，由 motor_exec 消费）
+typedef struct { int8_t left; int8_t right; } MotorCmdMsg;
 
 /**
  * @brief WiFi 连接状态枚举
@@ -46,11 +121,64 @@ typedef enum {
     MODE_SRC_INTERNAL = 0x06, // 内部初始化等
 } ModeCmdSource;
 
+/**
+ * @brief 协议包类型码（UDP / SLE / 强制门户共用 5 字节包格式）
+ *        type 字段统一定义在此，禁止散落到各 .c 里魔数化。
+ */
+typedef enum {
+    ROBOT_PKT_CONTROL = 0x01,     // 控制：[type, l_speed, r_speed, 0, 0]
+    ROBOT_PKT_MODE = 0x03,        // 模式切换：[type, mode, 0, 0, 0]
+    ROBOT_PKT_PID = 0x04,         // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
+    ROBOT_PKT_OTA = 0x05,         // OTA 触发：[type, sub_cmd, ...]
+    ROBOT_PKT_HEARTBEAT = 0xFE,   // 心跳
+    ROBOT_PKT_DISCOVERY = 0xFF,   // 设备发现广播
+} RobotPktType;
+
+/**
+ * @brief OTA 子命令（type=ROBOT_PKT_OTA 时 cmd 字段）
+ */
+typedef enum {
+    OTA_SUBCMD_START = 0x01,
+} RobotOtaSubCmd;
+
+/**
+ * @brief PID 子参数索引（type=ROBOT_PKT_PID 时 cmd 字段）
+ */
+typedef enum {
+    PID_PARAM_KP = 1,
+    PID_PARAM_KI = 2,
+    PID_PARAM_KD = 3,
+    PID_PARAM_BASE_SPEED = 4,
+    PID_PARAM_SAVE = 0xFF, // cmd 子字段 == 0xFF 表示请求落盘
+} RobotPidParam;
+
+// ---------- 统一协议包体（UDP / SLE / 强制门户共用 5 字节格式）----------
+#pragma pack(1)
+typedef struct {
+    uint8_t type;  // RobotPktType 枚举值
+    uint8_t cmd;   // 子命令 / 模式号 / PID 参数索引
+    int8_t motor1; // 左电机速度 (-100~100) / PID value_hi
+    int8_t motor2; // 右电机速度 (-100~100) / PID value_lo
+    int8_t ir_data; // 红外数据 / 保留
+} robot_packet_t;
+#pragma pack()
+
+/**
+ * @brief 统一协议处理入口，消费 CONTROL / MODE / HEARTBEAT
+ * @return true  包已被消费
+ * @return false 包未处理，调用方需自行处理（PID / OTA / WiFi 配置等）
+ */
+bool robot_proto_handle_packet(const robot_packet_t *pkt, uint32_t mode_source);
+
 // ---------- 主状态机接口 ----------
 CarStatus robot_mgr_get_status(void);
 bool robot_mgr_post_mode(CarStatus status, uint32_t source);
 void robot_mgr_get_state_copy(RobotState *out);
 void robot_mgr_update_distance(float distance);
 void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right);
+
+// ---------- 模式/WiFi 状态字符串集中查表 ----------
+const char *robot_mode_name(CarStatus status);
+const char *robot_wifi_status_text(WifiConnectStatus s);
 
 #endif

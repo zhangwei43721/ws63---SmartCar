@@ -38,6 +38,14 @@ static bool s_wait_sem_inited = false;
 static osal_semaphore s_sync_sem;
 static bool s_sync_inited = false;
 static volatile bool s_should_exit = false;
+static osal_semaphore s_exit_sem;
+static bool s_exit_sem_inited = false;
+// 可取消的重试等待：失败回退用 down_timeout，stop/wakeup 时 up 立即唤醒
+static osal_semaphore s_retry_sem;
+static bool s_retry_sem_inited = false;
+// DHCP got-IP 事件信号量：取代 100ms 轮询，lwip netif status_callback 触发
+static osal_semaphore s_dhcp_sem;
+static bool s_dhcp_sem_inited = false;
 
 // ---------- 公共状态管理 ----------
 
@@ -166,15 +174,12 @@ int bsp_wifi_scan_list(bsp_wifi_scan_item_t *items, uint32_t max_count, uint32_t
         return -1;
 
     uint32_t num = 32;
-    wifi_scan_info_stru *res = osal_kmalloc(sizeof(wifi_scan_info_stru) * num, OSAL_GFP_ATOMIC);
-    if (!res) {
-        if (!was_on)
-            wifi_sta_disable();
-        return -1;
-    }
+    // 模块静态缓冲：扫描在堆紧张时 kmalloc 容易失败，且本函数被门户/UI 多处调用，
+    // 沿用静态 buffer 避免高频大块分配。bsp_wifi_scan_list 自身串行（wifi_sta_scan 不可重入）。
+    static wifi_scan_info_stru s_scan_buf[32];
+    wifi_scan_info_stru *res = s_scan_buf;
 
     if (wifi_sta_scan() != ERRCODE_SUCC) {
-        osal_kfree(res);
         if (!was_on)
             wifi_sta_disable();
         return -1;
@@ -186,7 +191,6 @@ int bsp_wifi_scan_list(bsp_wifi_scan_item_t *items, uint32_t max_count, uint32_t
     if (!was_on)
         wifi_sta_disable();
     if (ret != ERRCODE_SUCC) {
-        osal_kfree(res);
         return -1;
     }
 
@@ -202,7 +206,6 @@ int bsp_wifi_scan_list(bsp_wifi_scan_item_t *items, uint32_t max_count, uint32_t
         idx++;
     }
     *out_count = idx;
-    osal_kfree(res);
     return 0;
 }
 
@@ -224,6 +227,9 @@ bool sta_get_should_exit(void)
 void sta_task_wakeup(void)
 {
     osal_sem_up(&s_wait_sem);
+    if (s_retry_sem_inited) {
+        osal_sem_up(&s_retry_sem);
+    }
 }
 
 //* @brief 启动 STA（WiFi 客户端）任务
@@ -232,6 +238,16 @@ bool sta_task_start(void)
     if (s_sta_task)
         return true;
     s_should_exit = false;
+    if (!s_exit_sem_inited) {
+        osal_sem_binary_sem_init(&s_exit_sem, 0);
+        s_exit_sem_inited = true;
+    }
+    if (!s_retry_sem_inited) {
+        osal_sem_binary_sem_init(&s_retry_sem, 0);
+        s_retry_sem_inited = true;
+    }
+    while (osal_sem_trydown(&s_exit_sem) == OSAL_SUCCESS) { }
+    while (osal_sem_trydown(&s_retry_sem) == OSAL_SUCCESS) { }
     osal_kthread_lock();
     s_sta_task = osal_kthread_create((osal_kthread_handler)sta_task_main, NULL, "wifi_sta", 4096);
     if (s_sta_task)
@@ -255,10 +271,11 @@ void sta_task_stop(void)
     if (s_wait_sem_inited) {
         osal_sem_up(&s_wait_sem);
     }
-    int to = 0;
-    while (s_sta_task && to < 100) {
-        osal_msleep(10);
-        to++;
+    if (s_retry_sem_inited) {
+        osal_sem_up(&s_retry_sem);
+    }
+    if (s_exit_sem_inited) {
+        (void)osal_sem_down_timeout(&s_exit_sem, 3000);
     }
     s_sta_task = NULL;
 }
@@ -293,6 +310,16 @@ static void scan_cb(td_s32 state, td_s32 size)
     osal_sem_up(&s_conn_sem);
 }
 
+//* @brief netif 状态变化回调：DHCP 拿到 IP 后唤醒任务，替代 100ms 轮询
+static void sta_netif_status_cb(struct netif *netif)
+{
+    if (netif == NULL)
+        return;
+    if (netif->ip_addr.u_addr.ip4.addr != 0 && s_dhcp_sem_inited) {
+        osal_sem_up(&s_dhcp_sem);
+    }
+}
+
 // ---------- Task 入口 ----------
 
 //* @brief STA 任务主函数：扫描→连接→DHCP→阻塞等待断线→重连循环
@@ -314,7 +341,10 @@ int sta_task_main(void *arg)
         printf("[STA] 启用失败\r\n");
         bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_FAIL);
         bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_STOPPED);
-        s_sta_task = NULL;
+        // 句柄交由 sta_task_stop() 在 exit_sem up 后回收，不在任务体内自清空
+        if (s_exit_sem_inited) {
+            osal_sem_up(&s_exit_sem);
+        }
         return 0;
     }
 
@@ -324,29 +354,26 @@ int sta_task_main(void *arg)
 
         if (ssid[0] == '\0') {
             bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_FAIL);
-            osal_msleep(5000);
+            (void)osal_sem_down_timeout(&s_retry_sem, 5000);
             continue;
         }
 
         // 扫描
         if (wifi_sta_scan() != ERRCODE_SUCC) {
-            osal_msleep(5000);
+            (void)osal_sem_down_timeout(&s_retry_sem, 5000);
             continue;
         }
         if (osal_sem_down_timeout(&s_conn_sem, 5000) != OSAL_SUCCESS) {
-            osal_msleep(5000);
+            (void)osal_sem_down_timeout(&s_retry_sem, 5000);
             continue;
         }
 
         uint32_t num = 32;
-        wifi_scan_info_stru *res = osal_kmalloc(sizeof(wifi_scan_info_stru) * num, OSAL_GFP_ATOMIC);
-        if (!res) {
-            osal_msleep(5000);
-            continue;
-        }
+        // 模块静态缓冲，避免连接重试期间反复 kmalloc 4KB+ 失败
+        static wifi_scan_info_stru s_conn_scan_buf[32];
+        wifi_scan_info_stru *res = s_conn_scan_buf;
         if (wifi_sta_get_scan_info(res, &num) != ERRCODE_SUCC) {
-            osal_kfree(res);
-            osal_msleep(5000);
+            (void)osal_sem_down_timeout(&s_retry_sem, 5000);
             continue;
         }
 
@@ -363,10 +390,9 @@ int sta_task_main(void *arg)
                 break;
             }
         }
-        osal_kfree(res);
         if (!found) {
             bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_FAIL);
-            osal_msleep(5000);
+            (void)osal_sem_down_timeout(&s_retry_sem, 5000);
             continue;
         }
 
@@ -378,7 +404,7 @@ int sta_task_main(void *arg)
         if (wifi_sta_connect(&cfg) != ERRCODE_SUCC) {
             printf("[STA] wifi_sta_connect 失败\r\n");
             bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_FAIL);
-            osal_msleep(5000);
+            (void)osal_sem_down_timeout(&s_retry_sem, 5000);
             continue;
         }
 
@@ -386,7 +412,7 @@ int sta_task_main(void *arg)
             printf("[STA] 连接等待超时\r\n");
             wifi_sta_disconnect();
             bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_FAIL);
-            osal_msleep(5000);
+            (void)osal_sem_down_timeout(&s_retry_sem, 5000);
             continue;
         }
 
@@ -394,22 +420,29 @@ int sta_task_main(void *arg)
             printf("[STA] 连接后状态未达标\r\n");
             wifi_sta_disconnect();
             bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_FAIL);
-            osal_msleep(5000);
+            (void)osal_sem_down_timeout(&s_retry_sem, 5000);
             continue;
         }
 
-        // DHCP获取IP
+        // DHCP获取IP：通过 lwip netif status_callback 事件触发，取代 100ms 轮询
         struct netif *n = netifapi_netif_find("wlan0");
         if (n) {
+            if (!s_dhcp_sem_inited) {
+                osal_sem_binary_sem_init(&s_dhcp_sem, 0);
+                s_dhcp_sem_inited = true;
+            }
+            while (osal_sem_trydown(&s_dhcp_sem) == OSAL_SUCCESS) { }
+            netif_set_status_callback(n, sta_netif_status_cb);
             netifapi_dhcp_start(n);
-            for (int i = 0; i < 50 && !s_should_exit; i++) {
-                if (n->ip_addr.u_addr.ip4.addr != 0) {
-                    netifapi_netif_set_default(n);
-                    bsp_wifi_set_status(BSP_WIFI_STATUS_GOT_IP);
-                    bsp_wifi_set_mode(BSP_WIFI_MODE_STA);
-                    break;
-                }
-                osal_msleep(100);
+            // 兜底：极少数情况 IP 在 dhcp_start 之前已经被 lwip 写入，此时不会再触发 callback
+            if (n->ip_addr.u_addr.ip4.addr == 0) {
+                (void)osal_sem_down_timeout(&s_dhcp_sem, 5000);
+            }
+            netif_set_status_callback(n, NULL);
+            if (!s_should_exit && n->ip_addr.u_addr.ip4.addr != 0) {
+                netifapi_netif_set_default(n);
+                bsp_wifi_set_status(BSP_WIFI_STATUS_GOT_IP);
+                bsp_wifi_set_mode(BSP_WIFI_MODE_STA);
             }
         }
 
@@ -418,7 +451,7 @@ int sta_task_main(void *arg)
                 netifapi_dhcp_stop(n);
             wifi_sta_disconnect();
             bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_FAIL);
-            osal_msleep(5000);
+            (void)osal_sem_down_timeout(&s_retry_sem, 5000);
             continue;
         }
 
@@ -437,6 +470,8 @@ int sta_task_main(void *arg)
     wifi_sta_disable();
     bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_STOPPED);
     printf("[STA] 退出\r\n");
-    s_sta_task = NULL;
+    if (s_exit_sem_inited) {
+        osal_sem_up(&s_exit_sem);
+    }
     return 0;
 }

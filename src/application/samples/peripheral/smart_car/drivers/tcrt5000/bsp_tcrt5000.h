@@ -46,8 +46,13 @@
 #define TCRT5000_MIDDLE_THRESHOLD 1900 // 中间传感器阈值
 #define TCRT5000_RIGHT_THRESHOLD 1900  // 右侧传感器阈值
 
-// ADC数据存储（使用自动扫描模式）
-extern uint32_t g_tcrt5000_adc_data[3]; // 存储左、中、右三个传感器的ADC电压值（mV）
+/**
+ * @brief 原子读取三路 ADC 当前快照（mV）
+ * @param l 左侧值输出
+ * @param m 中间值输出
+ * @param r 右侧值输出
+ */
+void tcrt5000_snapshot(uint32_t *l, uint32_t *m, uint32_t *r);
 
 /**
  * @brief ADC自动扫描回调函数
@@ -87,6 +92,12 @@ unsigned int tcrt5000_get_right(void);
  * @return 无
  */
 void tcrt5000_adc_init(void);
+
+/**
+ * @brief 触发一次三通道采样（enable→disable 周期）
+ * @note  WS63 HAL 只在 ch_disable 时触发回调把 FIFO 转成电压，必须由上层周期性调用
+ */
+void tcrt5000_sample(void);
 
 /**
  * @brief 获取左侧传感器ADC电压值

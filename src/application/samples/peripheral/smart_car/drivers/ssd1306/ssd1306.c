@@ -28,14 +28,13 @@
 
 #define CONFIG_I2C_MASTER_BUS_ID 1
 #define I2C_SLAVE2_ADDR 0x3C
-#define SSD1306_CTRL_CMD 0x00
-#define SSD1306_CTRL_DATA 0x40
-#define SSD1306_MASK_CONT (0x1 << 7)
+#define SSD1306_CTRL_CMD            0x00
+#define SSD1306_CTRL_DATA           0x40
+#define SSD1306_CTRL_MASK_CONT      (0x1 << 7)
 #define DOUBLE 2
 
-void ssd1306_Reset(void)
+void bsp_ssd1306_reset(void)
 {
-    // 等待屏幕启动，1ms。此处的延时非常重要
     osal_mdelay(1);
 }
 
@@ -47,8 +46,6 @@ static uint32_t ssd1306_SendData(uint8_t *buffer, uint32_t size)
     data.send_len = size;
     uint32_t retval = uapi_i2c_master_write(CONFIG_I2C_MASTER_BUS_ID, dev_addr, &data);
     if (retval != 0) {
-        // 移除错误打印，避免刷屏
-        // printf("I2cWrite(%02X) failed, %0X!\n", data.send_buf[1], retval);
         return retval;
     }
     return 0;
@@ -60,295 +57,238 @@ static uint32_t ssd1306_WriteByte(uint8_t regAddr, uint8_t byte)
     return ssd1306_SendData(buffer, sizeof(buffer));
 }
 
-// 向命令寄存器发送一个字节
-void ssd1306_WriteCommand(uint8_t byte)
+void bsp_ssd1306_write_command(uint8_t byte)
 {
     ssd1306_WriteByte(SSD1306_CTRL_CMD, byte);
 }
 
-// 发送数据
-void ssd1306_WriteData(uint8_t *buffer, uint32_t buff_size)
+void bsp_ssd1306_write_data(uint8_t *buffer, size_t buff_size)
 {
     uint8_t data[SSD1306_WIDTH * DOUBLE] = {0};
     for (uint32_t i = 0; i < buff_size; i++) {
-        data[i * DOUBLE] = SSD1306_CTRL_DATA | SSD1306_MASK_CONT;
+        data[i * DOUBLE] = SSD1306_CTRL_DATA | SSD1306_CTRL_MASK_CONT;
         data[i * DOUBLE + 1] = buffer[i];
     }
     data[(buff_size - 1) * DOUBLE] = SSD1306_CTRL_DATA;
     ssd1306_SendData(data, sizeof(data));
 }
 
-// 屏幕缓冲区
-static uint8_t SSD1306_Buffer[SSD1306_BUFFER_SIZE];
+static uint8_t g_ssd1306_buffer[SSD1306_BUFFER_SIZE];
+static BspSsd1306Ctx g_ssd1306_ctx;
 
-// 屏幕对象
-static SSD1306_t SSD1306;
-
-// 用给定缓冲区的数据填充屏幕缓冲区
-SSD1306_Error_t ssd1306_FillBuffer(uint8_t *buf, uint32_t len)
+BspSsd1306Error bsp_ssd1306_fill_buffer(uint8_t *buf, uint32_t len)
 {
-    SSD1306_Error_t ret = SSD1306_ERR;
+    BspSsd1306Error ret = BSP_SSD1306_ERR;
     if (len <= SSD1306_BUFFER_SIZE) {
-        memcpy_s(SSD1306_Buffer, len + 1, buf, len);
-        ret = SSD1306_OK;
+        memcpy_s(g_ssd1306_buffer, len + 1, buf, len);
+        ret = BSP_SSD1306_OK;
     }
     return ret;
 }
 
-void ssd1306_Init_CMD(void)
+static void bsp_ssd1306_init_cmd(void)
 {
-    ssd1306_WriteCommand(0xA4); // 0xa4,输出跟随RAM内容;0xa5,输出忽略RAM内容
+    bsp_ssd1306_write_command(SSD1306_CMD_ENTIRE_ON_RESUME);
 
-    ssd1306_WriteCommand(0xD3); // -设置显示偏移 - 校验
-    ssd1306_WriteCommand(0x00); // -无偏移
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_DISPLAY_OFFSET);
+    bsp_ssd1306_write_command(0x00);
 
-    ssd1306_WriteCommand(0xD5); // --设置显示时钟分频比/振荡器频率
-    ssd1306_WriteCommand(0xF0); // --设置分频比
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_CLOCK_DIV);
+    bsp_ssd1306_write_command(SSD1306_CLOCK_DIV_F0);
 
-    ssd1306_WriteCommand(0xD9); // --设置预充电周期
-    ssd1306_WriteCommand(0x11); // 默认为0x22
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_PRECHARGE);
+    bsp_ssd1306_write_command(SSD1306_PRECHARGE_1DCLK);
 
-    ssd1306_WriteCommand(0xDA); // --设置COM引脚硬件配置 - 校验
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_COM_PINS);
 #if (SSD1306_HEIGHT == 32)
-    ssd1306_WriteCommand(0x02);
+    bsp_ssd1306_write_command(SSD1306_COM_PINS_ALT_NOCFG);
 #elif (SSD1306_HEIGHT == 64)
-    ssd1306_WriteCommand(0x12);
+    bsp_ssd1306_write_command(SSD1306_COM_PINS_ALT_CFG);
 #elif (SSD1306_HEIGHT == 128)
-    ssd1306_WriteCommand(0x12);
+    bsp_ssd1306_write_command(SSD1306_COM_PINS_ALT_CFG);
 #else
 #error "Only 32, 64, or 128 lines of height are supported!"
 #endif
 
-    ssd1306_WriteCommand(0xDB); // --设置VCOMH
-    ssd1306_WriteCommand(0x30); // 0x20对应0.77xVcc, 0x30对应0.83xVcc
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_VCOM_DESELECT);
+    bsp_ssd1306_write_command(SSD1306_VCOM_83X_VCC);
 
-    ssd1306_WriteCommand(0x8D); // --设置DC-DC使能
-    ssd1306_WriteCommand(0x14); //
-    ssd1306_SetDisplayOn(1);    // --打开SSD1306面板
+    bsp_ssd1306_write_command(SSD1306_CMD_CHARGE_PUMP);
+    bsp_ssd1306_write_command(SSD1306_CHARGE_PUMP_ENABLE);
+    bsp_ssd1306_set_display_on(1);
 }
 
-// 初始化OLED屏幕
-bool ssd1306_Init(void)
+bool bsp_ssd1306_init(void)
 {
-    // 尝试探测设备是否存在（发送一个简单命令测试）
-    uint8_t probe_buf[] = {SSD1306_CTRL_CMD, 0x00}; // 发送 NOP 命令测试
+    uint8_t probe_buf[] = {SSD1306_CTRL_CMD, 0x00};
     i2c_data_t probe_data = {0};
     probe_data.send_buf = probe_buf;
     probe_data.send_len = sizeof(probe_buf);
     uint32_t probe_ret = uapi_i2c_master_write(CONFIG_I2C_MASTER_BUS_ID, I2C_SLAVE2_ADDR, &probe_data);
     if (probe_ret != 0)
-        return false; // 设备探测失败，OLED 不存在或通信失败
+        return false;
 
-    // 复位OLED
-    ssd1306_Reset();
-    // 初始化OLED
-    ssd1306_SetDisplayOn(0); // 关闭显示
+    bsp_ssd1306_reset();
+    bsp_ssd1306_set_display_on(0);
 
-    ssd1306_WriteCommand(0x20); // 设置存储器寻址模式
-    ssd1306_WriteCommand(0x00); // 00b,水平寻址模式; 01b,垂直寻址模式;
-                                // 10b,页寻址模式(复位值); 11b,无效
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_MEM_ADDR_MODE);
+    bsp_ssd1306_write_command(SSD1306_ADDR_MODE_HORIZONTAL);
 
-    ssd1306_WriteCommand(0xB0); // 设置页寻址模式的页起始地址,0-7
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_PAGE_START);
 
 #ifdef SSD1306_MIRROR_VERT
-    ssd1306_WriteCommand(0xC0); // 垂直镜像
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_COM_SCAN_NORMAL);
 #else
-    ssd1306_WriteCommand(0xC8); // 设置COM输出扫描方向
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_COM_SCAN_REMAP);
 #endif
 
-    ssd1306_WriteCommand(0x00); // ---设置低列地址
-    ssd1306_WriteCommand(0x10); // ---设置高列地址
+    bsp_ssd1306_write_command(SSD1306_COL_START);
+    bsp_ssd1306_write_command(0x10);
 
-    ssd1306_WriteCommand(0x40); // --设置起始行地址 - 校验
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_START_LINE);
 
-    ssd1306_SetContrast(0xFF);
+    bsp_ssd1306_set_contrast(0xFF);
 
 #ifdef SSD1306_MIRROR_HORIZ
-    ssd1306_WriteCommand(0xA0); // 水平镜像
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_SEG_REMAP_0);
 #else
-    ssd1306_WriteCommand(0xA1); // --设置段重映射0到127 - 校验
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_SEG_REMAP_127);
 #endif
 
 #ifdef SSD1306_INVERSE_COLOR
-    ssd1306_WriteCommand(0xA7); // --设置反色
+    bsp_ssd1306_write_command(SSD1306_CMD_INVERT_DISPLAY);
 #else
-    ssd1306_WriteCommand(0xA6); // --设置正常颜色
+    bsp_ssd1306_write_command(SSD1306_CMD_NORMAL_DISPLAY);
 #endif
 
-// 设置多路复用率
 #if (SSD1306_HEIGHT == 128)
-    // 在SH1106的Luma Python库中发现
-    ssd1306_WriteCommand(0xFF);
+    bsp_ssd1306_write_command(0xFF);
 #else
-    ssd1306_WriteCommand(0xA8); // --设置多路复用率(1到64) - 校验
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_MULTIPLEX);
 #endif
 
 #if (SSD1306_HEIGHT == 32)
-    ssd1306_WriteCommand(0x1F); //
+    bsp_ssd1306_write_command(SSD1306_MUX_32);
 #elif (SSD1306_HEIGHT == 64)
-    ssd1306_WriteCommand(0x3F); //
+    bsp_ssd1306_write_command(SSD1306_MUX_64);
 #elif (SSD1306_HEIGHT == 128)
-    ssd1306_WriteCommand(0x3F); // 对128像素高的显示屏也有效
+    bsp_ssd1306_write_command(SSD1306_MUX_64);
 #else
 #error "Only 32, 64, or 128 lines of height are supported!"
 #endif
-    ssd1306_Init_CMD();
-    // 清屏
-    ssd1306_Fill(Black);
+    bsp_ssd1306_init_cmd();
+    bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
+    bsp_ssd1306_update_screen();
 
-    // 将缓冲区刷新到屏幕
-    ssd1306_UpdateScreen();
-
-    // 设置屏幕对象的默认值
-    SSD1306.CurrentX = 0;
-    SSD1306.CurrentY = 0;
-
-    SSD1306.Initialized = 1;
-    return true; // 初始化成功
+    g_ssd1306_ctx.CurrentX = 0;
+    g_ssd1306_ctx.CurrentY = 0;
+    g_ssd1306_ctx.Initialized = 1;
+    return true;
 }
 
-// 用给定颜色填充整个屏幕
-void ssd1306_Fill(SSD1306_COLOR color)
+void bsp_ssd1306_fill(BspSsd1306Color color)
 {
-    // 设置存储器
-    uint32_t i;
-
-    for (i = 0; i < sizeof(SSD1306_Buffer); i++) {
-        SSD1306_Buffer[i] = (color == Black) ? 0x00 : 0xFF;
+    for (uint32_t i = 0; i < sizeof(g_ssd1306_buffer); i++) {
+        g_ssd1306_buffer[i] = (color == BSP_SSD1306_COLOR_BLACK) ? 0x00 : 0xFF;
     }
 }
 
-// 将修改后的屏幕缓冲区写入屏幕
-void ssd1306_UpdateScreen(void)
+void bsp_ssd1306_update_screen(void)
 {
-    // 向RAM的每一页写入数据。页数
-    // 取决于屏幕高度：
-    //
-    // * 32像素  ==  4页
-    // * 64像素  ==  8页
-    // * 128像素 ==  16页
-
     uint8_t cmd[] = {
-        0X21, // 设置列起始和结束地址
-        0X00, // 列起始地址 0
-        0X7F, // 列终止地址 127
-        0X22, // 设置页起始和结束地址
-        0X00, // 页起始地址 0
-        0X07, // 页终止地址 7
+        SSD1306_CMD_SET_COL_ADDR,
+        SSD1306_COL_START,
+        SSD1306_COL_END,
+        SSD1306_CMD_SET_PAGE_ADDR,
+        SSD1306_PAGE_START,
+        SSD1306_PAGE_END,
     };
     uint32_t count = 0;
-    uint8_t data[sizeof(cmd) * DOUBLE + SSD1306_BUFFER_SIZE + 1] = {};
+    static uint8_t data[sizeof(cmd) * DOUBLE + SSD1306_BUFFER_SIZE + 1];
+    (void)memset_s(data, sizeof(data), 0, sizeof(data));
 
-    // 复制命令
     for (uint32_t i = 0; i < sizeof(cmd) / sizeof(cmd[0]); i++) {
-        data[count++] = SSD1306_CTRL_CMD | SSD1306_MASK_CONT;
+        data[count++] = SSD1306_CTRL_CMD | SSD1306_CTRL_MASK_CONT;
         data[count++] = cmd[i];
     }
 
-    // 复制帧数据
     data[count++] = SSD1306_CTRL_DATA;
-    memcpy_s(&data[count], SSD1306_BUFFER_SIZE + 1, SSD1306_Buffer, SSD1306_BUFFER_SIZE);
-    count += sizeof(SSD1306_Buffer);
+    memcpy_s(&data[count], SSD1306_BUFFER_SIZE + 1, g_ssd1306_buffer, SSD1306_BUFFER_SIZE);
+    count += sizeof(g_ssd1306_buffer);
 
-    // 发送到I2C总线
     uint32_t retval = ssd1306_SendData(data, count);
     if (retval != 0) {
-        printf("ssd1306_UpdateScreen send frame data filed: %d!\r\n", retval);
+        printf("bsp_ssd1306_update_screen send frame data failed: %d!\r\n", retval);
     }
 }
 
-// 在屏幕缓冲区中绘制一个像素
-// X => X坐标
-// Y => Y坐标
-// color => 像素颜色
-void ssd1306_DrawPixel(uint8_t x, uint8_t y, SSD1306_COLOR color)
+void bsp_ssd1306_draw_pixel(uint8_t x, uint8_t y, BspSsd1306Color color)
 {
     if (x >= SSD1306_WIDTH || y >= SSD1306_HEIGHT) {
-        // 不要写入缓冲区外部
         return;
     }
-    SSD1306_COLOR color1 = color;
-    // 检查像素是否应反转
-    if (SSD1306.Inverted) {
-        color1 = (SSD1306_COLOR)!color1;
+    BspSsd1306Color color1 = color;
+    if (g_ssd1306_ctx.Inverted) {
+        color1 = (BspSsd1306Color)!color1;
     }
 
-    // 以正确的颜色绘制
-    uint32_t c = 8; // 8
-    if (color == White) {
-        SSD1306_Buffer[x + (y / c) * SSD1306_WIDTH] |= 1 << (y % c);
+    uint32_t c = 8;
+    if (color == BSP_SSD1306_COLOR_WHITE) {
+        g_ssd1306_buffer[x + (y / c) * SSD1306_WIDTH] |= 1 << (y % c);
     } else {
-        SSD1306_Buffer[x + (y / c) * SSD1306_WIDTH] &= ~(1 << (y % c));
+        g_ssd1306_buffer[x + (y / c) * SSD1306_WIDTH] &= ~(1 << (y % c));
     }
 }
 
-// 在屏幕缓冲区绘制1个字符
-// ch       => 要写入的字符
-// Font     => 用于写入的字体
-// color    => 黑或白
-char ssd1306_DrawChar(char ch, FontDef Font, SSD1306_COLOR color)
+char bsp_ssd1306_draw_char(char ch, FontDef Font, BspSsd1306Color color)
 {
-    uint32_t i, b, j;
-
-    // 检查字符是否有效
-    uint32_t ch_min = 32;  // 32
-    uint32_t ch_max = 126; // 126
+    uint32_t ch_min = 32;
+    uint32_t ch_max = 126;
     if ((uint32_t)ch < ch_min || (uint32_t)ch > ch_max) {
         return 0;
     }
 
-    // 检查当前行剩余空间
-    if (SSD1306_WIDTH < (SSD1306.CurrentX + Font.FontWidth) || SSD1306_HEIGHT < (SSD1306.CurrentY + Font.FontHeight)) {
-        // 当前行空间不足
+    if (SSD1306_WIDTH < (g_ssd1306_ctx.CurrentX + Font.FontWidth) ||
+        SSD1306_HEIGHT < (g_ssd1306_ctx.CurrentY + Font.FontHeight)) {
         return 0;
     }
 
-    // 使用字体写入
-    for (i = 0; i < Font.FontHeight; i++) {
-        b = Font.data[(ch - ch_min) * Font.FontHeight + i];
-        for (j = 0; j < Font.FontWidth; j++) {
+    for (uint32_t i = 0; i < Font.FontHeight; i++) {
+        uint32_t b = Font.data[(ch - ch_min) * Font.FontHeight + i];
+        for (uint32_t j = 0; j < Font.FontWidth; j++) {
             if ((b << j) & 0x8000) {
-                ssd1306_DrawPixel(SSD1306.CurrentX + j, (SSD1306.CurrentY + i), (SSD1306_COLOR)color);
+                bsp_ssd1306_draw_pixel(g_ssd1306_ctx.CurrentX + j, (g_ssd1306_ctx.CurrentY + i),
+                                       (BspSsd1306Color)color);
             } else {
-                ssd1306_DrawPixel(SSD1306.CurrentX + j, (SSD1306.CurrentY + i), (SSD1306_COLOR)!color);
+                bsp_ssd1306_draw_pixel(g_ssd1306_ctx.CurrentX + j, (g_ssd1306_ctx.CurrentY + i),
+                                       (BspSsd1306Color)!color);
             }
         }
     }
 
-    // 当前空间已被占用
-    SSD1306.CurrentX += Font.FontWidth;
-
-    // 返回写入的字符以用于校验
+    g_ssd1306_ctx.CurrentX += Font.FontWidth;
     return ch;
 }
 
-// 将完整字符串写入屏幕缓冲区
-char ssd1306_DrawString(char *str, FontDef Font, SSD1306_COLOR color)
+char bsp_ssd1306_draw_string(char *str, FontDef Font, BspSsd1306Color color)
 {
-    // 写入直到空字节
     char *str1 = str;
     while (*str1) {
-        if (ssd1306_DrawChar(*str1, Font, color) != *str1) {
-            // 字符无法写入
+        if (bsp_ssd1306_draw_char(*str1, Font, color) != *str1) {
             return *str1;
         }
-        // 下一个字符
         str1++;
     }
-
-    // 一切正常
     return *str1;
 }
 
-// 定位光标
-void ssd1306_SetCursor(uint8_t x, uint8_t y)
+void bsp_ssd1306_set_cursor(uint8_t x, uint8_t y)
 {
-    SSD1306.CurrentX = x;
-    SSD1306.CurrentY = y;
+    g_ssd1306_ctx.CurrentX = x;
+    g_ssd1306_ctx.CurrentY = y;
 }
 
-// 使用Bresenham算法画线
-void ssd1306_DrawLine(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, SSD1306_COLOR color)
+void bsp_ssd1306_draw_line(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, BspSsd1306Color color)
 {
     uint8_t x = x1;
     uint8_t y = y1;
@@ -358,41 +298,32 @@ void ssd1306_DrawLine(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, SSD1306_CO
     int32_t signY = ((y1 < y2) ? 1 : -1);
     int32_t error = deltaX - deltaY;
     int32_t error2;
-    ssd1306_DrawPixel(x2, y2, color);
+    bsp_ssd1306_draw_pixel(x2, y2, color);
     while ((x1 != x2) || (y1 != y2)) {
-        ssd1306_DrawPixel(x1, y1, color);
+        bsp_ssd1306_draw_pixel(x1, y1, color);
         error2 = error * DOUBLE;
         if (error2 > -deltaY) {
             error -= deltaY;
             x += signX;
-        } else {
-            // 无需操作
         }
         if (error2 < deltaX) {
             error += deltaX;
             y += signY;
-        } else {
-            // 无需操作
         }
     }
 }
 
-// 绘制折线
-void ssd1306_DrawPolyline(const SSD1306_VERTEX *par_vertex, uint16_t par_size, SSD1306_COLOR color)
+void bsp_ssd1306_draw_polyline(const BspSsd1306Vertex *par_vertex, uint16_t par_size, BspSsd1306Color color)
 {
-    uint16_t i;
     if (par_vertex != 0) {
-        for (i = 1; i < par_size; i++) {
-            ssd1306_DrawLine(par_vertex[i - 1].x, par_vertex[i - 1].y, par_vertex[i].x, par_vertex[i].y, color);
+        for (uint16_t i = 1; i < par_size; i++) {
+            bsp_ssd1306_draw_line(par_vertex[i - 1].x, par_vertex[i - 1].y,
+                                  par_vertex[i].x, par_vertex[i].y, color);
         }
-    } else {
-        // 无需操作
     }
-    return;
 }
 
-// 使用Bresenham算法画圆
-void ssd1306_DrawCircle(uint8_t par_x, uint8_t par_y, uint8_t par_r, SSD1306_COLOR par_color)
+void bsp_ssd1306_draw_circle(uint8_t par_x, uint8_t par_y, uint8_t par_r, BspSsd1306Color par_color)
 {
     int32_t x = -par_r;
     int32_t y = 0;
@@ -405,43 +336,34 @@ void ssd1306_DrawCircle(uint8_t par_x, uint8_t par_y, uint8_t par_r, SSD1306_COL
     }
 
     do {
-        ssd1306_DrawPixel(par_x - x, par_y + y, par_color);
-        ssd1306_DrawPixel(par_x + x, par_y + y, par_color);
-        ssd1306_DrawPixel(par_x + x, par_y - y, par_color);
-        ssd1306_DrawPixel(par_x - x, par_y - y, par_color);
+        bsp_ssd1306_draw_pixel(par_x - x, par_y + y, par_color);
+        bsp_ssd1306_draw_pixel(par_x + x, par_y + y, par_color);
+        bsp_ssd1306_draw_pixel(par_x + x, par_y - y, par_color);
+        bsp_ssd1306_draw_pixel(par_x - x, par_y - y, par_color);
         e2 = err;
         if (e2 <= y) {
             y++;
             err = err + (y * b + 1);
             if (-x == y && e2 <= x) {
                 e2 = 0;
-            } else {
-                // 无需操作
             }
-        } else {
-            // 无需操作
         }
         if (e2 > x) {
             x++;
             err = err + (x * b + 1);
-        } else {
-            // 无需操作
         }
     } while (x <= 0);
-
-    return;
 }
 
-// 绘制矩形
-void ssd1306_DrawRectangle(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, SSD1306_COLOR color)
+void bsp_ssd1306_draw_rectangle(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, BspSsd1306Color color)
 {
-    ssd1306_DrawLine(x1, y1, x2, y1, color);
-    ssd1306_DrawLine(x2, y1, x2, y2, color);
-    ssd1306_DrawLine(x2, y2, x1, y2, color);
-    ssd1306_DrawLine(x1, y2, x1, y1, color);
+    bsp_ssd1306_draw_line(x1, y1, x2, y1, color);
+    bsp_ssd1306_draw_line(x2, y1, x2, y2, color);
+    bsp_ssd1306_draw_line(x2, y2, x1, y2, color);
+    bsp_ssd1306_draw_line(x1, y2, x1, y1, color);
 }
 
-void ssd1306_DrawBitmap(const uint8_t *bitmap, uint32_t size)
+void bsp_ssd1306_draw_bitmap(const uint8_t *bitmap, uint32_t size)
 {
     unsigned int c = 8;
     uint8_t rows = size * c / SSD1306_WIDTH;
@@ -452,15 +374,15 @@ void ssd1306_DrawBitmap(const uint8_t *bitmap, uint32_t size)
         for (uint8_t x = 0; x < SSD1306_WIDTH; x++) {
             uint8_t byte = bitmap[(y * SSD1306_WIDTH / c) + (x / c)];
             uint8_t bit = byte & (0x80 >> (x % c));
-            ssd1306_DrawPixel(x, y, bit ? White : Black);
+            bsp_ssd1306_draw_pixel(x, y, bit ? BSP_SSD1306_COLOR_WHITE : BSP_SSD1306_COLOR_BLACK);
         }
     }
 }
 
-void ssd1306_DrawRegion(uint8_t x, uint8_t y, uint8_t w, const uint8_t *data, uint32_t size)
+void bsp_ssd1306_draw_region(uint8_t x, uint8_t y, uint8_t w, const uint8_t *data, uint32_t size)
 {
     uint32_t stride = w;
-    uint8_t h = w; // 字体宽高一样
+    uint8_t h = w;
     uint8_t width = w;
     if (x + w > SSD1306_WIDTH || y + h > SSD1306_HEIGHT || w * h == 0) {
         printf("%dx%d @ %d,%d out of range or invalid!\r\n", w, h, x, y);
@@ -479,61 +401,58 @@ void ssd1306_DrawRegion(uint8_t x, uint8_t y, uint8_t w, const uint8_t *data, ui
             uint32_t idx = base + (j / c);
             uint8_t byte = idx < size ? data[idx] : 0;
             uint8_t bit = byte & (0x80 >> (j % c));
-            ssd1306_DrawPixel(x + j, y + i, bit ? White : Black);
+            bsp_ssd1306_draw_pixel(x + j, y + i, bit ? BSP_SSD1306_COLOR_WHITE : BSP_SSD1306_COLOR_BLACK);
         }
     }
 }
 
-void ssd1306_SetContrast(const uint8_t value)
+void bsp_ssd1306_set_contrast(uint8_t value)
 {
-    const uint8_t kSetContrastControlRegister = 0x81;
-    ssd1306_WriteCommand(kSetContrastControlRegister);
-    ssd1306_WriteCommand(value);
+    bsp_ssd1306_write_command(SSD1306_CMD_SET_CONTRAST);
+    bsp_ssd1306_write_command(value);
 }
 
-void ssd1306_SetDisplayOn(const uint8_t on)
+void bsp_ssd1306_set_display_on(uint8_t on)
 {
     uint8_t value;
     if (on) {
-        value = 0xAF; // 打开显示
-        SSD1306.DisplayOn = 1;
+        value = SSD1306_CMD_DISPLAY_ON;
+        g_ssd1306_ctx.DisplayOn = 1;
     } else {
-        value = 0xAE; // 关闭显示
-        SSD1306.DisplayOn = 0;
+        value = SSD1306_CMD_DISPLAY_OFF;
+        g_ssd1306_ctx.DisplayOn = 0;
     }
-    ssd1306_WriteCommand(value);
+    bsp_ssd1306_write_command(value);
 }
 
-uint8_t ssd1306_GetDisplayOn(void)
+uint8_t bsp_ssd1306_get_display_on(void)
 {
-    return SSD1306.DisplayOn;
+    return g_ssd1306_ctx.DisplayOn;
 }
 
-int g_ssd1306_current_loc_v = 0;
+static int g_ssd1306_current_loc_v = 0;
 #define SSD1306_INTERVAL_V (15)
 
-void ssd1306_ClearOLED(void)
+void bsp_ssd1306_clear_oled(void)
 {
-    ssd1306_Fill(Black);
+    bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
     g_ssd1306_current_loc_v = 0;
 }
 
-void ssd1306_printf(char *fmt, ...)
+void bsp_ssd1306_printf(char *fmt, ...)
 {
     char buffer[20];
-    int ret = 0;
     if (fmt) {
         va_list argList;
         va_start(argList, fmt);
-        ret = vsnprintf_s(buffer, sizeof(buffer), sizeof(buffer), fmt, argList);
+        int ret = vsnprintf_s(buffer, sizeof(buffer), sizeof(buffer), fmt, argList);
         if (ret < 0) {
             printf("buffer is null\r\n");
         }
         va_end(argList);
-        ssd1306_SetCursor(0, g_ssd1306_current_loc_v);
-        ssd1306_DrawString(buffer, Font_7x10, White);
-
-        ssd1306_UpdateScreen();
+        bsp_ssd1306_set_cursor(0, g_ssd1306_current_loc_v);
+        bsp_ssd1306_draw_string(buffer, Font_7x10, BSP_SSD1306_COLOR_WHITE);
+        bsp_ssd1306_update_screen();
     }
     g_ssd1306_current_loc_v += SSD1306_INTERVAL_V;
 }

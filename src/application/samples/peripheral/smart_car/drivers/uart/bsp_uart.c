@@ -1,9 +1,19 @@
 /**
  * @file bsp_uart.c
- * @brief UART串口驱动实现 - 用于智能小车串口命令接收
+ * @brief UART 串口驱动 - 用于智能小车串口命令接收
+ *
+ * 设计要点：
+ *  - HAL RX 中断只回调上层 g_data_callback；上层 callback 必须保证 ISR-safe
+ *    （当前 voice_rx_callback 只做 NO_WAIT 消息队列写入，满足要求）
+ *  - g_data_callback 只在 bsp_uart_init 内一次性赋值，后续只读，无需锁
+ *  - 之前尝试过加 BSP 内部派发任务，但会占用一个 LiteOS 任务槽，与 SLE/BT
+ *    worker、Portal、WiFi mgr 一起把任务池吃满，导致 motor_exec/sensor_task
+ *    创建失败 —— 现在 ISR 直接回调，因为业务 cb 已经不在 ISR 里做实际工作
  */
 
 #include "bsp_uart.h"
+
+#include <stdio.h>
 
 #include "pinctrl.h"
 #include "securec.h"
@@ -26,14 +36,14 @@
 // 接收缓冲区
 static uint8_t g_uart_rx_buffer[UART_RX_BUFFER_SIZE] = {0};
 
-// 回调函数指针
+// 回调函数指针：init 阶段一次性写入，运行期只读
 static uart_data_callback_t g_data_callback = NULL;
 
 /**
- * @brief UART接收中断回调函数
- * @param buffer 接收到的数据指针
- * @param length 数据长度
- * @param error 错误标志
+ * @brief UART HAL 接收中断回调
+ * @note  运行在 ISR/软中断上下文。当前业务 callback (voice_rx_callback)
+ *        只做 msg_queue_write_copy(..NO_WAIT)，是 ISR-safe 的；
+ *        新接入者必须遵守同样约定，禁止在 callback 里阻塞或做重业务。
  */
 static void uart_rx_interrupt_handler(const void *buffer, uint16_t length, bool error)
 {
@@ -92,11 +102,12 @@ int bsp_uart_init(uart_data_callback_t callback)
         return -1;
     }
 
+    // 回调一次性写入；后续运行期视为只读
     g_data_callback = callback;
 
-    uart_init_pin();             // 初始化引脚
-    uart_init_config();          // 初始化UART配置
-    uart_register_rx_callback(); // 注册接收回调
+    uart_init_pin();
+    uart_init_config();
+    uart_register_rx_callback();
 
     printf("BSP_UART: UART%d initialized, baudrate=%d\r\n", UART_BUS_ID, UART_BAUDRATE);
 

@@ -22,25 +22,12 @@
 #include "sle_service.h"
 
 #include "../../../drivers/sle/sle_device.h"
-#include "../core/motor_executor.h"
-#include "../robot_common.h"
+#include "../../../drivers/motor_control/bsp_motor.h"
 #include "../robot_common.h"
 #include "common_def.h"
 #include "errcode.h"
 #include "soc_osal.h"
 #include "stdio.h"
-
-// ==================== 协议定义（与 UDP 保持一致） ====================
-
-#pragma pack(1)
-typedef struct {
-    uint8_t type; // 01=控制, 02=状态, 03=模式, 04=PID, FE=心跳, FF=广播
-    uint8_t cmd;
-    int8_t motor1;
-    int8_t motor2;
-    int8_t ir_data;
-} sle_packet_t;
-#pragma pack()
 
 // ==================== 内部状态 ====================
 
@@ -57,34 +44,19 @@ static void process_packet(const uint8_t *data, uint16_t len)
     if (len < 1)
         return;
 
-    if (len == sizeof(sle_packet_t)) {
-        const sle_packet_t *pkt = (const sle_packet_t *)data;
+    if (len == sizeof(robot_packet_t)) {
+        const robot_packet_t *pkt = (const robot_packet_t *)data;
 
-        switch (pkt->type) {
-            case 0x01: // 控制包：直接推入 Motor 队列
-                motor_executor_push_cmd(pkt->motor1, pkt->motor2);
-                break;
+        if (robot_proto_handle_packet(pkt, MODE_SRC_SLE))
+            return; // CONTROL / MODE / HEARTBEAT 已由统一处理器消费
 
-            case 0x03: // 模式切换
-                if (pkt->cmd <= 4) {
-                    printf("[SLE_SRV] 模式切换: %d\r\n", pkt->cmd);
-                    robot_mgr_post_mode((CarStatus)pkt->cmd, MODE_SRC_SLE);
-                }
-                break;
+        // PID 仅 UDP 实现，SLE 收到忽略
+        if (pkt->type == ROBOT_PKT_PID)
+            return;
 
-            case 0x04:
-                printf("[SLE_SRV] PID 设置 (暂不支持)\r\n");
-                break;
-
-            case 0xFE: // 心跳包
-                break;
-
-            default:
-                printf("[SLE_SRV] 未知包类型: 0x%02X\r\n", pkt->type);
-                break;
-        }
+        printf("[SLE_SRV] 未知包类型: 0x%02X\r\n", pkt->type);
     } else {
-        printf("[SLE_SRV] 包长度错误: %d (期望 %zu)\r\n", len, sizeof(sle_packet_t));
+        printf("[SLE_SRV] 包长度错误: %d (期望 %zu)\r\n", len, sizeof(robot_packet_t));
     }
 }
 
@@ -102,7 +74,7 @@ static void sle_disconnect_callback(uint16_t conn_id)
     unused(conn_id);
     g_connected = false;
     // 断开时主动停车
-    motor_executor_push_cmd(0, 0);
+    bsp_motor_push_cmd(0, 0);
     printf("[SLE_SRV] 设备已断开\r\n");
 }
 

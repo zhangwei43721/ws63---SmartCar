@@ -15,11 +15,12 @@
 #include "wifi_mgr_service.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
-#include "../core/robot_config.h"
+#include "../robot_common.h"
 #include "securec.h"
 #include "soc_osal.h"
-#include "storage_service.h"
+#include "../../../platform/storage_service.h"
 #include "captive_portal_control.h"
+#include "udp_net_common.h"
 
 // ---------- 配置常量 ----------
 #define CAPTIVE_PORTAL_HTTP_PORT 80
@@ -31,14 +32,14 @@
 #define CAPTIVE_HTTP_MAX_BODY 512
 #define CAPTIVE_DNS_BUF_SIZE 512
 
-// ---------- 状态枚举 ----------
+// Portal 状态机：IDLE → RUNNING(AP就绪) → CONFIG_RECEIVED → SWITCHING(切STA) → SUCCESS/FAILED
 typedef enum {
-    PORTAL_STATUS_IDLE = 0,
-    PORTAL_STATUS_RUNNING,
-    PORTAL_STATUS_CONFIG_RECEIVED,
-    PORTAL_STATUS_SWITCHING,
-    PORTAL_STATUS_SUCCESS,
-    PORTAL_STATUS_FAILED
+    PORTAL_STATUS_IDLE = 0,             // 未激活
+    PORTAL_STATUS_RUNNING,              // AP 门户运行中（HTTP+DNS）
+    PORTAL_STATUS_CONFIG_RECEIVED,      // 收到配网配置，展示成功页
+    PORTAL_STATUS_SWITCHING,            // 正在切 WiFi 模式
+    PORTAL_STATUS_SUCCESS,              // WiFi 切换成功
+    PORTAL_STATUS_FAILED                // WiFi 切换失败
 } portal_status_t;
 
 // ---------- 全局状态 ----------
@@ -48,12 +49,44 @@ static bool g_task_should_exit = false;
 static char g_ap_ip_str[BUF_IP] = "0.0.0.0";
 static char g_status_text[32] = "等待配网";
 
+// 保护 portal_status / status_text / switch_task / scan_cache
+static osal_mutex g_portal_lock;
+static bool g_portal_lock_inited = false;
+
+// 事件：AP_READY / AP_STOPPED / TASK_EXIT
+// 事件位掩码：osal_event 读写，portal_task 阻塞等待 AP_READY
+#define PORTAL_EVT_AP_READY   0x01  // AP 就绪 → 启动 HTTP+DNS
+#define PORTAL_EVT_AP_STOPPED 0x02  // AP 停止 → 退出 HTTP+DNS
+#define PORTAL_EVT_EXIT       0x04  // 强制退出 portal_task
+static osal_event g_portal_event;
+static bool g_portal_event_inited = false;
+
+static inline void portal_lock(void)
+{
+    if (g_portal_lock_inited)
+        (void)osal_mutex_lock(&g_portal_lock);
+}
+static inline void portal_unlock(void)
+{
+    if (g_portal_lock_inited)
+        (void)osal_mutex_unlock(&g_portal_lock);
+}
+
+static void portal_set_status(portal_status_t st, const char *text)
+{
+    portal_lock();
+    g_portal_status = st;
+    if (text != NULL)
+        (void)strncpy_s(g_status_text, sizeof(g_status_text), text, sizeof(g_status_text) - 1);
+    portal_unlock();
+}
+
 // DNS 与 HTTP 套接字
 static int g_http_fd = -1;
 static int g_dns_fd = -1;
 
-// 后台 WiFi 切换任务
-static osal_task *g_switch_task = NULL;
+// 后台 WiFi 切换任务（fire-and-forget；任务体内不得写自身句柄，
+// 用 bool 标志表示"是否在跑"，避免 LiteOS 任务体内自清空反模式）
 static char g_switch_ssid[32] = {0};
 static char g_switch_password[64] = {0};
 
@@ -146,49 +179,30 @@ static const char s_html_success[] =
     "<!DOCTYPE html><html><head>"
     "<meta charset=\"utf-8\">"
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-    "<title>配网中</title>"
+    "<title>配网成功</title>"
     "<style>"
     "body{font-family:-apple-system,BlinkMacSystemFont,Segoe "
     "UI,Roboto,Helvetica,Arial,sans-serif;background:#f2f3f5;display:flex;justify-content:center;align-items:center;"
     "min-height:100vh;margin:0}"
     ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px "
     "rgba(0,0,0,.08);padding:32px;width:100%;max-width:320px;text-align:center}"
-    "h1{font-size:22px;color:#007aff;margin-bottom:8px}"
-    "p{color:#555;font-size:15px;line-height:1.6}"
-    ".spin{display:inline-block;width:24px;height:24px;border:3px solid "
-    "#ddd;border-top-color:#007aff;border-radius:50%;animation:s 1s linear infinite;margin-bottom:12px}"
-    "@keyframes s{to{transform:rotate(360deg)}}"
-    "a{display:inline-block;margin-top:16px;padding:10px "
-    "20px;background:#007aff;color:#fff;text-decoration:none;border-radius:8px;font-size:15px}"
+    "h1{font-size:22px;color:#34c759;margin-bottom:8px}"
+    "p{color:#888;font-size:14px;line-height:1.6}"
+    ".check{display:inline-block;width:48px;height:48px;border-radius:50%;background:#34c759;margin-bottom:12px}"
+    ".check::after{content:'';display:inline-block;width:14px;height:26px;border:solid #fff;border-width:0 4px 4px "
+    "0;transform:rotate(45deg);margin-top:6px}"
+    "#cnt{color:#007aff;font-weight:bold}"
     "</style></head><body>"
     "<div class=\"card\">"
-    "<div class=\"spin\"></div>"
-    "<h1 id=\"t\">正在连接WiFi...</h1>"
-    "<p id=\"m\">请稍候，正在尝试连接网络</p>"
+    "<div class=\"check\"></div>"
+    "<h1>配网成功!</h1>"
+    "<p>WiFi 连接请求已提交<br>小车热点即将关闭</p>"
+    "<p style=\"margin-top:16px\">本页 <span id=\"cnt\">2</span> 秒后自动关闭</p>"
     "</div>"
     "<script>"
-    "function c(){"
-    "var x=new XMLHttpRequest();"
-    "x.open('GET','/status',true);"
-    "x.onreadystatechange=function(){"
-    "if(x.readyState==4){"
-    "if(x.status==200){"
-    "var d=JSON.parse(x.responseText);"
-    "if(d.status=='connected'){"
-    "document.getElementById('t').innerHTML='配网成功!';"
-    "document.getElementById('t').style.color='#34c759';"
-    "document.getElementById('m').innerHTML='IP: '+d.ip+'<br>热点即将关闭';"
-    "}else if(d.status=='failed'){"
-    "document.getElementById('t').innerHTML='配网失败';"
-    "document.getElementById('t').style.color='#ff3b30';"
-    "document.getElementById('m').innerHTML='无法连接到WiFi<br><a href=\"/\">返回重试</a>';"
-    "}else{setTimeout(c,2000);}"
-    "}else{setTimeout(c,2000);}"
-    "}"
-    "};"
-    "x.send();"
-    "}"
-    "c();"
+    "var n=2;var t=setInterval(function(){n--;"
+    "document.getElementById('cnt').textContent=n;"
+    "if(n<=0){clearInterval(t);window.close();}},1000);"
     "</script>"
     "</body></html>";
 
@@ -208,14 +222,19 @@ static const char s_html_fail[] =
     "rgba(0,0,0,.08);padding:32px;width:100%;max-width:320px;text-align:center}"
     "h1{font-size:22px;color:#ff3b30;margin-bottom:8px}"
     "p{color:#555;font-size:15px;line-height:1.6}"
-    "a{display:inline-block;margin-top:16px;padding:10px "
-    "20px;background:#007aff;color:#fff;text-decoration:none;border-radius:8px;font-size:15px}"
+    "#cnt{color:#007aff;font-weight:bold}"
     "</style></head><body>"
     "<div class=\"card\">"
     "<h1>配网失败</h1>"
-    "<p>无法连接到指定的WiFi<br>请检查SSID和密码是否正确</p>"
-    "<a href=\"/\">返回重试</a>"
-    "</div></body></html>";
+    "<p>无法连接到指定的 WiFi<br>请检查 SSID 和密码是否正确</p>"
+    "<p style=\"margin-top:16px\"><span id=\"cnt\">2</span> 秒后返回配网页面</p>"
+    "</div>"
+    "<script>"
+    "var n=2;var t=setInterval(function(){n--;"
+    "document.getElementById('cnt').textContent=n;"
+    "if(n<=0){clearInterval(t);location.href='/';}},1000);"
+    "</script>"
+    "</body></html>";
 
 static const char s_html_busy[] =
     "HTTP/1.1 200 OK\r\n"
@@ -285,8 +304,7 @@ static bool parse_form_body(const char *body, char *ssid, size_t ssid_len, char 
         size_t pair_len = (amp != NULL) ? (size_t)(amp - p) : strlen(p);
         if (pair_len >= sizeof(pair))
             pair_len = sizeof(pair) - 1;
-        strncpy(pair, p, pair_len);
-        pair[pair_len] = '\0';
+        (void)strncpy_s(pair, sizeof(pair), p, pair_len);
 
         char *eq = strchr(pair, '=');
         if (eq != NULL) {
@@ -297,11 +315,10 @@ static bool parse_form_body(const char *body, char *ssid, size_t ssid_len, char 
             url_decode(val, decoded, sizeof(decoded));
 
             if (strcmp(key, "ssid") == 0) {
-                strncpy(ssid, decoded, ssid_len - 1);
-                ssid[ssid_len - 1] = '\0';
+                (void)strncpy_s(ssid, ssid_len, decoded, ssid_len - 1);
                 got_ssid = true;
             } else if (strcmp(key, "password") == 0) {
-                strncpy(password, decoded, password_len - 1);
+                (void)strncpy_s(password, password_len, decoded, password_len - 1);
                 password[password_len - 1] = '\0';
             }
         }
@@ -313,26 +330,27 @@ static bool parse_form_body(const char *body, char *ssid, size_t ssid_len, char 
 }
 
 /**
- * @brief 发送 HTTP 响应并关闭 socket
- */
-static void send_response_and_close(int client_fd, const char *response)
-{
-    if (client_fd >= 0) {
-        (void)lwip_send(client_fd, response, strlen(response), 0);
-        lwip_close(client_fd);
-    }
-}
-
-/**
  * @brief 执行一次 WiFi 扫描并更新缓存
  */
 static void refresh_scan_cache(void)
 {
+    bsp_wifi_scan_item_t tmp[SCAN_CACHE_MAX];
+    uint32_t cnt = 0;
+    int ret = bsp_wifi_scan_list(tmp, SCAN_CACHE_MAX, &cnt);
+    portal_lock();
     g_scan_cache_ready = false;
     g_scan_cache_count = 0;
-    if (bsp_wifi_scan_list(g_scan_cache, SCAN_CACHE_MAX, &g_scan_cache_count) == 0) {
+    if (ret == 0) {
+        if (cnt > SCAN_CACHE_MAX)
+            cnt = SCAN_CACHE_MAX;
+        for (uint32_t i = 0; i < cnt; i++)
+            g_scan_cache[i] = tmp[i];
+        g_scan_cache_count = cnt;
         g_scan_cache_ready = true;
-        printf("[Portal] WiFi 扫描缓存更新: %u 条\r\n", g_scan_cache_count);
+    }
+    portal_unlock();
+    if (ret == 0) {
+        printf("[Portal] WiFi 扫描缓存更新: %u 条\r\n", cnt);
     } else {
         printf("[Portal] WiFi 扫描失败\r\n");
     }
@@ -346,7 +364,7 @@ static void send_scan_json(int client_fd, bsp_wifi_scan_item_t *items, uint32_t 
     size_t buf_size = 256 + count * 96;
     char *json = (char *)osal_kmalloc(buf_size, OSAL_GFP_ATOMIC);
     if (json == NULL) {
-        send_response_and_close(client_fd, "HTTP/1.1 500\r\n\r\n");
+        http_send_response_and_close(client_fd, "HTTP/1.1 500\r\n\r\n");
         return;
     }
 
@@ -402,18 +420,21 @@ static void handle_scan_request(int client_fd, const char *query)
         bsp_wifi_scan_item_t *items =
             (bsp_wifi_scan_item_t *)osal_kmalloc(sizeof(bsp_wifi_scan_item_t) * MAX_ITEMS, OSAL_GFP_ATOMIC);
         if (items == NULL) {
-            send_response_and_close(client_fd, "HTTP/1.1 500\r\n\r\n");
+            http_send_response_and_close(client_fd, "HTTP/1.1 500\r\n\r\n");
             return;
         }
         uint32_t count = 0;
         int ret = bsp_wifi_scan_list(items, MAX_ITEMS, &count);
         if (ret == 0) {
             // 更新缓存
-            g_scan_cache_count = (count > SCAN_CACHE_MAX) ? SCAN_CACHE_MAX : count;
-            for (uint32_t i = 0; i < g_scan_cache_count; i++) {
+            uint32_t cache_n = (count > SCAN_CACHE_MAX) ? SCAN_CACHE_MAX : count;
+            portal_lock();
+            g_scan_cache_count = cache_n;
+            for (uint32_t i = 0; i < cache_n; i++) {
                 g_scan_cache[i] = items[i];
             }
             g_scan_cache_ready = true;
+            portal_unlock();
         }
         send_scan_json(client_fd, items, count, ret == 0);
         osal_kfree(items);
@@ -421,15 +442,31 @@ static void handle_scan_request(int client_fd, const char *query)
         return;
     }
 
-    // 默认返回缓存
-    if (g_scan_cache_ready && g_scan_cache_count > 0) {
-        send_scan_json(client_fd, g_scan_cache, g_scan_cache_count, true);
-        printf("[Portal] /scan 返回缓存 %u 条结果\r\n", g_scan_cache_count);
+    // 默认返回缓存（拷贝出来再发送，避免持锁期间走慢路径）
+    bsp_wifi_scan_item_t snap[SCAN_CACHE_MAX];
+    uint32_t snap_cnt = 0;
+    bool ready;
+    portal_lock();
+    ready = g_scan_cache_ready;
+    snap_cnt = g_scan_cache_count;
+    for (uint32_t i = 0; i < snap_cnt; i++)
+        snap[i] = g_scan_cache[i];
+    portal_unlock();
+
+    if (ready && snap_cnt > 0) {
+        send_scan_json(client_fd, snap, snap_cnt, true);
+        printf("[Portal] /scan 返回缓存 %u 条结果\r\n", snap_cnt);
     } else {
         // 缓存为空， fallback 到实时扫描
         refresh_scan_cache();
-        send_scan_json(client_fd, g_scan_cache, g_scan_cache_count, g_scan_cache_ready);
-        printf("[Portal] /scan 缓存未命中，实时扫描返回 %u 条\r\n", g_scan_cache_count);
+        portal_lock();
+        ready = g_scan_cache_ready;
+        snap_cnt = g_scan_cache_count;
+        for (uint32_t i = 0; i < snap_cnt; i++)
+            snap[i] = g_scan_cache[i];
+        portal_unlock();
+        send_scan_json(client_fd, snap, snap_cnt, ready);
+        printf("[Portal] /scan 缓存未命中，实时扫描返回 %u 条\r\n", snap_cnt);
     }
 }
 
@@ -472,33 +509,9 @@ static void handle_status_request(int client_fd)
                    "{\"status\":\"%s\",\"ip\":\"%s\"}\r\n",
                    status_str, ip);
 
-    send_response_and_close(client_fd, json);
+    http_send_response_and_close(client_fd, json);
 }
 
-/**
- * @brief 后台 WiFi 切换任务
- */
-static int wifi_switch_task(void *arg)
-{
-    (void)arg;
-
-    g_portal_status = PORTAL_STATUS_SWITCHING;
-    strncpy(g_status_text, "切换STA", sizeof(g_status_text));
-
-    printf("[Portal] 正在从 AP 切换到 STA 模式...\r\n");
-    if (bsp_wifi_connect_ap(g_switch_ssid, g_switch_password) == 0) {
-        g_portal_status = PORTAL_STATUS_SUCCESS;
-        strncpy(g_status_text, "配网成功", sizeof(g_status_text));
-        printf("[Portal] 切换到 STA 成功\r\n");
-    } else {
-        g_portal_status = PORTAL_STATUS_FAILED;
-        strncpy(g_status_text, "配网失败", sizeof(g_status_text));
-        printf("[Portal] 切换到 STA 失败\r\n");
-    }
-
-    g_switch_task = NULL;
-    return 0;
-}
 
 /**
  * @brief 处理单个 HTTP 连接
@@ -547,8 +560,7 @@ static void handle_http_client(int client_fd)
             size_t len = (size_t)(path_end - path_start);
             if (len >= sizeof(path))
                 len = sizeof(path) - 1;
-            strncpy(path, path_start, len);
-            path[len] = '\0';
+            (void)strncpy_s(path, sizeof(path), path_start, len);
 
             // 分离 query string
             char *q = strchr(path, '?');
@@ -578,7 +590,7 @@ static void handle_http_client(int client_fd)
                        "Content-Length: 0\r\n"
                        "Connection: close\r\n\r\n",
                        g_ap_ip_str);
-        send_response_and_close(client_fd, redirect_resp);
+        http_send_response_and_close(client_fd, redirect_resp);
         return;
     }
     // ========================================
@@ -602,7 +614,7 @@ static void handle_http_client(int client_fd)
 
     // GET / -> 返回真正的配网页面
     if (is_get && strcmp(path, "/") == 0) {
-        send_response_and_close(client_fd, s_html_page);
+        http_send_response_and_close(client_fd, s_html_page);
         return;
     }
 
@@ -610,7 +622,7 @@ static void handle_http_client(int client_fd)
     if (is_post && strcmp(path, "/config") == 0) {
         // 检查是否正在处理其他配网请求
         if (g_portal_status == PORTAL_STATUS_CONFIG_RECEIVED || g_portal_status == PORTAL_STATUS_SWITCHING) {
-            send_response_and_close(client_fd, s_html_busy);
+            http_send_response_and_close(client_fd, s_html_busy);
             return;
         }
 
@@ -654,31 +666,32 @@ static void handle_http_client(int client_fd)
         if (parse_form_body(body, ssid, sizeof(ssid), password, sizeof(password))) {
             printf("[Portal] 收到配网请求: SSID='%s', 密码长度=%zu\r\n", ssid, strlen(password));
 
-            g_portal_status = PORTAL_STATUS_CONFIG_RECEIVED;
-            strncpy(g_status_text, "配网中...", sizeof(g_status_text));
+            portal_set_status(PORTAL_STATUS_CONFIG_RECEIVED, "配网中...");
 
             // 保存配置
             storage_service_save_wifi_config(ssid, password);
 
             // 保存到全局变量供后台任务使用
-            strncpy(g_switch_ssid, ssid, sizeof(g_switch_ssid));
-            strncpy(g_switch_password, password, sizeof(g_switch_password));
+            portal_lock();
+            (void)strncpy_s(g_switch_ssid, sizeof(g_switch_ssid), ssid, sizeof(g_switch_ssid) - 1);
+            (void)strncpy_s(g_switch_password, sizeof(g_switch_password), password, sizeof(g_switch_password) - 1);
+            portal_unlock();
 
-            // 先返回成功页面
-            send_response_and_close(client_fd, s_html_success);
+            // 先执行 WiFi 切换，再根据结果返回不同页面
+            portal_set_status(PORTAL_STATUS_SWITCHING, "切换STA");
+            printf("[Portal] 正在从 AP 切换到 STA 模式...\r\n");
+            int wifi_ret = robot_wifi_apply_config(g_switch_ssid, g_switch_password);
 
-            // 启动后台 WiFi 切换任务
-            if (g_switch_task == NULL) {
-                osal_kthread_lock();
-                g_switch_task = osal_kthread_create((osal_kthread_handler)wifi_switch_task, NULL, "wifi_switch", 4096);
-                if (g_switch_task != NULL) {
-                    osal_kthread_set_priority(g_switch_task, CAPTIVE_PORTAL_TASK_PRIO);
-                }
-                osal_kthread_unlock();
+            if (wifi_ret == 0) {
+                portal_set_status(PORTAL_STATUS_SUCCESS, "配网成功");
+                http_send_response_and_close(client_fd, s_html_success);
+            } else {
+                portal_set_status(PORTAL_STATUS_FAILED, "配网失败");
+                http_send_response_and_close(client_fd, s_html_fail);
             }
             return;
         } else {
-            send_response_and_close(client_fd, s_html_fail);
+            http_send_response_and_close(client_fd, s_html_fail);
             return;
         }
     }
@@ -696,7 +709,7 @@ static void handle_http_client(int client_fd)
                    "Content-Length: 0\r\n"
                    "Connection: close\r\n\r\n",
                    g_ap_ip_str);
-    send_response_and_close(client_fd, redirect_root);
+    http_send_response_and_close(client_fd, redirect_root);
 }
 
 /**
@@ -924,8 +937,7 @@ static int captive_portal_task(void *arg)
                 if (g_http_fd >= 0) {
                     g_dns_fd = dns_server_start();
                     server_running = true;
-                    g_portal_status = PORTAL_STATUS_RUNNING;
-                    strncpy(g_status_text, "等待配网", sizeof(g_status_text));
+                    portal_set_status(PORTAL_STATUS_RUNNING, "等待配网");
 
                     // 更新 IP 显示
                     (void)bsp_wifi_get_ip(g_ap_ip_str, sizeof(g_ap_ip_str));
@@ -978,9 +990,12 @@ static int captive_portal_task(void *arg)
                 g_http_fd = -1;
                 g_dns_fd = -1;
                 server_running = false;
-                g_portal_status = PORTAL_STATUS_IDLE;
+                portal_set_status(PORTAL_STATUS_IDLE, NULL);
             }
-            osal_msleep(500);
+            // 阻塞等待 AP_READY / EXIT 事件，避免 500ms 轮询
+            unsigned int wait_mask = PORTAL_EVT_AP_READY | PORTAL_EVT_EXIT;
+            (void)osal_event_read(&g_portal_event, wait_mask, OSAL_WAIT_FOREVER,
+                                  OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
         }
     }
 
@@ -988,7 +1003,8 @@ static int captive_portal_task(void *arg)
         http_server_stop(g_http_fd);
         dns_server_stop(g_dns_fd);
     }
-    g_portal_task = NULL;
+    // 注意：不在任务体内写 g_portal_task = NULL（LiteOS 反模式，可能 use-after-free）。
+    // portal_task 实际为常驻任务，正常路径不会走到这里。
     return 0;
 }
 
@@ -999,20 +1015,22 @@ void captive_portal_service_init(void)
     if (g_portal_task != NULL)
         return;
 
+    if (!g_portal_lock_inited) {
+        if (osal_mutex_init(&g_portal_lock) == OSAL_SUCCESS)
+            g_portal_lock_inited = true;
+    }
+    if (!g_portal_event_inited) {
+        if (osal_event_init(&g_portal_event) == OSAL_SUCCESS)
+            g_portal_event_inited = true;
+    }
+
     g_task_should_exit = false;
 
-    osal_kthread_lock();
-    g_portal_task =
-        osal_kthread_create((osal_kthread_handler)captive_portal_task, NULL, "portal_task", CAPTIVE_PORTAL_STACK_SIZE);
-    if (g_portal_task != NULL) {
-        osal_kthread_set_priority(g_portal_task, CAPTIVE_PORTAL_TASK_PRIO);
-    }
-    osal_kthread_unlock();
+    g_portal_task = robot_task_create_locked("portal_task", (osal_kthread_handler)captive_portal_task, NULL,
+                                             CAPTIVE_PORTAL_STACK_SIZE, CAPTIVE_PORTAL_TASK_PRIO);
 
     if (g_portal_task != NULL) {
         printf("[Portal] Captive Portal 配网服务已初始化\r\n");
-    } else {
-        printf("[Portal] 配网服务任务创建失败\r\n");
     }
 }
 
@@ -1033,4 +1051,16 @@ const char *captive_portal_service_get_ap_ip(void)
 const char *captive_portal_service_get_status_text(void)
 {
     return g_status_text;
+}
+
+void captive_portal_service_notify_ap_ready(void)
+{
+    if (g_portal_event_inited)
+        (void)osal_event_write(&g_portal_event, PORTAL_EVT_AP_READY);
+}
+
+void captive_portal_service_notify_ap_stopped(void)
+{
+    if (g_portal_event_inited)
+        (void)osal_event_write(&g_portal_event, PORTAL_EVT_AP_STOPPED);
 }

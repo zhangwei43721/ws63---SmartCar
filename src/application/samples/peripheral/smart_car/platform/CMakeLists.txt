@@ -1,0 +1,5 @@
+file(GLOB_RECURSE PLATFORM_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/*.c")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../apps/robot_demo")
+list(APPEND SOURCES ${PLATFORM_SRCS})
+set(SOURCES ${SOURCES} PARENT_SCOPE)

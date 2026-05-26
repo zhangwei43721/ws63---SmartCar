@@ -21,7 +21,8 @@
 #define OTA_MAGIC_STR "OTAx"
 #define OTA_MAGIC_LEN 4
 
-// 状态机定义
+// OTA 状态机：IDLE → WAITING(监听TCP) → RECEIVING → VERIFYING → UPGRADING(重启)
+// 任一阶段异常 → FAILED → 500ms 定时器自动回到 IDLE
 #define OTA_STATE_MAP(OP)                \
     OP(OTA_STATE_IDLE, "IDLE")           \
     OP(OTA_STATE_WAITING, "WAITING")     \
@@ -37,12 +38,12 @@ typedef enum { OTA_STATE_MAP(OTA_STATE_ENUM) OTA_STATE_MAX } ota_state_t;
 
 const char *ota_state_to_str(ota_state_t state);
 
-// 公共进度/状态查询
+// OTA 进度查询快照（ota_service_get_status 填充）
 typedef struct {
-    ota_state_t state;
-    uint8_t progress_percent; // 0~100
-    uint32_t received_size;
-    uint32_t total_size;
+    ota_state_t state;           // 当前状态
+    uint8_t progress_percent;    // 接收进度 0~100
+    uint32_t received_size;      // 已接收字节数
+    uint32_t total_size;         // 总字节数
 } ota_status_t;
 
 void ota_service_init(void);

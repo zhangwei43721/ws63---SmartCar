@@ -7,14 +7,18 @@ file(GLOB_RECURSE APP_SRCS
     "${CMAKE_CURRENT_SOURCE_DIR}/services/*.c"
 )
 
-# Exclude legacy God-object implementation after refactor
+# Exclude legacy + deleted/relocated files
 list(REMOVE_ITEM APP_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/bsp_robot_control.c")
+list(REMOVE_ITEM APP_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/services/storage_service.c")
+list(REMOVE_ITEM APP_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/services/robot_proto.c")
 
 # 2. 添加头文件路径 (对于 robot_demo 这种有本地 .h 的情况很重要)
-# 这样 #include "bsp_robot_control.h" 就能直接找到
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/core")
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/services")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}")                          # robot_common.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/core")                     # mode_*.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/services")                 # *_service.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../../platform")           # storage_service.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../../drivers/motor_control") # bsp_motor.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../..")                    # board_config.h
 
 # 3. 加入到全局构建源文件列表
 list(APPEND SOURCES ${APP_SRCS})

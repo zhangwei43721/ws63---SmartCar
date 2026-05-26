@@ -15,6 +15,7 @@
 
 #include "sle_device.h"
 
+#include "../../board_config.h"
 #include "common_def.h"
 #include "securec.h"
 #include "sle_common.h"
@@ -76,7 +77,17 @@ static uint8_t g_server_id = 0;
 static uint16_t g_service_handle = 0;
 static uint16_t g_property_handle = 0;
 static uint16_t g_conn_id = 0xFFFF; // 0xFFFF 表示未连接
-static bool g_connected = false;
+static volatile bool g_connected = false;
+
+// 共享状态互斥锁
+static osal_mutex g_sle_lock;
+static bool g_sle_lock_inited = false;
+
+// 重启广播 worker：协议栈回调不能直接调用 sle_start_announce 后立即处理逻辑
+static osal_semaphore g_restart_sem;
+static bool g_restart_sem_inited = false;
+static osal_task *g_sle_worker = NULL;
+static volatile bool g_sle_worker_run = false;
 
 // 回调函数指针
 static sle_connect_cb_t g_connect_cb = NULL;
@@ -129,9 +140,8 @@ static void ssaps_write_request_cbk(uint8_t server_id,
                                     errcode_t status)
 {
     unused(server_id);
+    unused(conn_id);
     unused(status);
-
-    printf("[SLE] 写请求: conn_id=%d, handle=0x%x, len=%d\r\n", conn_id, write_cb_para->handle, write_cb_para->length);
 
     // 调用数据接收回调
     if (g_data_recv_cb != NULL && write_cb_para->value != NULL) {
@@ -147,12 +157,16 @@ static void ssaps_write_request_cbk(uint8_t server_id,
 static void ssaps_mtu_changed_cbk(uint8_t server_id, uint16_t conn_id, ssap_exchange_info_t *mtu_size, errcode_t status)
 {
     unused(server_id);
-    printf("[SLE] MTU 变化: conn_id=%d, mtu=%d, status=%d\r\n", conn_id, mtu_size->mtu_size, status);
+    unused(conn_id);
+    unused(mtu_size);
+    unused(status);
 }
 
 static void ssaps_start_service_cbk(uint8_t server_id, uint16_t handle, errcode_t status)
 {
-    printf("[SLE] 服务启动: server_id=%d, handle=0x%x, status=%d\r\n", server_id, handle, status);
+    unused(server_id);
+    unused(handle);
+    unused(status);
 }
 
 static void sle_ssaps_register_cbks(void)
@@ -175,13 +189,17 @@ static void sle_connect_state_changed_cbk(uint16_t conn_id,
 {
     unused(addr);
     unused(pair_state);
-
-    printf("[SLE] 连接状态变化: conn_id=0x%x, state=0x%x, reason=0x%x\r\n", conn_id, conn_state, disc_reason);
-    printf("[SLE] 设备地址: %02X:XX:XX:XX:%02X:%02X\r\n", addr->addr[0], addr->addr[4], addr->addr[5]);
+    unused(disc_reason);
 
     if (conn_state == SLE_ACB_STATE_CONNECTED) {
+        if (g_sle_lock_inited)
+            osal_mutex_lock(&g_sle_lock);
         g_conn_id = conn_id;
         g_connected = true;
+        if (g_sle_lock_inited)
+            osal_mutex_unlock(&g_sle_lock);
+
+        printf("[SLE] 已连接\r\n");
 
         // 更新连接参数
         sle_connection_param_update_t param = {0};
@@ -197,23 +215,32 @@ static void sle_connect_state_changed_cbk(uint16_t conn_id,
             g_connect_cb(conn_id);
         }
     } else if (conn_state == SLE_ACB_STATE_DISCONNECTED) {
+        if (g_sle_lock_inited)
+            osal_mutex_lock(&g_sle_lock);
         g_conn_id = 0xFFFF;
         g_connected = false;
+        if (g_sle_lock_inited)
+            osal_mutex_unlock(&g_sle_lock);
+
+        printf("[SLE] 已断开\r\n");
 
         // 调用断开连接回调
         if (g_disconnect_cb != NULL) {
             g_disconnect_cb(conn_id);
         }
 
-        // 重新启动广播
-        sle_start_announce(SLE_ADV_HANDLE_DEFAULT);
+        // 通知 worker 重新广播，避免在协议栈上下文里调用栈接口
+        if (g_restart_sem_inited) {
+            osal_sem_up(&g_restart_sem);
+        }
     }
 }
 
 static void sle_pair_complete_cbk(uint16_t conn_id, const sle_addr_t *addr, errcode_t status)
 {
+    unused(conn_id);
     unused(addr);
-    printf("[SLE] 配对完成: conn_id=%d, status=%d\r\n", conn_id, status);
+    unused(status);
 }
 
 static void sle_conn_register_cbks(void)
@@ -228,17 +255,19 @@ static void sle_conn_register_cbks(void)
 
 static void sle_announce_enable_cbk(uint32_t announce_id, errcode_t status)
 {
-    printf("[SLE] 广播启动: id=%d, status=%d\r\n", announce_id, status);
+    unused(announce_id);
+    unused(status);
 }
 
 static void sle_announce_disable_cbk(uint32_t announce_id, errcode_t status)
 {
-    printf("[SLE] 广播停止: id=%d, status=%d\r\n", announce_id, status);
+    unused(announce_id);
+    unused(status);
 }
 
 static void sle_enable_cbk(errcode_t status)
 {
-    printf("[SLE] SLE 使能: status=%d\r\n", status);
+    unused(status);
 }
 
 static void sle_announce_register_cbks(void)
@@ -305,7 +334,7 @@ static uint16_t sle_set_scan_response_data(uint8_t *scan_rsp_data)
 
 static errcode_t sle_set_announce_param_and_data(void)
 {
-    uint8_t mac[SLE_ADDR_LEN] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    uint8_t mac[SLE_ADDR_LEN] = ROBOT_LOCAL_MAC;
 
     // 设置广播参数
     sle_announce_param_t param = {0};
@@ -442,7 +471,7 @@ static errcode_t sle_add_service_and_property(void)
 
     // 设置本地地址
     sle_addr_t addr = {0};
-    uint8_t local_mac[SLE_ADDR_LEN] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    uint8_t local_mac[SLE_ADDR_LEN] = ROBOT_LOCAL_MAC;
     addr.type = 0;
     if (memcpy_s(addr.addr, SLE_ADDR_LEN, local_mac, SLE_ADDR_LEN) == EOK) {
         sle_set_local_addr(&addr);
@@ -452,11 +481,49 @@ static errcode_t sle_add_service_and_property(void)
     return ERRCODE_SLE_SUCCESS;
 }
 
+// ==================== 重启广播 Worker ====================
+static int sle_adv_worker(void *arg)
+{
+    (void)arg;
+    while (g_sle_worker_run) {
+        if (osal_sem_down(&g_restart_sem) != OSAL_SUCCESS)
+            continue;
+        if (!g_sle_worker_run)
+            break;
+        osal_msleep(50);
+        sle_start_announce(SLE_ADV_HANDLE_DEFAULT);
+    }
+    return 0;
+}
+
+static void sle_adv_worker_start(void)
+{
+    if (!g_sle_lock_inited) {
+        if (osal_mutex_init(&g_sle_lock) == OSAL_SUCCESS)
+            g_sle_lock_inited = true;
+    }
+    if (!g_restart_sem_inited) {
+        osal_sem_binary_sem_init(&g_restart_sem, 0);
+        g_restart_sem_inited = true;
+    }
+    if (g_sle_worker != NULL)
+        return;
+    g_sle_worker_run = true;
+    osal_kthread_lock();
+    g_sle_worker = osal_kthread_create((osal_kthread_handler)sle_adv_worker, NULL, "sle_adv_w", 2048);
+    if (g_sle_worker)
+        osal_kthread_set_priority(g_sle_worker, 25);
+    osal_kthread_unlock();
+}
+
 // ==================== 对外接口实现 ====================
 
 errcode_t sle_device_init(void)
 {
     printf("[SLE] 初始化 SLE 设备...\r\n");
+
+    // 启动重启广播 worker（必须在注册回调之前，断连可能立刻触发）
+    sle_adv_worker_start();
 
     // 使能 SLE
     errcode_t ret = enable_sle();
@@ -509,11 +576,21 @@ void sle_device_register_data_callback(sle_data_recv_cb_t cb)
 
 errcode_t sle_device_send(const uint8_t *data, uint16_t len)
 {
-    if (!g_connected || g_conn_id == 0xFFFF) {
+    if (data == NULL || len == 0) {
         return ERRCODE_SLE_FAIL;
     }
 
-    if (data == NULL || len == 0) {
+    // 锁内拿连接状态快照，避免与断连回调竞争
+    bool conn_snap;
+    uint16_t conn_id_snap;
+    if (g_sle_lock_inited)
+        osal_mutex_lock(&g_sle_lock);
+    conn_snap = g_connected;
+    conn_id_snap = g_conn_id;
+    if (g_sle_lock_inited)
+        osal_mutex_unlock(&g_sle_lock);
+
+    if (!conn_snap || conn_id_snap == 0xFFFF) {
         return ERRCODE_SLE_FAIL;
     }
 
@@ -523,7 +600,7 @@ errcode_t sle_device_send(const uint8_t *data, uint16_t len)
     param.value = (uint8_t *)data;
     param.value_len = len;
 
-    errcode_t ret = ssaps_notify_indicate(g_server_id, g_conn_id, &param);
+    errcode_t ret = ssaps_notify_indicate(g_server_id, conn_id_snap, &param);
     if (ret != ERRCODE_SLE_SUCCESS) {
         printf("[SLE] 发送数据失败: %d\r\n", ret);
         return ERRCODE_SLE_FAIL;
@@ -534,5 +611,11 @@ errcode_t sle_device_send(const uint8_t *data, uint16_t len)
 
 bool sle_device_is_connected(void)
 {
-    return g_connected;
+    bool snap;
+    if (g_sle_lock_inited)
+        osal_mutex_lock(&g_sle_lock);
+    snap = g_connected;
+    if (g_sle_lock_inited)
+        osal_mutex_unlock(&g_sle_lock);
+    return snap;
 }

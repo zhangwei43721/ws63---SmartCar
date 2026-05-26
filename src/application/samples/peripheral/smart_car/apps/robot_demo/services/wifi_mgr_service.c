@@ -10,20 +10,22 @@
 
 #include "../../../drivers/wifi_client/bsp_wifi_sta.h"
 #include "../../../drivers/wifi_client/bsp_wifi_ap.h"
+#include "../robot_common.h"
 #include "securec.h"
 #include "soc_osal.h"
-#include "storage_service.h"
+#include "../../../platform/storage_service.h"
+#include "captive_portal_service.h"
 
 // ---------- 配置 ----------
 #define MGR_STACK_SIZE 2048
 #define MGR_PRIO 20
 #define STA_FAIL_MAX 1
 
-// ---------- Manager 私有状态 ----------
+// Manager 状态机：决策当前启动 STA 还是 AP
 typedef enum {
-    MGR_STATE_IDLE = 0,
-    MGR_STATE_STA,
-    MGR_STATE_AP,
+    MGR_STATE_IDLE = 0, // 未启动
+    MGR_STATE_STA,      // 正运行 STA 模式
+    MGR_STATE_AP,       // 正运行 AP 模式（配网门户）
 } mgr_state_t;
 
 static mgr_state_t s_mgr_state = MGR_STATE_IDLE;
@@ -138,8 +140,10 @@ static int mgr_task_main(void *arg)
                 break;
             case WIFI_MSG_AP_READY:
                 on_ap_ready();
+                captive_portal_service_notify_ap_ready();
                 break;
             case WIFI_MSG_AP_STOPPED:
+                captive_portal_service_notify_ap_stopped();
                 break;
             default:
                 break;
@@ -161,14 +165,10 @@ int bsp_wifi_mgr_init(void)
         return -1;
     }
 
-    osal_kthread_lock();
-    s_mgr_task = osal_kthread_create((osal_kthread_handler)mgr_task_main, NULL, "wifi_mgr", MGR_STACK_SIZE);
-    if (s_mgr_task)
-        osal_kthread_set_priority(s_mgr_task, MGR_PRIO);
-    osal_kthread_unlock();
+    s_mgr_task = robot_task_create_locked("wifi_mgr", (osal_kthread_handler)mgr_task_main, NULL, MGR_STACK_SIZE,
+                                          MGR_PRIO);
 
     if (!s_mgr_task) {
-        printf("[WiFi Mgr] task 创建失败\r\n");
         return -1;
     }
     printf("[WiFi Mgr] 初始化完成\r\n");
@@ -180,15 +180,7 @@ int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg)
     if (s_msg_queue == 0)
         return -1;
 
-    // 有旧消息则丢弃，确保新事件能写入（完全复刻 motor_executor_push_cmd）
-    unsigned int msg_num = osal_msg_queue_get_msg_num(s_msg_queue);
-    if (msg_num > 0) {
-        bsp_wifi_msg_t dummy;
-        unsigned int sz = sizeof(dummy);
-        osal_msg_queue_read_copy(s_msg_queue, &dummy, &sz, OSAL_MSGQ_NO_WAIT);
-    }
-
-    int ret = osal_msg_queue_write_copy(s_msg_queue, (void *)msg, sizeof(*msg), OSAL_MSGQ_NO_WAIT);
+    int ret = osal_msgq_overwrite(s_msg_queue, 8, msg, sizeof(*msg));
     return (ret == OSAL_SUCCESS) ? 0 : -1;
 }
 
@@ -213,4 +205,13 @@ int bsp_wifi_switch_to_ap(void)
 {
     storage_service_save_wifi_config("", "");
     return bsp_wifi_mgr_send_msg(&(bsp_wifi_msg_t){.id = WIFI_MSG_START});
+}
+
+
+int robot_wifi_apply_config(const char *ssid, const char *password)
+{
+    if (ssid == NULL || password == NULL)
+        return -1;
+    (void)storage_service_save_wifi_config(ssid, password);
+    return bsp_wifi_connect_ap(ssid, password);
 }

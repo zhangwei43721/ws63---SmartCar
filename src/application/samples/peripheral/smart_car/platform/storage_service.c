@@ -11,7 +11,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../core/robot_config.h"
+#include "../apps/robot_demo/robot_common.h"
+
+
 #include "nv.h"
 #include "securec.h"
 #include "soc_osal.h"
@@ -181,7 +183,8 @@ errcode_t storage_service_save_pid_params(float kp, float ki, float kd, int16_t 
     g_nv_cfg.checksum = 0;
     g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
 
-    printf("[存储] 保存 PID: Kp=%.2f, Ki=%.2f, Kd=%.2f, 基础速度=%d\r\n", kp, ki, kd, speed);
+    printf("[存储] 保存 PID: Kp=%d/1000, Ki=%d/10000, Kd=%d/500, 基础速度=%d\r\n",
+           (int)(kp * 1000), (int)(ki * 10000), (int)(kd * 500), speed);
     errcode_t ret = uapi_nv_write(ROBOT_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
     printf("[存储] NV 写入: 返回值=%d\r\n", ret);
     STORAGE_UNLOCK();
@@ -198,10 +201,8 @@ void storage_service_get_wifi_config(char *ssid, char *password)
         return;
 
     STORAGE_LOCK();
-    strncpy(ssid, g_nv_cfg.wifi_ssid, 31);
-    ssid[31] = '\0';
-    strncpy(password, g_nv_cfg.wifi_password, 63);
-    password[63] = '\0';
+    (void)strncpy_s(ssid, 32, g_nv_cfg.wifi_ssid, 31);
+    (void)strncpy_s(password, 64, g_nv_cfg.wifi_password, 63);
     STORAGE_UNLOCK();
 }
 
@@ -214,10 +215,9 @@ errcode_t storage_service_save_wifi_config(const char *ssid, const char *passwor
         return ERRCODE_INVALID_PARAM;
 
     STORAGE_LOCK();
-    strncpy(g_nv_cfg.wifi_ssid, ssid, 31);
-    g_nv_cfg.wifi_ssid[31] = '\0';
-    strncpy(g_nv_cfg.wifi_password, password, 63);
-    g_nv_cfg.wifi_password[63] = '\0';
+    (void)strncpy_s(g_nv_cfg.wifi_ssid, sizeof(g_nv_cfg.wifi_ssid), ssid, sizeof(g_nv_cfg.wifi_ssid) - 1);
+    (void)strncpy_s(g_nv_cfg.wifi_password, sizeof(g_nv_cfg.wifi_password), password,
+                    sizeof(g_nv_cfg.wifi_password) - 1);
 
     // 重新计算校验和
     g_nv_cfg.checksum = 0;
@@ -229,3 +229,5 @@ errcode_t storage_service_save_wifi_config(const char *ssid, const char *passwor
     STORAGE_UNLOCK();
     return ret;
 }
+
+

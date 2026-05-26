@@ -1,9 +1,20 @@
 # Smart Car Top Level CMake
 
-# 1. 编译驱动库 (drivers/CMakeLists.txt 会决定具体编译哪些)
+# 全局 include：所有子目录都能直接用模块名 include
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}")                          # board_config.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/platform")                  # storage_service.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/robot_demo")           # robot_common.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/robot_demo/core")      # mode_*.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/robot_demo/services")  # *_service.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/drivers/motor_control")     # bsp_motor.h
+
+# 1. 编译平台层（NV 存储等共享基础设施）
+add_subdirectory(platform)
+
+# 2. 编译驱动库 (drivers/CMakeLists.txt 会决定具体编译哪些)
 add_subdirectory(drivers)
 
-# 2. 根据 Kconfig 选择编译哪个应用
+# 3. 根据 Kconfig 选择编译哪个应用
 if(CONFIG_SMART_CAR_RUN_ROBOT_DEMO)
     add_subdirectory(apps/robot_demo)
 elseif(CONFIG_SMART_CAR_RUN_L9110S_TEST)
