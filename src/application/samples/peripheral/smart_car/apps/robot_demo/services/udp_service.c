@@ -45,7 +45,6 @@ typedef struct {
     uint8_t pwd_len;  // 密码长度（0~63）
     char payload[64]; // SSID + 密码连续存放
 } wifi_config_pkt_t;
-#pragma pack()
 
 // --- 全局变量 ---
 static int g_sockfd = -1;
@@ -116,18 +115,6 @@ const char *udp_service_get_ip(void)
     static char ip_buf[BUF_IP] = "0.0.0.0";
     bsp_wifi_get_ip(ip_buf, sizeof(ip_buf));
     return ip_buf;
-}
-
-void udp_service_push_cmd(int8_t m1, int8_t m2)
-{
-    static int8_t last_m1 = 0, last_m2 = 0;
-    // 边沿日志：仅在 0↔非0 切换时打印，避免遥控时每包刷屏
-    if ((m1 == 0 && m2 == 0) != (last_m1 == 0 && last_m2 == 0)) {
-        printf("[UDP] CTRL %d,%d\r\n", m1, m2);
-    }
-    last_m1 = m1;
-    last_m2 = m2;
-    bsp_motor_push_cmd(m1, m2);
 }
 
 // --------------------------------------------------------------------------

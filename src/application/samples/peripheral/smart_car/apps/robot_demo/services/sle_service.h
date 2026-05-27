@@ -24,11 +24,4 @@
  */
 void sle_service_init(void);
 
-/**
- * @brief 检查是否有 SLE 设备连接
- * @return true 已连接
- *         false 未连接
- */
-bool sle_service_is_connected(void);
-
 #endif // SLE_SERVICE_H

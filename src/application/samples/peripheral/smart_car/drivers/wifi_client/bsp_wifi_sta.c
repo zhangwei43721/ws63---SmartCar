@@ -22,13 +22,15 @@ static osal_task *s_sta_task = NULL;
 
 static char s_ssid[33] = {0};
 static char s_pwd[64] = {0};
+static void bsp_wifi_get_current_config(char *ssid, uint32_t ssid_len, char *pwd, uint32_t pwd_len);
 
 static osal_semaphore s_conn_sem;
-osal_semaphore s_wait_sem; // 关键挂起信号量，外部直接 osal_sem_up 唤醒
+osal_semaphore s_wait_sem; // 关键挂起信号量，通过 bsp_wifi_sta_wakeup() 唤醒
 static bool s_wait_sem_inited = false;
 static osal_semaphore s_sync_sem;
 static bool s_sync_inited = false;
 static volatile bool s_should_exit = false;
+static int sta_task_main(void *arg);
 static osal_semaphore s_exit_sem;
 static bool s_exit_sem_inited = false;
 static osal_semaphore s_dhcp_sem;
@@ -79,7 +81,7 @@ void bsp_wifi_set_current_config(const char *ssid, const char *pwd)
     if (pwd) strncpy_s(s_pwd, sizeof(s_pwd), pwd, sizeof(s_pwd) - 1);
 }
 
-void bsp_wifi_get_current_config(char *ssid, uint32_t ssid_len, char *pwd, uint32_t pwd_len)
+static void bsp_wifi_get_current_config(char *ssid, uint32_t ssid_len, char *pwd, uint32_t pwd_len)
 {
     if (ssid && ssid_len > 0) strncpy_s(ssid, ssid_len, s_ssid, ssid_len - 1);
     if (pwd && pwd_len > 0) strncpy_s(pwd, pwd_len, s_pwd, pwd_len - 1);
@@ -96,9 +98,9 @@ int bsp_wifi_connect_sync(const char *ssid, const char *pwd)
 
     bsp_wifi_set_current_config(ssid, pwd);
 
-    if (s_sta_task) 
-        osal_sem_up(&s_wait_sem);
-    else 
+    if (s_sta_task)
+        bsp_wifi_sta_wakeup();
+    else
         if (!sta_task_start()) return -1;
     
 
@@ -164,9 +166,15 @@ void sta_task_stop(void)
 {
     if (!s_sta_task) return;
     s_should_exit = true;
-    if (s_wait_sem_inited) osal_sem_up(&s_wait_sem);
+    bsp_wifi_sta_wakeup();
     (void)osal_sem_down_timeout(&s_exit_sem, 3000);
     s_sta_task = NULL;
+}
+
+void bsp_wifi_sta_wakeup(void)
+{
+    if (s_wait_sem_inited)
+        osal_sem_up(&s_wait_sem);
 }
 
 static void wifi_cb(td_s32 state, const wifi_linked_info_stru *info, td_s32 reason)
@@ -195,7 +203,7 @@ static void sta_netif_status_cb(struct netif *netif)
 }
 
 // 常驻核心线程：一键启动后不再频繁创建销毁，不连接时安静挂起不占用任何射频
-int sta_task_main(void *arg)
+static int sta_task_main(void *arg)
 {
     (void)arg;
     osal_sem_binary_sem_init(&s_conn_sem, 0);
@@ -312,7 +320,7 @@ int sta_task_main(void *arg)
             wifi_sta_disconnect();
             bsp_wifi_notify_event(BSP_WIFI_EVENT_STA_FAIL);
             while (osal_sem_trydown(&s_wait_sem) == OSAL_SUCCESS) {}
-            osal_sem_up(&s_wait_sem);
+            bsp_wifi_sta_wakeup();
         }
         continue;
 

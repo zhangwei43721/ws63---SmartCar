@@ -9,9 +9,7 @@
 #include "../../board_config.h"
 
 // ================ 缓冲区大小常量 ================
-#define BUF_PAYLOAD 128      // 数据负载缓冲区（字节）
 #define BUF_IP 32            // IP 地址字符串缓冲区
-#define BUF_MODE 32          // 模式字符串缓冲区
 
 // 通用互斥锁操作宏。调用前需确保 inited==true（init 失败应 panic）。
 // 旧版在 inited==false 时"静默放行"让临界区裸跑；当前版打印一次 BUG 警告
@@ -168,8 +166,7 @@ void robot_mgr_get_state_copy(RobotState *out);
 void robot_mgr_update_distance(float distance);
 void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right);
 
-// ---------- 模式/WiFi 状态字符串集中查表 ----------
+// ---------- 模式名字符串 ----------
 const char *robot_mode_name(CarStatus status);
-const char *robot_wifi_status_text(WifiConnectStatus s);
 
 #endif

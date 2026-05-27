@@ -67,7 +67,7 @@ static int mgr_task_main(void *arg)
                     if (!msg.from_portal)
                         ap_task_stop();
                     bsp_wifi_set_current_config(ssid, pwd);
-                    osal_sem_up(&s_wait_sem);
+                    bsp_wifi_sta_wakeup();
                 }
                 break;
             }
@@ -84,7 +84,7 @@ static int mgr_task_main(void *arg)
                         printf("[WiFi Mgr] STA 失败，恢复旧网络: %s\r\n", s_prev_ssid);
                         storage_service_save_wifi_config(s_prev_ssid, s_prev_pwd);
                         bsp_wifi_set_current_config(s_prev_ssid, s_prev_pwd);
-                        osal_sem_up(&s_wait_sem);
+                        bsp_wifi_sta_wakeup();
                     } else {
                         printf("[WiFi Mgr] STA 失败，无旧网络，启动 AP\r\n");
                         ap_task_start();
@@ -142,9 +142,4 @@ int bsp_wifi_connect_ap_from_portal(const char *ssid, const char *password)
     return bsp_wifi_mgr_send_msg(&(bsp_wifi_msg_t){.id = WIFI_MSG_START, .from_portal = true});
 }
 
-int bsp_wifi_switch_to_ap(void)
-{
-    storage_service_save_wifi_config("", "");
-    return bsp_wifi_mgr_send_msg(&(bsp_wifi_msg_t){.id = WIFI_MSG_START, .from_portal = false, .user_initiated = true});
-}
 

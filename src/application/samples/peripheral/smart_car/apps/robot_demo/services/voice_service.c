@@ -12,12 +12,10 @@
 #include "voice_service.h"
 
 #include <stdio.h>
-#include <string.h>
 
 #include "../../../drivers/uart/bsp_uart.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
 #include "../robot_common.h"
-#include "osal_timer.h"
 #include "soc_osal.h"
 
 #define VOICE_CMD_TIMEOUT_MS 1000
@@ -37,7 +35,7 @@ static bool g_rx_queue_inited = false;
 // 命令超时停车看门狗：用 osal_timer 单次定时，避免 32-bit RISC-V 上做软件模拟 64-bit jiffies 减法
 static osal_timer g_voice_stop_timer;
 static bool g_voice_stop_timer_inited = false;
-static volatile bool g_voice_cmd_active = false;  // 仅供 is_cmd_active() 查询，单写者(voice_task)
+static volatile bool g_voice_cmd_active = false; // 单写者(voice_task)，定时器回调清除
 
 static void voice_stop_timer_cb(unsigned long arg)
 {
@@ -166,9 +164,4 @@ void voice_service_init(void)
                                             VOICE_TASK_STACK_SIZE, VOICE_TASK_PRIO);
 
     printf("[语音] 服务已启动\r\n");
-}
-
-bool voice_service_is_cmd_active(void)
-{
-    return g_voice_cmd_active;
 }

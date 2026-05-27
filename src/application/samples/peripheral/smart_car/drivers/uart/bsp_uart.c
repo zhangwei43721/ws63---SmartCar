@@ -113,12 +113,3 @@ int bsp_uart_init(uart_data_callback_t callback)
 
     return 0;
 }
-
-int bsp_uart_send(const uint8_t *data, uint16_t length)
-{
-    if (data == NULL || length == 0) {
-        return -1;
-    }
-
-    return uapi_uart_write(UART_BUS_ID, data, length, 0);
-}

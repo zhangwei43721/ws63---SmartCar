@@ -703,20 +703,11 @@ void captive_portal_service_init(void)
     g_portal_task = robot_task_create_locked("portal_task", (osal_kthread_handler)captive_portal_task, NULL, CAPTIVE_PORTAL_STACK_SIZE, CAPTIVE_PORTAL_TASK_PRIO);
 }
 
-bool captive_portal_service_is_running(void)
-{
-    return (g_portal_status == PORTAL_STATUS_RUNNING || g_portal_status == PORTAL_STATUS_CONFIG_RECEIVED || g_portal_status == PORTAL_STATUS_SWITCHING);
-}
-
 const char *captive_portal_service_get_ap_ip(void)
 {
     return PORTAL_STATIC_IP;
 }
 
-const char *captive_portal_service_get_status_text(void)
-{
-    return g_status_text;
-}
 
 void captive_portal_service_notify_ap_ready(void)
 {

@@ -16,7 +16,6 @@
 #define OTA_TCP_TASK_PRIORITY 23
 
 #define OTA_RECV_CHUNK_SIZE 32768  // 每次 recv 缓冲大小
-#define OTA_WRITE_CHUNK_SIZE 32768 // 每次写入 UPG 的块大小
 
 #define OTA_MAGIC_STR "OTAx"
 #define OTA_MAGIC_LEN 4
@@ -36,16 +35,6 @@
 
 typedef enum { OTA_STATE_MAP(OTA_STATE_ENUM) OTA_STATE_MAX } ota_state_t;
 
-const char *ota_state_to_str(ota_state_t state);
-
-// OTA 进度查询快照（ota_service_get_status 填充）
-typedef struct {
-    ota_state_t state;           // 当前状态
-    uint8_t progress_percent;    // 接收进度 0~100
-    uint32_t received_size;      // 已接收字节数
-    uint32_t total_size;         // 总字节数
-} ota_status_t;
-
 void ota_service_init(void);
 
 /**
@@ -56,9 +45,5 @@ void ota_service_init(void);
 bool ota_service_start(uint32_t expected_size);
 
 void ota_service_cancel(void);
-
-bool ota_service_is_active(void);
-
-void ota_service_get_status(ota_status_t *out);
 
 #endif // OTA_SERVICE_H

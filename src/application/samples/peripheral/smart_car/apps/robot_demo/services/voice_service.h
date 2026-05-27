@@ -37,6 +37,5 @@ typedef enum {
 } VoiceCommand;
 
 void voice_service_init(void);
-bool voice_service_is_cmd_active(void);
 
 #endif // VOICE_SERVICE_H

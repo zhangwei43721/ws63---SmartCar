@@ -10,16 +10,6 @@
 #include "securec.h"
 #include "soc_osal.h"
 
-uint8_t udp_net_common_checksum8_add(const uint8_t *data, size_t len)
-{
-    uint8_t sum = 0;
-    if (data && len) {
-        for (size_t i = 0; i < len; i++)
-            sum += data[i];
-    }
-    return sum;
-}
-
 int udp_net_get_mac_address(uint8_t *mac_buf)
 {
     if (!mac_buf)

@@ -8,7 +8,6 @@
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
 #include "../robot_common.h"
-#include "osal_timer.h"
 #include "soc_osal.h"
 
 // ================= 参数配置 =================

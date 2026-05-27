@@ -7,13 +7,10 @@
 
 #include "lwip/ip_addr.h"
 #include "lwip/sockets.h"
-#include "soc_osal.h"
-
 int udp_net_common_open_and_bind(uint16_t port, unsigned int recv_timeout_ms, bool enable_broadcast);
 int udp_net_common_send_broadcast(int fd, const void *buf, size_t len, uint16_t port);
 int udp_net_common_send_to_addr(int fd, const void *buf, size_t len, const struct sockaddr_in *addr);
 
-uint8_t udp_net_common_checksum8_add(const uint8_t *data, size_t len);
 int udp_net_get_mac_address(uint8_t *mac_buf);
 void http_send_response_and_close(int client_fd, const char *response);
 

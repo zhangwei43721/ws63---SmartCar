@@ -8,6 +8,24 @@
 
 #include "bsp_hcsr04.h"
 
+#include <stdio.h>
+
+#include "gpio.h"
+#include "hal_gpio.h"
+#include "pinctrl.h"
+#include "soc_osal.h"
+#include "tcxo.h"
+
+// HC-SR04引脚定义
+#define HCSR04_TRIG_GPIO 6
+#define HCSR04_ECHO_GPIO 11
+#define HCSR04_GPIO_FUNC HAL_PIO_FUNC_GPIO
+
+// 测距参数
+#define HCSR04_TIMEOUT_US 40000
+#define HCSR04_MIN_DISTANCE_CM 2.0f
+#define HCSR04_MAX_DISTANCE_CM 500.0f
+
 // ECHO 上下沿时间戳（us），由中断写入
 static volatile uint32_t s_echo_rise_us = 0;
 static volatile uint32_t s_echo_fall_us = 0;

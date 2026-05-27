@@ -13,6 +13,8 @@
 #include <stdint.h>
 
 #include "gpio.h"
+
+#define PWM_PERIOD 50 // 20kHz (50us)
 #include "pinctrl.h"
 #include "pwm.h"
 #include "soc_osal.h"

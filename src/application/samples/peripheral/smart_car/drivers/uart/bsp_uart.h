@@ -24,12 +24,4 @@ typedef void (*uart_data_callback_t)(const uint8_t *data, uint16_t length);
  */
 int bsp_uart_init(uart_data_callback_t callback);
 
-/**
- * @brief UART发送数据
- * @param data 数据指针
- * @param length 数据长度
- * @return 实际发送长度，负数表示失败
- */
-int bsp_uart_send(const uint8_t *data, uint16_t length);
-
 #endif // BSP_UART_H

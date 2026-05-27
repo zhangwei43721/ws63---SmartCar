@@ -13,14 +13,11 @@
  * limitations under the License.
  */
 
-#include "sle_test.h"
-
 #include "app_init.h"
 #include "common_def.h"
 #include "errcode.h"
 #include "soc_osal.h"
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
 
 #include "../../drivers/sle/sle_device.h"
 

@@ -22,8 +22,6 @@
 
 #include <stdint.h>
 
-#define PWM_PERIOD 50 // 20kHz (50us)
-
 /**
  * @brief 初始化L9110S电机驱动
  * @return 无

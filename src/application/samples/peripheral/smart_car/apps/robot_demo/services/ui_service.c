@@ -1,9 +1,24 @@
 #include "ui_service.h"
 
+#include <stdio.h>
+#include <string.h>
+
+#include "../../../drivers/ssd1306/ssd1306.h"
 #include "captive_portal_service.h"
+#include "i2c.h"
+#include "pinctrl.h"
+#include "securec.h"
 #include "soc_osal.h"
 #include "udp_net_common.h"
 #include "udp_service.h"
+
+// I2C 总线配置（用于 OLED 显示屏通信）
+#define ROBOT_I2C_BUS_ID 1
+#define ROBOT_I2C_BAUDRATE 400000
+#define ROBOT_I2C_HS_CODE 0x0
+#define ROBOT_I2C_SCL_PIN 15
+#define ROBOT_I2C_SDA_PIN 16
+#define ROBOT_I2C_PIN_MODE 2
 
 /* ============================================================
  * 消息驱动 UI 任务：
@@ -18,7 +33,6 @@
 
 typedef enum {
     UI_MSG_MODE = 0,
-    UI_MSG_STANDBY,
     UI_MSG_OTA,
 } ui_msg_type_t;
 
@@ -159,13 +173,6 @@ static int ui_task_entry(void *arg)
                 }
                 break;
 
-            case UI_MSG_STANDBY:
-                // 仅在当前处于待机模式时刷新，避免干扰循迹/避障等模式显示
-                if (g_ui_current_mode == CAR_STOP_STATUS) {
-                    ui_render_standby_impl(msg.wifi_state, msg.text);
-                }
-                break;
-
             case UI_MSG_OTA:
                 ui_render_ota(msg.percent, msg.text);
                 break;
@@ -236,17 +243,6 @@ void ui_show_mode_page(CarStatus status)
     ui_post(&msg);
 }
 
-void ui_render_standby(WifiConnectStatus wifi_state, const char *ip_addr)
-{
-    ui_msg_t msg = {0};
-    msg.type = UI_MSG_STANDBY;
-    msg.wifi_state = wifi_state;
-    if (ip_addr != NULL) {
-        (void)strncpy_s(msg.text, sizeof(msg.text), ip_addr, sizeof(msg.text) - 1);
-    }
-    ui_post(&msg);
-}
-
 void ui_show_ota_progress(uint8_t percent, const char *status_line)
 {
     ui_msg_t msg = {0};
@@ -270,8 +266,4 @@ void ui_service_acquire(void)
 void ui_service_release(void)
 {
     g_ui_busy = false;
-}
-bool ui_service_is_busy(void)
-{
-    return g_ui_busy;
 }

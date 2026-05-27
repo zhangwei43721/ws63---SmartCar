@@ -17,22 +17,10 @@
 void captive_portal_service_init(void);
 
 /**
- * @brief 检查配网服务是否正在运行
- * @return true 表示 HTTP 服务器正在运行
- */
-bool captive_portal_service_is_running(void);
-
-/**
  * @brief 获取当前 AP 配网 IP 地址字符串
  * @return IP 地址字符串，如 "192.168.1.1"
  */
 const char *captive_portal_service_get_ap_ip(void);
-
-/**
- * @brief 获取当前配网状态描述
- * @return 状态字符串，如 "等待配网" / "配网成功" / "配网失败"
- */
-const char *captive_portal_service_get_status_text(void);
 
 // wifi_mgr 在 AP_READY / AP_STOPPED / STA_FAIL 时通知 portal
 void captive_portal_service_notify_ap_ready(void);

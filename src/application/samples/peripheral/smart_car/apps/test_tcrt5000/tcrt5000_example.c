@@ -17,12 +17,11 @@
  ****************************************************************************************************
  */
 
-#include "pinctrl.h"
+#include <stdio.h>
+
 #include "common_def.h"
 #include "soc_osal.h"
-#include "gpio.h"
 #include "app_init.h"
-#include "adc.h"
 #include "../../drivers/tcrt5000/bsp_tcrt5000.h"
 
 #define TCRT5000_TASK_STACK_SIZE 0x1000
@@ -37,7 +36,6 @@
 static int tcrt5000_task(void *arg)
 {
     UNUSED(arg);
-    adc_scan_config_t config = {.type = 0, .freq = 1};
 
     printf("TCRT5000 infrared line tracking sensor task start (ADC mode)\n");
 
@@ -47,15 +45,7 @@ static int tcrt5000_task(void *arg)
     printf("TCRT5000 ADC initialized. Reading sensors...\n");
 
     while (1) {
-        // 依次使能三个ADC通道进行采样
-        uapi_adc_auto_scan_ch_enable(TCRT5000_LEFT_ADC_CHANNEL, config, tcrt5000_adc_callback);
-        uapi_adc_auto_scan_ch_disable(TCRT5000_LEFT_ADC_CHANNEL);
-
-        uapi_adc_auto_scan_ch_enable(TCRT5000_MIDDLE_ADC_CHANNEL, config, tcrt5000_adc_callback);
-        uapi_adc_auto_scan_ch_disable(TCRT5000_MIDDLE_ADC_CHANNEL);
-
-        uapi_adc_auto_scan_ch_enable(TCRT5000_RIGHT_ADC_CHANNEL, config, tcrt5000_adc_callback);
-        uapi_adc_auto_scan_ch_disable(TCRT5000_RIGHT_ADC_CHANNEL);
+        tcrt5000_sample();
 
         // 打印三路模拟量值（ADC电压值 0-3600mV）
         printf("TCRT5000 ADC: L=%4d, M=%4d, R=%4d mV\n", tcrt5000_get_left_adc(), tcrt5000_get_middle_adc(),

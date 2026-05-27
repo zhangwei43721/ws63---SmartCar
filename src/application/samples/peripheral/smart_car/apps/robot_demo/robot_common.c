@@ -35,22 +35,10 @@ static const char *const k_mode_names[] = {
     "停止", "循迹", "避障", "遥控",
 };
 
-static const char *const k_wifi_status[] = {
-    "未连接", "连接中", "已连接", "热点模式",
-};
-
 const char *robot_mode_name(CarStatus status)
 {
     unsigned idx = (unsigned)status;
     if (idx < sizeof(k_mode_names) / sizeof(k_mode_names[0]))
         return k_mode_names[idx];
-    return "?";
-}
-
-const char *robot_wifi_status_text(WifiConnectStatus s)
-{
-    unsigned idx = (unsigned)s;
-    if (idx < sizeof(k_wifi_status) / sizeof(k_wifi_status[0]))
-        return k_wifi_status[idx];
     return "?";
 }

@@ -4,7 +4,6 @@
 
 #include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
 #include "../../../platform/storage_service.h"
-#include "adc.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
 #include "../robot_common.h"
 #include "soc_osal.h"

@@ -8,18 +8,33 @@
 
 #include "bsp_tcrt5000.h"
 
-#include <stdbool.h>
 #include <stdio.h>
 
 #include "adc.h"
+#include "gpio.h"
 #include "pinctrl.h"
 #include "soc_osal.h"
+
+// TCRT5000 引脚定义
+#define TCRT5000_LEFT_GPIO 12
+#define TCRT5000_MIDDLE_GPIO 10
+#define TCRT5000_RIGHT_GPIO 9
+
+// ADC通道定义
+#define TCRT5000_LEFT_ADC_CHANNEL 5
+#define TCRT5000_MIDDLE_ADC_CHANNEL 3
+#define TCRT5000_RIGHT_ADC_CHANNEL 2
+
+// ADC阈值定义（mV）
+#define TCRT5000_LEFT_THRESHOLD 2000
+#define TCRT5000_MIDDLE_THRESHOLD 1900
+#define TCRT5000_RIGHT_THRESHOLD 1900
 
 // 三路 ADC 采样值。ADC 回调写入、消费者读取；32-bit 单值原子，
 // 但读三个时需要"快照"接口保证组合一致性。
 static volatile uint32_t s_adc_data[3] = {0};
 
-void tcrt5000_adc_callback(uint8_t channel, uint32_t *buffer, uint32_t length, bool *next)
+static void tcrt5000_adc_callback(uint8_t channel, uint32_t *buffer, uint32_t length, bool *next)
 {
     if (length > 0 && buffer != NULL) {
         if (channel == TCRT5000_LEFT_ADC_CHANNEL) {

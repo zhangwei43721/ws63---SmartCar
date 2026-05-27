@@ -145,11 +145,6 @@ static void ota_update_ui(void)
     ui_show_ota_progress(g_ota_progress, status_str);
 }
 
-const char *ota_state_to_str(ota_state_t state)
-{
-    return OTA_STATE_TO_STR(state);
-}
-
 // ---------- 状态管理 ----------
 static void ota_set_state(ota_state_t s)
 {
@@ -183,30 +178,6 @@ static void ota_set_progress(uint8_t pct)
         last_ui_pct = pct;
         ota_update_ui();
     }
-}
-
-bool ota_service_is_active(void)
-{
-    if (g_ota_mutex_inited)
-        osal_mutex_lock(&g_ota_mutex);
-    bool active = (g_ota_state != OTA_STATE_IDLE && g_ota_state != OTA_STATE_FAILED);
-    if (g_ota_mutex_inited)
-        osal_mutex_unlock(&g_ota_mutex);
-    return active;
-}
-
-void ota_service_get_status(ota_status_t *out)
-{
-    if (out == NULL)
-        return;
-    if (g_ota_mutex_inited)
-        osal_mutex_lock(&g_ota_mutex);
-    out->state = g_ota_state;
-    out->progress_percent = g_ota_progress;
-    out->received_size = g_ota_received;
-    out->total_size = g_ota_total;
-    if (g_ota_mutex_inited)
-        osal_mutex_unlock(&g_ota_mutex);
 }
 
 // ---------- TCP 接收与 UPG 写入 ----------

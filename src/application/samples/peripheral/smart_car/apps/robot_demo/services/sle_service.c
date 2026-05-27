@@ -27,7 +27,7 @@
 #include "common_def.h"
 #include "errcode.h"
 #include "soc_osal.h"
-#include "stdio.h"
+#include <stdio.h>
 
 // ==================== 内部状态 ====================
 
@@ -100,9 +100,4 @@ void sle_service_init(void)
     }
 
     printf("[SLE_SRV] SLE 遥控服务初始化完成\r\n");
-}
-
-bool sle_service_is_connected(void)
-{
-    return g_connected;
 }

@@ -6,6 +6,11 @@
 #include "bsp_wifi_ap.h"
 #include "bsp_wifi_sta.h"
 #include <stdio.h>
+
+// AP 配置
+#define BSP_WIFI_AP_SSID "WS63_Robot"
+#define BSP_WIFI_AP_PASSWORD ""
+#define BSP_WIFI_AP_CHANNEL 13
 #include <string.h>
 #include "lwip/netifapi.h"
 #include "lwip/dns.h"
@@ -14,6 +19,7 @@
 #include "wifi_hotspot.h"
 
 static volatile bool s_should_exit = false;
+static int ap_task_main(void *arg);
 static osal_task *s_ap_task = NULL;
 static osal_semaphore s_ap_exit_sem;
 static bool s_ap_exit_sem_inited = false;
@@ -51,7 +57,7 @@ void ap_task_stop(void)
     s_ap_task = NULL;
 }
 
-int ap_task_main(void *arg)
+static int ap_task_main(void *arg)
 {
     (void)arg;
     wifi_softap_disable();

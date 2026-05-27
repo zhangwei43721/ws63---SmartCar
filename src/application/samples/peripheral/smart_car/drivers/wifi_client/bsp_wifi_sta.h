@@ -53,14 +53,10 @@ int bsp_wifi_scan_list(bsp_wifi_scan_item_t *items, uint32_t max_count, uint32_t
 // ========== STA Task 接口 ==========
 bool sta_task_start(void);
 void sta_task_stop(void);
-void sta_set_should_exit(bool v);
-bool sta_get_should_exit(void);
-extern osal_semaphore s_wait_sem;
-int sta_task_main(void *arg);
+void bsp_wifi_sta_wakeup(void);
 
 // ========== 当前 WiFi 配置（STA task 读取） ==========
 void bsp_wifi_set_current_config(const char *ssid, const char *pwd);
-void bsp_wifi_get_current_config(char *ssid, uint32_t ssid_len, char *pwd, uint32_t pwd_len);
 
 // ========== 同步阻塞连接 ==========
 int bsp_wifi_connect_sync(const char *ssid, const char *pwd);
