@@ -34,11 +34,6 @@ void tcrt5000_adc_callback(uint8_t channel, uint32_t *buffer, uint32_t length, b
     *next = false;
 }
 
-void tcrt5000_init(void)
-{
-    tcrt5000_adc_init();
-}
-
 void tcrt5000_adc_init(void)
 {
     uapi_adc_init(ADC_CLOCK_500KHZ);
@@ -77,21 +72,6 @@ void tcrt5000_snapshot(uint32_t *l, uint32_t *m, uint32_t *r)
     if (l) *l = a;
     if (m) *m = b;
     if (r) *r = c;
-}
-
-unsigned int tcrt5000_get_left(void)
-{
-    return (s_adc_data[0] >= TCRT5000_LEFT_THRESHOLD) ? TCRT5000_ON_BLACK : TCRT5000_ON_WHITE;
-}
-
-unsigned int tcrt5000_get_middle(void)
-{
-    return (s_adc_data[1] >= TCRT5000_MIDDLE_THRESHOLD) ? TCRT5000_ON_BLACK : TCRT5000_ON_WHITE;
-}
-
-unsigned int tcrt5000_get_right(void)
-{
-    return (s_adc_data[2] >= TCRT5000_RIGHT_THRESHOLD) ? TCRT5000_ON_BLACK : TCRT5000_ON_WHITE;
 }
 
 uint32_t tcrt5000_get_left_adc(void)   { return s_adc_data[0]; }

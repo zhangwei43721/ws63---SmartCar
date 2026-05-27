@@ -38,11 +38,6 @@ file(GLOB_RECURSE CURRENT_DRIVER_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/motor_control
 list(APPEND DRIVER_SRCS ${CURRENT_DRIVER_SRCS})
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/motor_control")
 
-# --- Motor Control ---
-file(GLOB_RECURSE CURRENT_DRIVER_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/motor_control/*.c")
-list(APPEND DRIVER_SRCS ${CURRENT_DRIVER_SRCS})
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/motor_control")
-
 # --- WiFi ---
 if(CONFIG_SMART_CAR_DRIVER_WIFI)
     file(GLOB_RECURSE CURRENT_DRIVER_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/wifi_client/*.c")

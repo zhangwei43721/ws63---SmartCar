@@ -24,7 +24,6 @@ int bsp_wifi_mgr_init(void);
 int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg);
 
 // ========== 向后兼容接口 ==========
-int bsp_wifi_smart_init(void);
 int bsp_wifi_connect_ap(const char *ssid, const char *password);
 int bsp_wifi_switch_to_ap(void);
 

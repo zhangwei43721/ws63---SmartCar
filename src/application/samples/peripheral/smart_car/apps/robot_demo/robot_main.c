@@ -71,7 +71,6 @@ static void robot_key_init(void)
  * ============================================================ */
 
 static CarStatus g_status = CAR_STOP_STATUS;
-static CarStatus g_last_status = CAR_STOP_STATUS;
 
 #define MODE_CMD_QUEUE_DEPTH 4
 static unsigned long g_mode_queue = 0;
@@ -222,7 +221,6 @@ static void robot_system_init(void)
     }
 
     robot_mgr_apply_status(CAR_STOP_STATUS);
-    g_last_status = CAR_STOP_STATUS;
 
     printf("Robot: 系统初始化完成\r\n");
     printf("[FIRMWARE] OTA_TEST_BUILD_20250519_V2\r\n");
@@ -241,6 +239,8 @@ static int robot_main_task(void *arg)
     UNUSED(arg);
 
     robot_system_init();
+
+    CarStatus last_status = CAR_STOP_STATUS;
 
     while (1) {
         ModeCmdMsg msg;
@@ -263,10 +263,10 @@ static int robot_main_task(void *arg)
         robot_mgr_apply_status(msg.status);
 
         // 执行状态转移
-        if (g_status != g_last_status) {
-            robot_mgr_do_exit(g_last_status);
+        if (g_status != last_status) {
+            robot_mgr_do_exit(last_status);
             robot_mgr_do_enter(g_status);
-            g_last_status = g_status;
+            last_status = g_status;
         }
     }
 

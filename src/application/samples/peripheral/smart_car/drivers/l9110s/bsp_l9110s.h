@@ -30,13 +30,6 @@
  */
 void l9110s_init(void);
 
-// 电机控制宏
-#define CAR_FORWARD() l9110s_set_differential(100, 100)
-#define CAR_BACKWARD() l9110s_set_differential(-100, -100)
-#define CAR_LEFT() l9110s_set_differential(0, 100)
-#define CAR_RIGHT() l9110s_set_differential(100, 0)
-#define CAR_STOP() l9110s_set_differential(0, 0)
-
 /**
  * @brief 设置双轮差速（遥控模式使用）
  * @param left_speed 左轮速度 -100~100

@@ -64,30 +64,6 @@ void tcrt5000_snapshot(uint32_t *l, uint32_t *m, uint32_t *r);
 void tcrt5000_adc_callback(uint8_t channel, uint32_t *buffer, uint32_t length, bool *next);
 
 /**
- * @brief 初始化TCRT5000红外循迹传感器
- * @return 无
- */
-void tcrt5000_init(void);
-
-/**
- * @brief 获取左侧传感器状态
- * @return 0: 检测到黑线, 1: 未检测到黑线
- */
-unsigned int tcrt5000_get_left(void);
-
-/**
- * @brief 获取中间传感器状态
- * @return 0: 检测到黑线, 1: 未检测到黑线
- */
-unsigned int tcrt5000_get_middle(void);
-
-/**
- * @brief 获取右侧传感器状态
- * @return 0: 检测到黑线, 1: 未检测到黑线
- */
-unsigned int tcrt5000_get_right(void);
-
-/**
  * @brief 初始化TCRT5000 ADC模式
  * @return 无
  */

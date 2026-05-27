@@ -416,33 +416,10 @@ static void handle_scan_request(int client_fd, const char *query)
     bool force_refresh = (query != NULL && strstr(query, "refresh=1") != NULL);
 
     if (force_refresh) {
-        const uint32_t MAX_ITEMS = 16;
-        bsp_wifi_scan_item_t *items =
-            (bsp_wifi_scan_item_t *)osal_kmalloc(sizeof(bsp_wifi_scan_item_t) * MAX_ITEMS, OSAL_GFP_ATOMIC);
-        if (items == NULL) {
-            http_send_response_and_close(client_fd, "HTTP/1.1 500\r\n\r\n");
-            return;
-        }
-        uint32_t count = 0;
-        int ret = bsp_wifi_scan_list(items, MAX_ITEMS, &count);
-        if (ret == 0) {
-            // 更新缓存
-            uint32_t cache_n = (count > SCAN_CACHE_MAX) ? SCAN_CACHE_MAX : count;
-            portal_lock();
-            g_scan_cache_count = cache_n;
-            for (uint32_t i = 0; i < cache_n; i++) {
-                g_scan_cache[i] = items[i];
-            }
-            g_scan_cache_ready = true;
-            portal_unlock();
-        }
-        send_scan_json(client_fd, items, count, ret == 0);
-        osal_kfree(items);
-        printf("[Portal] /scan?refresh=1 返回 %u 条结果\r\n", count);
-        return;
+        refresh_scan_cache();
     }
 
-    // 默认返回缓存（拷贝出来再发送，避免持锁期间走慢路径）
+    // 拷贝缓存快照再发送，避免持锁期间走慢路径
     bsp_wifi_scan_item_t snap[SCAN_CACHE_MAX];
     uint32_t snap_cnt = 0;
     bool ready;
@@ -453,11 +430,8 @@ static void handle_scan_request(int client_fd, const char *query)
         snap[i] = g_scan_cache[i];
     portal_unlock();
 
-    if (ready && snap_cnt > 0) {
-        send_scan_json(client_fd, snap, snap_cnt, true);
-        printf("[Portal] /scan 返回缓存 %u 条结果\r\n", snap_cnt);
-    } else {
-        // 缓存为空， fallback 到实时扫描
+    if (!ready || snap_cnt == 0) {
+        // 缓存为空（首次或扫描失败），尝试实时扫描一次
         refresh_scan_cache();
         portal_lock();
         ready = g_scan_cache_ready;
@@ -465,9 +439,10 @@ static void handle_scan_request(int client_fd, const char *query)
         for (uint32_t i = 0; i < snap_cnt; i++)
             snap[i] = g_scan_cache[i];
         portal_unlock();
-        send_scan_json(client_fd, snap, snap_cnt, ready);
-        printf("[Portal] /scan 缓存未命中，实时扫描返回 %u 条\r\n", snap_cnt);
     }
+
+    send_scan_json(client_fd, snap, snap_cnt, ready);
+    printf("[Portal] /scan%s 返回 %u 条结果\r\n", force_refresh ? "?refresh=1" : "", snap_cnt);
 }
 
 /**
@@ -696,11 +671,6 @@ static void handle_http_client(int client_fd)
         }
     }
 
-    // 控制相关路径 (/control, /api/...)
-    if (captive_portal_control_handle(client_fd, is_get, path, query)) {
-        return;
-    }
-
     // 访问了 IP 的其他不存在路径，也跳回根目录
     char redirect_root[256];
     (void)snprintf(redirect_root, sizeof(redirect_root),
@@ -807,26 +777,6 @@ static void dns_server_stop(int fd)
  * @brief 处理单个 DNS 查询
  * @note 解析 DNS 请求，对所有 A 记录查询返回 192.168.1.1
  */
-/**
- * @brief 从 DNS 查询包中提取域名（调试用）
- */
-static void dns_extract_name(const unsigned char *buf, int pos, char *out, size_t out_len)
-{
-    size_t j = 0;
-    while (buf[pos] != 0 && j + 1 < out_len) {
-        int len = buf[pos];
-        if ((len & 0xC0) == 0xC0)
-            break; // 压缩指针，停止
-        pos++;
-        for (int i = 0; i < len && j + 1 < out_len; i++) {
-            out[j++] = (char)buf[pos++];
-        }
-        if (buf[pos] != 0 && j + 1 < out_len)
-            out[j++] = '.';
-    }
-    out[j] = '\0';
-}
-
 static void dns_server_handle(int fd)
 {
     struct sockaddr_in client_addr;
@@ -837,84 +787,45 @@ static void dns_server_handle(int fd)
     int n = lwip_recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr *)&client_addr, &addr_len);
     if (n < 12)
         return;
-
-    // 解析 DNS 头部
-    unsigned int flags = ((unsigned int)buf[2] << 8) | buf[3];
-    unsigned int questions = ((unsigned int)buf[4] << 8) | buf[5];
-
-    // 只处理标准查询（QR=0），且至少有一个问题
-    if ((flags & 0x8000) != 0)
-        return;
-    if (questions == 0)
+    // 只处理标准查询（QR=0）
+    if ((buf[2] & 0x80) != 0)
         return;
 
-    // 提取域名用于调试
-    char qname[128] = {0};
-    dns_extract_name(buf, 12, qname, sizeof(qname));
-
-    // 构建响应头部：复制事务ID和Questions，设置响应标志
-    memcpy(resp, buf, 2); // 事务ID
-    resp[2] = 0x81;
-    resp[3] = 0x80;               // 标志: 标准响应，无错误
-    memcpy(resp + 4, buf + 4, 2); // 问题数
-    resp[6] = 0x00;
-    resp[7] = 0x01; // 回答记录数: 1
-    resp[8] = 0x00;
-    resp[9] = 0x00; // 权威记录数: 0
-    resp[10] = 0x00;
-    resp[11] = 0x00; // 附加记录数: 0
-    int resp_len = 12;
-
-    // 复制问题部分
+    // 找到问题段结尾（域名标签序列 + QTYPE(2) + QCLASS(2)）
     int pos = 12;
     while (pos < n && buf[pos] != 0) {
-        if ((buf[pos] & 0xC0) == 0xC0) {
-            // 查询中不应出现压缩指针，直接丢弃
-            return;
-        }
+        if ((buf[pos] & 0xC0) == 0xC0) { pos += 2; goto copy_question; }
         pos += 1 + buf[pos];
     }
-    if (pos >= n || buf[pos] != 0)
+    pos++; // 跳过 \0 结束符
+copy_question:
+    pos += 4; // QTYPE + QCLASS
+    int q_len = pos - 12;
+    if (pos > n || 12 + q_len + 16 > (int)sizeof(resp))
         return;
-    pos++; // 跳过域名结束符 \0
-    if (pos + 4 > n)
-        return; // 需要 QTYPE + QCLASS
 
-    int q_len = pos + 4 - 12;
-    if (resp_len + q_len > (int)sizeof(resp))
-        return;
+    // 响应头：复制事务 ID，设置标准响应 + 1 条回答
+    memcpy(resp, buf, 12);
+    resp[2] = 0x81; resp[3] = 0x80;
+    resp[6] = 0x00; resp[7] = 0x01; // Answer RRs = 1
+    resp[8] = 0x00; resp[9] = 0x00;
+    resp[10] = 0x00; resp[11] = 0x00;
+
+    // 复制问题段
     memcpy(resp + 12, buf + 12, q_len);
-    resp_len += q_len;
+    int resp_len = 12 + q_len;
 
-    // 解析当前 AP IP
+    // A 记录：Name→偏移12, Type A, Class IN, TTL 300s, RDATA=AP IP
     unsigned int ap_ip = inet_addr(g_ap_ip_str);
-    if (ap_ip == 0 || ap_ip == (unsigned int)(-1)) {
-        // 回退到默认 IP
+    if (ap_ip == 0 || ap_ip == (unsigned int)(-1))
         ap_ip = inet_addr("192.168.1.1");
-    }
-
-    // 添加 A 记录回答
-    if (resp_len + 16 > (int)sizeof(resp))
-        return;
-
-    resp[resp_len++] = 0xC0;
-    resp[resp_len++] = 0x0C; // Name: 指针指向问题域名（偏移 12）
-    resp[resp_len++] = 0x00;
-    resp[resp_len++] = 0x01; // 类型: A
-    resp[resp_len++] = 0x00;
-    resp[resp_len++] = 0x01; // 类别: IN
-    resp[resp_len++] = 0x00;
-    resp[resp_len++] = 0x00; // TTL: 300 秒
-    resp[resp_len++] = 0x01;
-    resp[resp_len++] = 0x2C;
-    resp[resp_len++] = 0x00;
-    resp[resp_len++] = 0x04; // 数据长度: 4
-    memcpy(&resp[resp_len], &ap_ip, 4);
+    static const uint8_t a_rr_prefix[] = {0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0x2C, 0x00, 0x04};
+    memcpy(resp + resp_len, a_rr_prefix, sizeof(a_rr_prefix));
+    resp_len += sizeof(a_rr_prefix);
+    memcpy(resp + resp_len, &ap_ip, 4);
     resp_len += 4;
 
     (void)lwip_sendto(fd, resp, resp_len, 0, (struct sockaddr *)&client_addr, addr_len);
-
-    printf("[Portal] DNS 劫持: %s -> %s\r\n", qname, g_ap_ip_str);
 }
 
 /**

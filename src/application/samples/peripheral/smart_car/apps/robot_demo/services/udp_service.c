@@ -83,8 +83,6 @@ static void build_discovery_packet(void);
 
 void udp_service_init(void)
 {
-    udp_net_common_init();
-
     if (g_udp_task != NULL)
         return;
     g_udp_should_exit = false;
@@ -97,21 +95,6 @@ void udp_service_init(void)
     // 创建线程
     g_udp_task = robot_task_create_locked("udp_task", (osal_kthread_handler)udp_service_task, NULL, UDP_STACK_SIZE,
                                           UDP_TASK_PRIORITY);
-}
-
-void udp_service_deinit(void)
-{
-    if (g_udp_task == NULL)
-        return;
-    g_udp_should_exit = true;
-    if (g_sockfd >= 0) {
-        lwip_close(g_sockfd);
-        g_sockfd = -1;
-    }
-    if (g_udp_exit_sem_inited) {
-        (void)osal_sem_down_timeout(&g_udp_exit_sem, 2000);
-    }
-    g_udp_task = NULL;
 }
 
 WifiConnectStatus udp_service_get_wifi_status(void)
@@ -179,7 +162,20 @@ static void build_discovery_packet(void)
 static void send_wifi_config_ack(uint8_t type, uint8_t status, struct sockaddr_in *sender)
 {
     uint8_t ack[3] = {type, status, 0};
-    udp_net_common_send_to_addr(ack, sizeof(ack), sender);
+    udp_net_common_send_to_addr(g_sockfd, ack, sizeof(ack), sender);
+}
+
+static void wifi_config_extract_creds(const wifi_config_pkt_t *pkt, char *ssid, size_t ssid_sz,
+                                      char *pwd, size_t pwd_sz)
+{
+    if (pkt->ssid_len > 0 && pkt->ssid_len < ssid_sz) {
+        (void)memcpy_s(ssid, ssid_sz, pkt->payload, pkt->ssid_len);
+        ssid[pkt->ssid_len] = '\0';
+    }
+    if (pkt->pwd_len > 0 && pkt->pwd_len < pwd_sz) {
+        (void)memcpy_s(pwd, pwd_sz, pkt->payload + pkt->ssid_len, pkt->pwd_len);
+        pwd[pkt->pwd_len] = '\0';
+    }
 }
 
 static void handle_wifi_config(uint8_t *data, size_t len, struct sockaddr_in *sender)
@@ -192,14 +188,7 @@ static void handle_wifi_config(uint8_t *data, size_t len, struct sockaddr_in *se
         case UDP_CMD_WIFI_CONFIG_SET: {
             char ssid[33] = {0};
             char pwd[64] = {0};
-            if (pkt->ssid_len > 0 && pkt->ssid_len <= 32) {
-                (void)memcpy_s(ssid, sizeof(ssid), pkt->payload, pkt->ssid_len);
-                ssid[pkt->ssid_len] = '\0';
-            }
-            if (pkt->pwd_len > 0 && pkt->pwd_len <= 63) {
-                (void)memcpy_s(pwd, sizeof(pwd), pkt->payload + pkt->ssid_len, pkt->pwd_len);
-                pwd[pkt->pwd_len] = '\0';
-            }
+            wifi_config_extract_creds(pkt, ssid, sizeof(ssid), pwd, sizeof(pwd));
             errcode_t ret = storage_service_save_wifi_config(ssid, pwd);
             send_wifi_config_ack(pkt->type, (ret == ERRCODE_SUCC) ? 0x00 : 0x01, sender);
             printf("[UDP] WiFi配置保存: SSID='%s' 结果=%d\r\n", ssid, ret);
@@ -207,16 +196,9 @@ static void handle_wifi_config(uint8_t *data, size_t len, struct sockaddr_in *se
         }
 
         case UDP_CMD_WIFI_CONFIG_CONNECT: {
-            char ssid[32] = {0};
+            char ssid[33] = {0};
             char pwd[64] = {0};
-            if (pkt->ssid_len > 0 && pkt->ssid_len <= 32) {
-                (void)memcpy_s(ssid, sizeof(ssid), pkt->payload, pkt->ssid_len);
-                ssid[pkt->ssid_len] = '\0';
-            }
-            if (pkt->pwd_len > 0 && pkt->pwd_len <= 63) {
-                (void)memcpy_s(pwd, sizeof(pwd), pkt->payload + pkt->ssid_len, pkt->pwd_len);
-                pwd[pkt->pwd_len] = '\0';
-            }
+            wifi_config_extract_creds(pkt, ssid, sizeof(ssid), pwd, sizeof(pwd));
             int ret = robot_wifi_apply_config(ssid, pwd);
             send_wifi_config_ack(pkt->type, (ret == 0) ? 0x00 : 0x01, sender);
             printf("[UDP] WiFi切换STA: SSID='%s' 结果=%d\r\n", ssid, ret);
@@ -244,7 +226,7 @@ static void handle_wifi_config(uint8_t *data, size_t len, struct sockaddr_in *se
             if (pwd_len > 0) {
                 (void)memcpy_s(ack + 4 + ssid_len, sizeof(ack) - 4 - ssid_len, pwd, pwd_len);
             }
-            udp_net_common_send_to_addr(ack, 4 + ssid_len + pwd_len, sender);
+            udp_net_common_send_to_addr(g_sockfd, ack, 4 + ssid_len + pwd_len, sender);
             break;
         }
     }
@@ -295,7 +277,7 @@ static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender
             } else {
                 ack.cmd = 0x02;
             }
-            udp_net_common_send_to_addr(&ack, sizeof(ack), &g_server_addr);
+            udp_net_common_send_to_addr(g_sockfd, &ack, sizeof(ack), &g_server_addr);
             return;
         }
     }
@@ -346,7 +328,7 @@ static void send_heartbeat(void)
     pkt.motor1 = (int8_t)(curr.distance / 2);
     pkt.motor2 = 0;
     pkt.ir_data = (curr.ir_left & 1) | ((curr.ir_middle & 1) << 1) | ((curr.ir_right & 1) << 2);
-    udp_net_common_send_to_addr(&pkt, sizeof(pkt), &g_server_addr);
+    udp_net_common_send_to_addr(g_sockfd, &pkt, sizeof(pkt), &g_server_addr);
 }
 
 /**
@@ -438,7 +420,7 @@ static int udp_service_task(void *arg)
                 if (now - t_send_loop >= osal_msecs_to_jiffies(BROADCAST_INTERVAL_MS)) {
                     t_send_loop = now;
                     if (g_discovery_ready)
-                        udp_net_common_send_broadcast(&g_discovery_pkt, sizeof(g_discovery_pkt), UDP_BROADCAST_PORT);
+                        udp_net_common_send_broadcast(g_sockfd, &g_discovery_pkt, sizeof(g_discovery_pkt), UDP_BROADCAST_PORT);
                 }
                 break;
 

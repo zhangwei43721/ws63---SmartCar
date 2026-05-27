@@ -8,16 +8,7 @@
 
 #include "../../board_config.h"
 
-// ================ 任务优先级 / 栈 / 时序常量（原 robot_config.h）================
-
-#define SENSOR_DELAY 50      // 传感器稳定等待（ms）
-#define BACKWARD_TIME 400    // 避障后退时长（ms）
-#define TURN_TIME 400        // 语音转向时长（ms）
-#define REMOTE_TIMEOUT 500   // 遥控命令超时（ms）
-#define LOOP_DELAY 20        // 主循环 tick 间隔（ms）
-#define STANDBY_DELAY 500    // 待机 UI 刷新间隔（ms）
-#define RECV_TIMEOUT 100     // 接收超时（ms）
-#define WIFI_RETRY_INTERVAL 5000 // WiFi 重试退避（ms）
+// ================ 缓冲区大小常量 ================
 #define BUF_PAYLOAD 128      // 数据负载缓冲区（字节）
 #define BUF_IP 32            // IP 地址字符串缓冲区
 #define BUF_MODE 32          // 模式字符串缓冲区

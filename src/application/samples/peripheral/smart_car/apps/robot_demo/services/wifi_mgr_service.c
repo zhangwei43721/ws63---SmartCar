@@ -186,13 +186,6 @@ int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg)
 
 // ---------- 向后兼容 ----------
 
-int bsp_wifi_smart_init(void)
-{
-    if (bsp_wifi_mgr_init() != 0)
-        return -1;
-    return bsp_wifi_mgr_send_msg(&(bsp_wifi_msg_t){.id = WIFI_MSG_START});
-}
-
 int bsp_wifi_connect_ap(const char *ssid, const char *password)
 {
     if (ssid && password)
