@@ -260,33 +260,22 @@ set(COMPONENT_PUBLIC_CCFLAGS
 )
 
 set(COMPONENT_CCFLAGS
-	-Wno-error=switch-default
-	-Wno-error=unused-parameter
-    -Wno-error=unused-variable
-    -Wno-error=strict-prototypes
-    -Wno-error=sign-compare
-    -Wno-error=return-type
-    -Wno-error=unused-value
-    -Wno-error=comment
-    -Wno-error=pointer-sign
-    -Wno-error=attributes
-    -Wno-error=uninitialized
-    -Wno-error=unused-function
-	-Wno-error=format
-	-Wno-error=incompatible-pointer-types
+	-Wno-switch-default
+	-Wno-unused-parameter
+	-Wno-unused-variable
+	-Wno-strict-prototypes
+	-Wno-sign-compare
+	-Wno-return-type
+	-Wno-unused-value
+	-Wno-comment
+	-Wno-pointer-sign
+	-Wno-attributes
+	-Wno-uninitialized
+	-Wno-unused-function
+	-Wno-format
+	-Wno-incompatible-pointer-types
+	-Wno-jump-misses-init
 )
-
-if("${ARCH}" STREQUAL "riscv31")
-list (APPEND COMPONENT_CCFLAGS
-	-Wno-error=jump-misses-init
-)
-endif()
-
-if("${ARCH}" STREQUAL "cortex_m7")
-	list (APPEND COMPONENT_CCFLAGS
-			-Wno-error=jump-misses-init
-	)
-endif()
 
 
 set(WHOLE_LINK

@@ -199,9 +199,8 @@ static void handle_wifi_config(uint8_t *data, size_t len, struct sockaddr_in *se
             char ssid[33] = {0};
             char pwd[64] = {0};
             wifi_config_extract_creds(pkt, ssid, sizeof(ssid), pwd, sizeof(pwd));
-            int ret = robot_wifi_apply_config(ssid, pwd);
-            send_wifi_config_ack(pkt->type, (ret == 0) ? 0x00 : 0x01, sender);
-            printf("[UDP] WiFi切换STA: SSID='%s' 结果=%d\r\n", ssid, ret);
+            bsp_wifi_connect_ap(ssid, pwd);
+            printf("[UDP] WiFi切换STA: SSID='%s'\r\n", ssid);
             break;
         }
 

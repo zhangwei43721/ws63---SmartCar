@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "soc_osal.h"
 
 // ========== 公共 WiFi 类型 ==========
 typedef enum {
@@ -54,7 +55,7 @@ bool sta_task_start(void);
 void sta_task_stop(void);
 void sta_set_should_exit(bool v);
 bool sta_get_should_exit(void);
-void sta_task_wakeup(void);
+extern osal_semaphore s_wait_sem;
 int sta_task_main(void *arg);
 
 // ========== 当前 WiFi 配置（STA task 读取） ==========

@@ -82,9 +82,9 @@ set(COMPONENT_CCFLAGS
     -Wno-int-conversion
     -Wno-unused-label
     -Wno-unused-function
-    -Wno-error=logical-op
-    -Wno-error=return-type
-    -Wno-error=jump-misses-init
+    -Wno-logical-op
+    -Wno-return-type
+    -Wno-jump-misses-init
 )
 
 set(WHOLE_LINK

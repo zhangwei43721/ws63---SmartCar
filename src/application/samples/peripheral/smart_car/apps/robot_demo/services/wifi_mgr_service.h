@@ -16,7 +16,9 @@ typedef enum {
 
 // Manager 消息队列单元
 typedef struct {
-    wifi_msg_id_t id; // 消息类型
+    wifi_msg_id_t id;          // 消息类型
+    bool from_portal;          // 配网来源：true=HTTP portal，false=其他
+    bool user_initiated;       // true=用户UDP手动配网，false=系统启动自动连接
 } bsp_wifi_msg_t;
 
 // ========== Manager ==========
@@ -26,6 +28,6 @@ int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg);
 // ========== 向后兼容接口 ==========
 int bsp_wifi_connect_ap(const char *ssid, const char *password);
 int bsp_wifi_switch_to_ap(void);
+int bsp_wifi_connect_ap_from_portal(const char *ssid, const char *password);
 
 #endif
-int robot_wifi_apply_config(const char *ssid, const char *password);

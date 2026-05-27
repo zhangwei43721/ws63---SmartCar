@@ -1,15 +1,11 @@
-/**
+﻿/**
  * @file        captive_portal_service.c
- * @brief       AP 配网服务（Captive Portal）实现
- * @details     在 AP 模式下启动轻量级 HTTP 服务器 + DNS 劫持服务器。
- *              用户连接小车热点后自动弹出（或访问任意网址跳转到）Web 配网页面。
+ * @brief       AP 配网服务（Captive Portal）
  */
 
 #include "captive_portal_service.h"
-
 #include <stdio.h>
 #include <string.h>
-
 #include "../../../drivers/wifi_client/bsp_wifi_sta.h"
 #include "../../../drivers/wifi_client/bsp_wifi_ap.h"
 #include "wifi_mgr_service.h"
@@ -22,9 +18,6 @@
 #include "captive_portal_control.h"
 #include "udp_net_common.h"
 
-// ---------- 配置常量 ----------
-#define CAPTIVE_PORTAL_HTTP_PORT 80
-#define CAPTIVE_PORTAL_DNS_PORT 53
 #define CAPTIVE_PORTAL_STACK_SIZE 8192
 #define CAPTIVE_PORTAL_TASK_PRIO 23
 #define CAPTIVE_HTTP_RECV_TIMEOUT_MS 500
@@ -32,71 +25,56 @@
 #define CAPTIVE_HTTP_MAX_BODY 512
 #define CAPTIVE_DNS_BUF_SIZE 512
 
-// Portal 状态机：IDLE → RUNNING(AP就绪) → CONFIG_RECEIVED → SWITCHING(切STA) → SUCCESS/FAILED
+// 常数化 Portal IP 地址，避免任何重连瞬间读取网卡的异常情况
+#define PORTAL_STATIC_IP "192.168.1.1"
+
 typedef enum {
-    PORTAL_STATUS_IDLE = 0,             // 未激活
-    PORTAL_STATUS_RUNNING,              // AP 门户运行中（HTTP+DNS）
-    PORTAL_STATUS_CONFIG_RECEIVED,      // 收到配网配置，展示成功页
-    PORTAL_STATUS_SWITCHING,            // 正在切 WiFi 模式
-    PORTAL_STATUS_SUCCESS,              // WiFi 切换成功
-    PORTAL_STATUS_FAILED                // WiFi 切换失败
+    PORTAL_STATUS_IDLE = 0,
+    PORTAL_STATUS_RUNNING,
+    PORTAL_STATUS_CONFIG_RECEIVED,
+    PORTAL_STATUS_SWITCHING,
+    PORTAL_STATUS_SUCCESS,
+    PORTAL_STATUS_FAILED
 } portal_status_t;
 
-// ---------- 全局状态 ----------
 static volatile portal_status_t g_portal_status = PORTAL_STATUS_IDLE;
 static osal_task *g_portal_task = NULL;
 static bool g_task_should_exit = false;
-static char g_ap_ip_str[BUF_IP] = "0.0.0.0";
 static char g_status_text[32] = "等待配网";
 
-// 保护 portal_status / status_text / switch_task / scan_cache
 static osal_mutex g_portal_lock;
 static bool g_portal_lock_inited = false;
 
-// 事件：AP_READY / AP_STOPPED / TASK_EXIT
-// 事件位掩码：osal_event 读写，portal_task 阻塞等待 AP_READY
-#define PORTAL_EVT_AP_READY   0x01  // AP 就绪 → 启动 HTTP+DNS
-#define PORTAL_EVT_AP_STOPPED 0x02  // AP 停止 → 退出 HTTP+DNS
-#define PORTAL_EVT_EXIT       0x04  // 强制退出 portal_task
+#define PORTAL_EVT_AP_READY   0x01
+#define PORTAL_EVT_AP_STOPPED 0x02
+#define PORTAL_EVT_EXIT       0x04
 static osal_event g_portal_event;
 static bool g_portal_event_inited = false;
 
-static inline void portal_lock(void)
-{
-    if (g_portal_lock_inited)
-        (void)osal_mutex_lock(&g_portal_lock);
-}
-static inline void portal_unlock(void)
-{
-    if (g_portal_lock_inited)
-        (void)osal_mutex_unlock(&g_portal_lock);
-}
+static inline void portal_lock(void) { if (g_portal_lock_inited) (void)osal_mutex_lock(&g_portal_lock); }
+static inline void portal_unlock(void) { if (g_portal_lock_inited) (void)osal_mutex_unlock(&g_portal_lock); }
 
 static void portal_set_status(portal_status_t st, const char *text)
 {
     portal_lock();
     g_portal_status = st;
-    if (text != NULL)
+    if (text != NULL) {
         (void)strncpy_s(g_status_text, sizeof(g_status_text), text, sizeof(g_status_text) - 1);
+    }
     portal_unlock();
 }
 
-// DNS 与 HTTP 套接字
 static int g_http_fd = -1;
 static int g_dns_fd = -1;
 
-// 后台 WiFi 切换任务（fire-and-forget；任务体内不得写自身句柄，
-// 用 bool 标志表示"是否在跑"，避免 LiteOS 任务体内自清空反模式）
 static char g_switch_ssid[32] = {0};
 static char g_switch_password[64] = {0};
 
-// WiFi 扫描缓存
 #define SCAN_CACHE_MAX 16
 static bsp_wifi_scan_item_t g_scan_cache[SCAN_CACHE_MAX];
 static uint32_t g_scan_cache_count = 0;
 static bool g_scan_cache_ready = false;
 
-// ---------- 内嵌配网页面 ----------
 static const char s_html_page[] =
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html; charset=utf-8\r\n"
@@ -168,73 +146,36 @@ static const char s_html_page[] =
     "else{t.textContent='加载失败';}}};"
     "x.ontimeout=function(){t.textContent='加载超时';};"
     "x.send();}"
-    "window.onload=function(){scanWifi(false);};"
+    "window.onload=function(){scanWifi(false);"
+    "if(location.search.includes('fail'))"
+    "document.body.insertAdjacentHTML('afterbegin','<div style=\"background:#ff3b30;color:#fff;"
+    "padding:12px 16px;border-radius:10px;font-size:14px;text-align:center;margin-bottom:16px\">"
+    "连接失败，请检查密码后重新配网</div>');};"
     "</script>"
     "</body></html>";
 
-static const char s_html_success[] =
+static const char s_html_fail_result[] =
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html; charset=utf-8\r\n"
     "Connection: close\r\n\r\n"
     "<!DOCTYPE html><html><head>"
     "<meta charset=\"utf-8\">"
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-    "<title>配网成功</title>"
+    "<title>连接失败</title>"
     "<style>"
-    "body{font-family:-apple-system,BlinkMacSystemFont,Segoe "
-    "UI,Roboto,Helvetica,Arial,sans-serif;background:#f2f3f5;display:flex;justify-content:center;align-items:center;"
-    "min-height:100vh;margin:0}"
-    ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px "
-    "rgba(0,0,0,.08);padding:32px;width:100%;max-width:320px;text-align:center}"
-    "h1{font-size:22px;color:#34c759;margin-bottom:8px}"
-    "p{color:#888;font-size:14px;line-height:1.6}"
-    ".check{display:inline-block;width:48px;height:48px;border-radius:50%;background:#34c759;margin-bottom:12px}"
-    ".check::after{content:'';display:inline-block;width:14px;height:26px;border:solid #fff;border-width:0 4px 4px "
-    "0;transform:rotate(45deg);margin-top:6px}"
-    "#cnt{color:#007aff;font-weight:bold}"
+    "body{font-family:-apple-system,sans-serif;background:#f2f3f5;display:flex;"
+    "justify-content:center;align-items:center;min-height:100vh;margin:0}"
+    ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.08);"
+    "padding:28px;width:100%;max-width:320px;text-align:center}"
+    ".err{background:#ff3b30;color:#fff;padding:12px 16px;border-radius:10px;"
+    "font-size:14px;margin-bottom:16px}"
+    "a{display:inline-block;margin-top:12px;padding:10px 24px;background:#007aff;"
+    "color:#fff;text-decoration:none;border-radius:8px;font-size:15px}"
     "</style></head><body>"
     "<div class=\"card\">"
-    "<div class=\"check\"></div>"
-    "<h1>配网成功!</h1>"
-    "<p>WiFi 连接请求已提交<br>小车热点即将关闭</p>"
-    "<p style=\"margin-top:16px\">本页 <span id=\"cnt\">2</span> 秒后自动关闭</p>"
-    "</div>"
-    "<script>"
-    "var n=2;var t=setInterval(function(){n--;"
-    "document.getElementById('cnt').textContent=n;"
-    "if(n<=0){clearInterval(t);window.close();}},1000);"
-    "</script>"
-    "</body></html>";
-
-static const char s_html_fail[] =
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/html; charset=utf-8\r\n"
-    "Connection: close\r\n\r\n"
-    "<!DOCTYPE html><html><head>"
-    "<meta charset=\"utf-8\">"
-    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-    "<title>配网失败</title>"
-    "<style>"
-    "body{font-family:-apple-system,BlinkMacSystemFont,Segoe "
-    "UI,Roboto,Helvetica,Arial,sans-serif;background:#f2f3f5;display:flex;justify-content:center;align-items:center;"
-    "min-height:100vh;margin:0}"
-    ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px "
-    "rgba(0,0,0,.08);padding:32px;width:100%;max-width:320px;text-align:center}"
-    "h1{font-size:22px;color:#ff3b30;margin-bottom:8px}"
-    "p{color:#555;font-size:15px;line-height:1.6}"
-    "#cnt{color:#007aff;font-weight:bold}"
-    "</style></head><body>"
-    "<div class=\"card\">"
-    "<h1>配网失败</h1>"
-    "<p>无法连接到指定的 WiFi<br>请检查 SSID 和密码是否正确</p>"
-    "<p style=\"margin-top:16px\"><span id=\"cnt\">2</span> 秒后返回配网页面</p>"
-    "</div>"
-    "<script>"
-    "var n=2;var t=setInterval(function(){n--;"
-    "document.getElementById('cnt').textContent=n;"
-    "if(n<=0){clearInterval(t);location.href='/';}},1000);"
-    "</script>"
-    "</body></html>";
+    "<div class=\"err\">连接失败，请检查密码后重新配网</div>"
+    "<a href=\"/\">返回配网页面</a>"
+    "</div></body></html>";
 
 static const char s_html_busy[] =
     "HTTP/1.1 200 OK\r\n"
@@ -258,13 +199,28 @@ static const char s_html_busy[] =
     "<p>上一条配网请求正在执行中<br>请稍候</p>"
     "</div></body></html>";
 
-// 302 重定向响应（动态 IP，在 handle_http_client 中生成）
+static const char s_html_submitted[] =
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: text/html; charset=utf-8\r\n"
+    "Connection: close\r\n\r\n"
+    "<!DOCTYPE html><html><head>"
+    "<meta charset=\"utf-8\">"
+    "<meta http-equiv=\"refresh\" content=\"3;url=/result\">"
+    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+    "<title>正在连接</title>"
+    "<style>"
+    "body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f2f3f5;display:flex;"
+    "justify-content:center;align-items:center;min-height:100vh;margin:0}"
+    ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.08);"
+    "padding:32px;width:100%;max-width:320px;text-align:center}"
+    "h1{font-size:18px;color:#007aff;margin-bottom:12px}"
+    "p{color:#888;font-size:14px;line-height:1.6}"
+    "</style></head><body>"
+    "<div class=\"card\">"
+    "<h1>正在连接 WiFi...</h1>"
+    "<p>3 秒后自动检查连接结果</p>"
+    "</div></body></html>";
 
-// ---------- 内部函数 ----------
-
-/**
- * @brief URL 解码（仅处理 %XX 和 +）
- */
 static int url_decode(const char *src, char *dst, size_t dst_len)
 {
     size_t i = 0, j = 0;
@@ -287,23 +243,17 @@ static int url_decode(const char *src, char *dst, size_t dst_len)
     return (int)j;
 }
 
-/**
- * @brief 从 application/x-www-form-urlencoded 数据中解析字段
- */
 static bool parse_form_body(const char *body, char *ssid, size_t ssid_len, char *password, size_t password_len)
 {
     const char *p = body;
     bool got_ssid = false;
-
-    ssid[0] = '\0';
-    password[0] = '\0';
+    ssid[0] = '\0'; password[0] = '\0';
 
     while (p != NULL && *p != '\0') {
         const char *amp = strchr(p, '&');
         char pair[256] = {0};
         size_t pair_len = (amp != NULL) ? (size_t)(amp - p) : strlen(p);
-        if (pair_len >= sizeof(pair))
-            pair_len = sizeof(pair) - 1;
+        if (pair_len >= sizeof(pair)) pair_len = sizeof(pair) - 1;
         (void)strncpy_s(pair, sizeof(pair), p, pair_len);
 
         char *eq = strchr(pair, '=');
@@ -319,19 +269,13 @@ static bool parse_form_body(const char *body, char *ssid, size_t ssid_len, char 
                 got_ssid = true;
             } else if (strcmp(key, "password") == 0) {
                 (void)strncpy_s(password, password_len, decoded, password_len - 1);
-                password[password_len - 1] = '\0';
             }
         }
-
         p = (amp != NULL) ? amp + 1 : NULL;
     }
-
     return got_ssid && (ssid[0] != '\0');
 }
 
-/**
- * @brief 执行一次 WiFi 扫描并更新缓存
- */
 static void refresh_scan_cache(void)
 {
     bsp_wifi_scan_item_t tmp[SCAN_CACHE_MAX];
@@ -341,24 +285,14 @@ static void refresh_scan_cache(void)
     g_scan_cache_ready = false;
     g_scan_cache_count = 0;
     if (ret == 0) {
-        if (cnt > SCAN_CACHE_MAX)
-            cnt = SCAN_CACHE_MAX;
-        for (uint32_t i = 0; i < cnt; i++)
-            g_scan_cache[i] = tmp[i];
+        if (cnt > SCAN_CACHE_MAX) cnt = SCAN_CACHE_MAX;
+        for (uint32_t i = 0; i < cnt; i++) g_scan_cache[i] = tmp[i];
         g_scan_cache_count = cnt;
         g_scan_cache_ready = true;
     }
     portal_unlock();
-    if (ret == 0) {
-        printf("[Portal] WiFi 扫描缓存更新: %u 条\r\n", cnt);
-    } else {
-        printf("[Portal] WiFi 扫描失败\r\n");
-    }
 }
 
-/**
- * @brief 将扫描结果列表序列化为 JSON 并发送
- */
 static void send_scan_json(int client_fd, bsp_wifi_scan_item_t *items, uint32_t count, bool ok)
 {
     size_t buf_size = 256 + count * 96;
@@ -368,36 +302,24 @@ static void send_scan_json(int client_fd, bsp_wifi_scan_item_t *items, uint32_t 
         return;
     }
 
-    int n = snprintf(json, buf_size,
-                     "HTTP/1.1 200 OK\r\n"
-                     "Content-Type: application/json\r\n"
-                     "Connection: close\r\n\r\n"
-                     "{\"ok\":%s,\"list\":[",
-                     ok ? "true" : "false");
-    if (n < 0 || (size_t)n >= buf_size)
-        n = (int)buf_size - 1;
-
+    int n = snprintf(json, buf_size, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"ok\":%s,\"list\":[", ok ? "true" : "false");
     for (uint32_t i = 0; i < count && n < (int)buf_size - 1; i++) {
         char esc[68] = {0};
         size_t ej = 0;
         for (size_t k = 0; items[i].ssid[k] != '\0' && ej + 2 < sizeof(esc); k++) {
             char c = items[i].ssid[k];
-            if (c == '"' || c == '\\')
-                esc[ej++] = '\\';
+            if (c == '"' || c == '\\') esc[ej++] = '\\';
             esc[ej++] = c;
         }
         esc[ej] = '\0';
 
-        int wrote =
-            snprintf(json + n, buf_size - n, "%s{\"ssid\":\"%s\",\"rssi\":%d,\"sec\":%u,\"ch\":%u}",
-                     (i == 0) ? "" : ",", esc, items[i].rssi, (unsigned)items[i].security, (unsigned)items[i].channel);
-        if (wrote > 0)
-            n += wrote;
+        int wrote = snprintf(json + n, buf_size - n, "%s{\"ssid\":\"%s\",\"rssi\":%d,\"sec\":%u,\"ch\":%u}",
+                             (i == 0) ? "" : ",", esc, items[i].rssi, (unsigned)items[i].security, (unsigned)items[i].channel);
+        if (wrote > 0) n += wrote;
     }
     if (n >= 0 && (size_t)n < buf_size) {
         int wrote = snprintf(json + n, buf_size - n, "]}\r\n");
-        if (wrote > 0)
-            n += wrote;
+        if (wrote > 0) n += wrote;
     }
 
     (void)lwip_send(client_fd, json, (size_t)n, 0);
@@ -405,71 +327,45 @@ static void send_scan_json(int client_fd, bsp_wifi_scan_item_t *items, uint32_t 
     osal_kfree(json);
 }
 
-/**
- * @brief 处理 /scan 请求，扫描附近 WiFi 并以 JSON 返回
- * @param client_fd 客户端 socket
- * @param query 查询字符串，支持 ?refresh=1 强制刷新
- * @note 默认返回缓存结果；refresh=1 时实时扫描并更新缓存
- */
 static void handle_scan_request(int client_fd, const char *query)
 {
     bool force_refresh = (query != NULL && strstr(query, "refresh=1") != NULL);
-
     if (force_refresh) {
         refresh_scan_cache();
     }
 
-    // 拷贝缓存快照再发送，避免持锁期间走慢路径
     bsp_wifi_scan_item_t snap[SCAN_CACHE_MAX];
     uint32_t snap_cnt = 0;
     bool ready;
     portal_lock();
     ready = g_scan_cache_ready;
     snap_cnt = g_scan_cache_count;
-    for (uint32_t i = 0; i < snap_cnt; i++)
-        snap[i] = g_scan_cache[i];
+    for (uint32_t i = 0; i < snap_cnt; i++) snap[i] = g_scan_cache[i];
     portal_unlock();
 
     if (!ready || snap_cnt == 0) {
-        // 缓存为空（首次或扫描失败），尝试实时扫描一次
         refresh_scan_cache();
         portal_lock();
         ready = g_scan_cache_ready;
         snap_cnt = g_scan_cache_count;
-        for (uint32_t i = 0; i < snap_cnt; i++)
-            snap[i] = g_scan_cache[i];
+        for (uint32_t i = 0; i < snap_cnt; i++) snap[i] = g_scan_cache[i];
         portal_unlock();
     }
-
     send_scan_json(client_fd, snap, snap_cnt, ready);
-    printf("[Portal] /scan%s 返回 %u 条结果\r\n", force_refresh ? "?refresh=1" : "", snap_cnt);
 }
 
-/**
- * @brief 处理 /status 请求，返回 JSON 状态
- */
 static void handle_status_request(int client_fd)
 {
     const char *status_str = "idle";
-    char ip[BUF_IP] = {0};
+    char ip[16] = {0};
 
     switch (g_portal_status) {
-        case PORTAL_STATUS_RUNNING:
-            status_str = "running";
-            break;
+        case PORTAL_STATUS_RUNNING:          status_str = "running";    break;
         case PORTAL_STATUS_CONFIG_RECEIVED:
-        case PORTAL_STATUS_SWITCHING:
-            status_str = "connecting";
-            break;
-        case PORTAL_STATUS_SUCCESS:
-            status_str = "connected";
-            break;
-        case PORTAL_STATUS_FAILED:
-            status_str = "failed";
-            break;
-        default:
-            status_str = "idle";
-            break;
+        case PORTAL_STATUS_SWITCHING:        status_str = "connecting"; break;
+        case PORTAL_STATUS_SUCCESS:          status_str = "connected";  break;
+        case PORTAL_STATUS_FAILED:           status_str = "failed";     break;
+        default:                             status_str = "idle";       break;
     }
 
     if (g_portal_status == PORTAL_STATUS_SUCCESS) {
@@ -477,41 +373,24 @@ static void handle_status_request(int client_fd)
     }
 
     char json[256];
-    (void)snprintf(json, sizeof(json),
-                   "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: application/json\r\n"
-                   "Connection: close\r\n\r\n"
-                   "{\"status\":\"%s\",\"ip\":\"%s\"}\r\n",
-                   status_str, ip);
-
+    (void)snprintf(json, sizeof(json), "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"status\":\"%s\",\"ip\":\"%s\"}\r\n", status_str, ip);
     http_send_response_and_close(client_fd, json);
 }
 
-
-/**
- * @brief 处理单个 HTTP 连接
- */
 static void handle_http_client(int client_fd)
 {
     char buf[CAPTIVE_HTTP_BUF_SIZE];
-    int total = 0;
-    int n;
+    int total = 0, n;
 
-    // 设置接收超时
     struct timeval tv = {CAPTIVE_HTTP_RECV_TIMEOUT_MS / 1000, (CAPTIVE_HTTP_RECV_TIMEOUT_MS % 1000) * 1000};
     lwip_setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    // 读取请求头
     while (total < (int)sizeof(buf) - 1) {
         n = lwip_recv(client_fd, buf + total, sizeof(buf) - 1 - total, 0);
-        if (n <= 0)
-            break;
+        if (n <= 0) break;
         total += n;
         buf[total] = '\0';
-
-        // 检查是否收到完整请求头（\r\n\r\n）
-        if (strstr(buf, "\r\n\r\n") != NULL)
-            break;
+        if (strstr(buf, "\r\n\r\n") != NULL) break;
     }
 
     if (total <= 0) {
@@ -520,11 +399,9 @@ static void handle_http_client(int client_fd)
     }
     buf[total] = '\0';
 
-    // 解析请求方法
     bool is_get = (strncmp(buf, "GET ", 4) == 0);
     bool is_post = (strncmp(buf, "POST ", 5) == 0);
 
-    // 解析路径（含 query string 分离）
     char path[32] = {0};
     const char *query = NULL;
     const char *path_start = strchr(buf, ' ');
@@ -533,11 +410,8 @@ static void handle_http_client(int client_fd)
         const char *path_end = strchr(path_start, ' ');
         if (path_end != NULL) {
             size_t len = (size_t)(path_end - path_start);
-            if (len >= sizeof(path))
-                len = sizeof(path) - 1;
+            if (len >= sizeof(path)) len = sizeof(path) - 1;
             (void)strncpy_s(path, sizeof(path), path_start, len);
-
-            // 分离 query string
             char *q = strchr(path, '?');
             if (q != NULL) {
                 *q = '\0';
@@ -546,69 +420,56 @@ static void handle_http_client(int client_fd)
         }
     }
 
-    // ========== 核心修复：检查 Host ==========
-    // 判断浏览器请求的域名是不是小车自己的 IP
-    bool is_direct_ip = false;
-    char target_host[64];
-    (void)snprintf(target_host, sizeof(target_host), "Host: %s", g_ap_ip_str);
-    if (strstr(buf, target_host) != NULL) {
-        is_direct_ip = true;
-    }
-
-    // 如果是通过 DNS 劫持过来的（Host 不是小车 IP）
+    // 重定向检测：如果请求的目的主机不是 192.168.1.1，则强制 302 重定向到静态网关
+    bool is_direct_ip = (strstr(buf, "Host: 192.168.1.1") != NULL);
     if (!is_direct_ip) {
-        // 302 强制跳转到小车真实 IP
         char redirect_resp[256];
         (void)snprintf(redirect_resp, sizeof(redirect_resp),
-                       "HTTP/1.1 302 Found\r\n"
-                       "Location: http://%s/\r\n"
-                       "Content-Length: 0\r\n"
-                       "Connection: close\r\n\r\n",
-                       g_ap_ip_str);
+                       "HTTP/1.1 302 Found\r\nLocation: http://%s/%s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                       PORTAL_STATIC_IP,
+                       (g_portal_status == PORTAL_STATUS_FAILED) ? "?fail=1" : "");
         http_send_response_and_close(client_fd, redirect_resp);
         return;
     }
-    // ========================================
 
-    // 控制相关路径 (/control, /api/...)
-    if (captive_portal_control_handle(client_fd, is_get, path, query)) {
-        return;
-    }
+    if (captive_portal_control_handle(client_fd, is_get, path, query)) return;
+    if (is_get && strcmp(path, "/status") == 0) { handle_status_request(client_fd); return; }
 
-    // GET /status -> 返回 JSON
-    if (is_get && strcmp(path, "/status") == 0) {
-        handle_status_request(client_fd);
-        return;
-    }
-
-    // GET /scan -> 扫描附近 WiFi 并返回 JSON 列表
-    if (is_get && strcmp(path, "/scan") == 0) {
-        handle_scan_request(client_fd, query);
-        return;
-    }
-
-    // GET / -> 返回真正的配网页面
-    if (is_get && strcmp(path, "/") == 0) {
+    // 强制探测 URL 拦截
+    if (is_get && (strcmp(path, "/generate_204") == 0 ||
+                   strcmp(path, "/hotspot-detect.html") == 0 ||
+                   strcmp(path, "/ncsi.txt") == 0 ||
+                   strcmp(path, "/success.txt") == 0 ||
+                   strcmp(path, "/redirect") == 0)) {
         http_send_response_and_close(client_fd, s_html_page);
         return;
     }
 
-    // POST /config 处理配网
+    if (is_get && strcmp(path, "/scan") == 0) { handle_scan_request(client_fd, query); return; }
+    if (is_get && strcmp(path, "/result") == 0) {
+        if (g_portal_status == PORTAL_STATUS_FAILED) {
+            http_send_response_and_close(client_fd, s_html_fail_result);
+        } else {
+            char red[128];
+            snprintf(red, sizeof(red),
+                     "HTTP/1.1 302 Found\r\nLocation: http://%s/\r\n\r\n", PORTAL_STATIC_IP);
+            http_send_response_and_close(client_fd, red);
+        }
+        return;
+    }
+
+    if (is_get && strcmp(path, "/") == 0) { http_send_response_and_close(client_fd, s_html_page); return; }
+
     if (is_post && strcmp(path, "/config") == 0) {
-        // 检查是否正在处理其他配网请求
         if (g_portal_status == PORTAL_STATUS_CONFIG_RECEIVED || g_portal_status == PORTAL_STATUS_SWITCHING) {
             http_send_response_and_close(client_fd, s_html_busy);
             return;
         }
 
-        // 解析 Content-Length
         int content_len = 0;
         const char *cl = strstr(buf, "Content-Length:");
-        if (cl != NULL) {
-            sscanf(cl + 15, "%d", &content_len);
-        }
+        if (cl != NULL) sscanf(cl + 15, "%d", &content_len);
 
-        // 提取已接收的 body
         char *body_start = strstr(buf, "\r\n\r\n");
         int body_received = 0;
         char body[CAPTIVE_HTTP_MAX_BODY] = {0};
@@ -618,14 +479,12 @@ static void handle_http_client(int client_fd)
             body_received = total - (int)(body_start - buf);
             if (body_received > 0) {
                 int copy_len = body_received;
-                if (copy_len >= (int)sizeof(body))
-                    copy_len = (int)sizeof(body) - 1;
+                if (copy_len >= (int)sizeof(body)) copy_len = (int)sizeof(body) - 1;
                 memcpy(body, body_start, copy_len);
                 body[copy_len] = '\0';
             }
         }
 
-        // 如果 body 未收完，继续接收
         if (content_len > body_received && content_len < (int)sizeof(body)) {
             int need = content_len - body_received;
             n = lwip_recv(client_fd, body + body_received, need, 0);
@@ -635,148 +494,90 @@ static void handle_http_client(int client_fd)
             }
         }
 
-        // 解析表单
-        char ssid[32] = {0};
-        char password[64] = {0};
+        char ssid[32] = {0}, password[64] = {0};
         if (parse_form_body(body, ssid, sizeof(ssid), password, sizeof(password))) {
-            printf("[Portal] 收到配网请求: SSID='%s', 密码长度=%zu\r\n", ssid, strlen(password));
-
             portal_set_status(PORTAL_STATUS_CONFIG_RECEIVED, "配网中...");
-
-            // 保存配置
             storage_service_save_wifi_config(ssid, password);
 
-            // 保存到全局变量供后台任务使用
             portal_lock();
             (void)strncpy_s(g_switch_ssid, sizeof(g_switch_ssid), ssid, sizeof(g_switch_ssid) - 1);
             (void)strncpy_s(g_switch_password, sizeof(g_switch_password), password, sizeof(g_switch_password) - 1);
             portal_unlock();
 
-            // 先执行 WiFi 切换，再根据结果返回不同页面
             portal_set_status(PORTAL_STATUS_SWITCHING, "切换STA");
-            printf("[Portal] 正在从 AP 切换到 STA 模式...\r\n");
-            int wifi_ret = robot_wifi_apply_config(g_switch_ssid, g_switch_password);
-
-            if (wifi_ret == 0) {
-                portal_set_status(PORTAL_STATUS_SUCCESS, "配网成功");
-                http_send_response_and_close(client_fd, s_html_success);
-            } else {
-                portal_set_status(PORTAL_STATUS_FAILED, "配网失败");
-                http_send_response_and_close(client_fd, s_html_fail);
-            }
+            bsp_wifi_connect_ap_from_portal(g_switch_ssid, g_switch_password);
+            http_send_response_and_close(client_fd, s_html_submitted);
             return;
         } else {
-            http_send_response_and_close(client_fd, s_html_fail);
+            http_send_response_and_close(client_fd, s_html_submitted);
             return;
         }
     }
 
-    // 访问了 IP 的其他不存在路径，也跳回根目录
     char redirect_root[256];
     (void)snprintf(redirect_root, sizeof(redirect_root),
-                   "HTTP/1.1 302 Found\r\n"
-                   "Location: http://%s/\r\n"
-                   "Content-Length: 0\r\n"
-                   "Connection: close\r\n\r\n",
-                   g_ap_ip_str);
+                   "HTTP/1.1 302 Found\r\nLocation: http://%s/%s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                   PORTAL_STATIC_IP,
+                   (g_portal_status == PORTAL_STATUS_FAILED) ? "?fail=1" : "");
     http_send_response_and_close(client_fd, redirect_root);
 }
 
-/**
- * @brief 启动 HTTP 监听 socket
- */
 static int http_server_start(void)
 {
     int fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) {
-        printf("[Portal] HTTP socket 创建失败\r\n");
-        return -1;
-    }
-
+    if (fd < 0) return -1;
     int opt = 1;
     lwip_setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     struct sockaddr_in addr = {0};
     addr.sin_family = AF_INET;
-    addr.sin_port = lwip_htons(CAPTIVE_PORTAL_HTTP_PORT);
+    addr.sin_port = lwip_htons(80);
     addr.sin_addr.s_addr = INADDR_ANY;
 
     if (lwip_bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        printf("[Portal] HTTP bind 失败\r\n");
         lwip_close(fd);
         return -1;
     }
-
     if (lwip_listen(fd, 5) < 0) {
-        printf("[Portal] HTTP listen 失败\r\n");
         lwip_close(fd);
         return -1;
     }
-
-    printf("[Portal] HTTP 服务器已启动: port=%d\r\n", CAPTIVE_PORTAL_HTTP_PORT);
+    printf("[Portal] HTTP 已启动:80\r\n");
     return fd;
 }
 
-/**
- * @brief 关闭 HTTP 服务器
- */
 static void http_server_stop(int fd)
 {
-    if (fd >= 0) {
-        lwip_close(fd);
-        printf("[Portal] HTTP 服务器已停止\r\n");
-    }
+    if (fd >= 0) lwip_close(fd);
 }
 
-/**
- * @brief 启动 DNS 劫持服务器（UDP 端口 53）
- * @note 将所有 A 记录查询重定向到 192.168.1.1
- */
 static int dns_server_start(void)
 {
     int fd = lwip_socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd < 0) {
-        printf("[Portal] DNS socket 创建失败\r\n");
-        return -1;
-    }
-
+    if (fd < 0) return -1;
     int opt = 1;
     lwip_setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     struct sockaddr_in addr = {0};
     addr.sin_family = AF_INET;
-    addr.sin_port = lwip_htons(CAPTIVE_PORTAL_DNS_PORT);
+    addr.sin_port = lwip_htons(53);
     addr.sin_addr.s_addr = INADDR_ANY;
 
     if (lwip_bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        printf("[Portal] DNS bind 失败\r\n");
         lwip_close(fd);
         return -1;
     }
-
-    // 设置接收超时，使轮询可以定期检查退出标志
-    struct timeval tv = {0, 100000}; // 100ms
+    struct timeval tv = {0, 100000};
     lwip_setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-    printf("[Portal] DNS 服务器已启动: port=%d\r\n", CAPTIVE_PORTAL_DNS_PORT);
+    printf("[Portal] DNS 已启动:53\r\n");
     return fd;
 }
 
-/**
- * @brief 关闭 DNS 服务器
- */
 static void dns_server_stop(int fd)
 {
-    if (fd >= 0) {
-        lwip_close(fd);
-        printf("[Portal] DNS 服务器已停止\r\n");
-    }
+    if (fd >= 0) lwip_close(fd);
 }
 
-/**
- * @brief 处理单个 DNS 查询
- * @note 解析 DNS 请求，对所有 A 记录查询返回 192.168.1.1
- */
 static void dns_server_handle(int fd)
 {
     struct sockaddr_in client_addr;
@@ -785,40 +586,31 @@ static void dns_server_handle(int fd)
     unsigned char resp[CAPTIVE_DNS_BUF_SIZE];
 
     int n = lwip_recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr *)&client_addr, &addr_len);
-    if (n < 12)
-        return;
-    // 只处理标准查询（QR=0）
-    if ((buf[2] & 0x80) != 0)
-        return;
+    if (n < 12) return;
+    if ((buf[2] & 0x80) != 0) return;
 
-    // 找到问题段结尾（域名标签序列 + QTYPE(2) + QCLASS(2)）
     int pos = 12;
     while (pos < n && buf[pos] != 0) {
         if ((buf[pos] & 0xC0) == 0xC0) { pos += 2; goto copy_question; }
         pos += 1 + buf[pos];
     }
-    pos++; // 跳过 \0 结束符
+    pos++;
 copy_question:
-    pos += 4; // QTYPE + QCLASS
+    pos += 4;
     int q_len = pos - 12;
-    if (pos > n || 12 + q_len + 16 > (int)sizeof(resp))
-        return;
+    if (pos > n || 12 + q_len + 16 > (int)sizeof(resp)) return;
 
-    // 响应头：复制事务 ID，设置标准响应 + 1 条回答
     memcpy(resp, buf, 12);
     resp[2] = 0x81; resp[3] = 0x80;
-    resp[6] = 0x00; resp[7] = 0x01; // Answer RRs = 1
+    resp[6] = 0x00; resp[7] = 0x01;
     resp[8] = 0x00; resp[9] = 0x00;
     resp[10] = 0x00; resp[11] = 0x00;
 
-    // 复制问题段
     memcpy(resp + 12, buf + 12, q_len);
     int resp_len = 12 + q_len;
 
-    // A 记录：Name→偏移12, Type A, Class IN, TTL 300s, RDATA=AP IP
-    unsigned int ap_ip = inet_addr(g_ap_ip_str);
-    if (ap_ip == 0 || ap_ip == (unsigned int)(-1))
-        ap_ip = inet_addr("192.168.1.1");
+    // 直接对任意 A 记录 DNS 查询返回 192.168.1.1
+    unsigned int ap_ip = inet_addr(PORTAL_STATIC_IP);
     static const uint8_t a_rr_prefix[] = {0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0x2C, 0x00, 0x04};
     memcpy(resp + resp_len, a_rr_prefix, sizeof(a_rr_prefix));
     resp_len += sizeof(a_rr_prefix);
@@ -828,11 +620,6 @@ copy_question:
     (void)lwip_sendto(fd, resp, resp_len, 0, (struct sockaddr *)&client_addr, addr_len);
 }
 
-/**
- * @brief 配网服务主任务
- * @note 使用 lwip_select 同时监听 HTTP (TCP/80) 和 DNS (UDP/53) 端口，
- *       避免串行轮询导致的 DNS 查询漏接问题。
- */
 static int captive_portal_task(void *arg)
 {
     (void)arg;
@@ -842,20 +629,13 @@ static int captive_portal_task(void *arg)
         bsp_wifi_mode_t mode = bsp_wifi_get_mode();
 
         if (mode == BSP_WIFI_MODE_AP) {
-            // AP 模式下启动服务器（HTTP 必须先启动）
             if (!server_running) {
+                printf("[Portal] 检测到 AP 模式，启动 HTTP/DNS\r\n");
                 g_http_fd = http_server_start();
                 if (g_http_fd >= 0) {
                     g_dns_fd = dns_server_start();
                     server_running = true;
                     portal_set_status(PORTAL_STATUS_RUNNING, "等待配网");
-
-                    // 更新 IP 显示
-                    (void)bsp_wifi_get_ip(g_ap_ip_str, sizeof(g_ap_ip_str));
-                    printf("[Portal] AP IP: %s, 请用手机连接 %s 后访问 http://%s/\r\n", g_ap_ip_str, BSP_WIFI_AP_SSID,
-                           g_ap_ip_str);
-
-                    // AP 启动后自动扫描一次 WiFi 并缓存
                     refresh_scan_cache();
                 }
             }
@@ -868,45 +648,37 @@ static int captive_portal_task(void *arg)
 
                 if (g_dns_fd >= 0) {
                     FD_SET(g_dns_fd, &readset);
-                    if (g_dns_fd > max_fd)
-                        max_fd = g_dns_fd;
+                    if (g_dns_fd > max_fd) max_fd = g_dns_fd;
                 }
 
-                // select 500ms 超时，既能及时响应又能定期检查退出标志
                 struct timeval tv = {0, 500000};
                 int ret = lwip_select(max_fd + 1, &readset, NULL, NULL, &tv);
 
                 if (ret > 0) {
-                    // 优先处理 DNS 查询（低延迟）
                     if (g_dns_fd >= 0 && FD_ISSET(g_dns_fd, &readset)) {
                         dns_server_handle(g_dns_fd);
                     }
-                    // 处理 HTTP 连接
                     if (FD_ISSET(g_http_fd, &readset)) {
                         struct sockaddr_in client_addr;
                         socklen_t addr_len = sizeof(client_addr);
                         int client_fd = lwip_accept(g_http_fd, (struct sockaddr *)&client_addr, &addr_len);
                         if (client_fd >= 0) {
-                            printf("[Portal] 客户端连接: %s\r\n", inet_ntoa(client_addr.sin_addr));
                             handle_http_client(client_fd);
                         }
                     }
                 }
             }
         } else {
-            // 非 AP 模式关闭所有服务器
             if (server_running) {
                 http_server_stop(g_http_fd);
                 dns_server_stop(g_dns_fd);
-                g_http_fd = -1;
-                g_dns_fd = -1;
+                g_http_fd = -1; g_dns_fd = -1;
                 server_running = false;
                 portal_set_status(PORTAL_STATUS_IDLE, NULL);
             }
-            // 阻塞等待 AP_READY / EXIT 事件，避免 500ms 轮询
+            // 超时 500ms：事件正常立即唤醒，事件丢失时兜底检测 AP 模式
             unsigned int wait_mask = PORTAL_EVT_AP_READY | PORTAL_EVT_EXIT;
-            (void)osal_event_read(&g_portal_event, wait_mask, OSAL_WAIT_FOREVER,
-                                  OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
+            (void)osal_event_read(&g_portal_event, wait_mask, 500, OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
         }
     }
 
@@ -914,49 +686,31 @@ static int captive_portal_task(void *arg)
         http_server_stop(g_http_fd);
         dns_server_stop(g_dns_fd);
     }
-    // 注意：不在任务体内写 g_portal_task = NULL（LiteOS 反模式，可能 use-after-free）。
-    // portal_task 实际为常驻任务，正常路径不会走到这里。
     return 0;
 }
 
-// ---------- 公共接口 ----------
-
 void captive_portal_service_init(void)
 {
-    if (g_portal_task != NULL)
-        return;
-
+    if (g_portal_task != NULL) return;
     if (!g_portal_lock_inited) {
-        if (osal_mutex_init(&g_portal_lock) == OSAL_SUCCESS)
-            g_portal_lock_inited = true;
+        if (osal_mutex_init(&g_portal_lock) == OSAL_SUCCESS) g_portal_lock_inited = true;
     }
     if (!g_portal_event_inited) {
-        if (osal_event_init(&g_portal_event) == OSAL_SUCCESS)
-            g_portal_event_inited = true;
+        if (osal_event_init(&g_portal_event) == OSAL_SUCCESS) g_portal_event_inited = true;
     }
 
     g_task_should_exit = false;
-
-    g_portal_task = robot_task_create_locked("portal_task", (osal_kthread_handler)captive_portal_task, NULL,
-                                             CAPTIVE_PORTAL_STACK_SIZE, CAPTIVE_PORTAL_TASK_PRIO);
-
-    if (g_portal_task != NULL) {
-        printf("[Portal] Captive Portal 配网服务已初始化\r\n");
-    }
+    g_portal_task = robot_task_create_locked("portal_task", (osal_kthread_handler)captive_portal_task, NULL, CAPTIVE_PORTAL_STACK_SIZE, CAPTIVE_PORTAL_TASK_PRIO);
 }
 
 bool captive_portal_service_is_running(void)
 {
-    return (g_portal_status == PORTAL_STATUS_RUNNING || g_portal_status == PORTAL_STATUS_CONFIG_RECEIVED ||
-            g_portal_status == PORTAL_STATUS_SWITCHING);
+    return (g_portal_status == PORTAL_STATUS_RUNNING || g_portal_status == PORTAL_STATUS_CONFIG_RECEIVED || g_portal_status == PORTAL_STATUS_SWITCHING);
 }
 
 const char *captive_portal_service_get_ap_ip(void)
 {
-    if (bsp_wifi_get_mode() == BSP_WIFI_MODE_AP) {
-        (void)bsp_wifi_get_ip(g_ap_ip_str, sizeof(g_ap_ip_str));
-    }
-    return g_ap_ip_str;
+    return PORTAL_STATIC_IP;
 }
 
 const char *captive_portal_service_get_status_text(void)
@@ -966,12 +720,15 @@ const char *captive_portal_service_get_status_text(void)
 
 void captive_portal_service_notify_ap_ready(void)
 {
-    if (g_portal_event_inited)
-        (void)osal_event_write(&g_portal_event, PORTAL_EVT_AP_READY);
+    if (g_portal_event_inited) (void)osal_event_write(&g_portal_event, PORTAL_EVT_AP_READY);
 }
 
 void captive_portal_service_notify_ap_stopped(void)
 {
-    if (g_portal_event_inited)
-        (void)osal_event_write(&g_portal_event, PORTAL_EVT_AP_STOPPED);
+    if (g_portal_event_inited) (void)osal_event_write(&g_portal_event, PORTAL_EVT_AP_STOPPED);
+}
+
+void captive_portal_service_notify_sta_fail(void)
+{
+    portal_set_status(PORTAL_STATUS_FAILED, "连接失败，请重新配网");
 }
