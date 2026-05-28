@@ -15,10 +15,10 @@
 #include "cmsis_os2.h"
 #include "../../drivers/wifi_client/bsp_wifi_sta.h"
 
-#define WIFI_TASK_STACK_SIZE 0x2000
+#define WIFI_TASK_STACK_SIZE 0x2000 // WiFi任务栈大小
 
-#define EXAMPLE_WIFI_SSID "BS-8"
-#define EXAMPLE_WIFI_PASSWORD "BS88888888"
+#define EXAMPLE_WIFI_SSID "BS-8"           // WiFi热点名称
+#define EXAMPLE_WIFI_PASSWORD "BS88888888" // WiFi热点密码
 
 /* WiFi 连接测试任务：同步连接 AP 并获取 IP 地址 */
 static void wifi_task_entry(const char *arg)

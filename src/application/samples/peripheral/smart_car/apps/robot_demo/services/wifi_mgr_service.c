@@ -14,15 +14,15 @@
 #include "../../../platform/storage_service.h"
 #include "captive_portal_service.h"
 
-#define MGR_STACK_SIZE 2048
-#define MGR_PRIO 20
+#define MGR_STACK_SIZE 2048 // 管理任务栈大小
+#define MGR_PRIO 20         // 管理任务优先级
 
-static osal_task *s_mgr_task = NULL;
-static unsigned long s_msg_queue = 0;
-static bool s_sta_from_portal = false;
-static bool s_user_initiated = false;
-static char s_prev_ssid[32] = {0};
-static char s_prev_pwd[64] = {0};
+static osal_task *s_mgr_task = NULL;   // WiFi 管理任务句柄
+static unsigned long s_msg_queue = 0;  // WiFi 管理消息队列 ID
+static bool s_sta_from_portal = false; // 本次 STA 连接是否来自 Portal 配网
+static bool s_user_initiated = false;  // 是否为用户主动发起的连接
+static char s_prev_ssid[32] = {0};     // 上次连接的 SSID，用于重连判断
+static char s_prev_pwd[64] = {0};      // 上次连接的密码，用于重连判断
 
 /* WiFi事件回调，将底层事件转换为消息投递到管理任务 */
 static void wifi_event_cb(bsp_wifi_event_t event, void *arg)

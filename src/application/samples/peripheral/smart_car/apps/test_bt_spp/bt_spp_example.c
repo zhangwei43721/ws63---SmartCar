@@ -23,9 +23,9 @@
 #include "app_init.h"
 #include "../../drivers/bt_spp_server/bsp_bt_spp.h" // 引用封装好的头文件
 
-#define BT_SPP_TASK_STACK_SIZE 0x1000
-#define BT_SPP_TASK_PRIO 24
-#define BT_DEVICE_NAME "WS63_UART" // 你的蓝牙名字
+#define BT_SPP_TASK_STACK_SIZE 0x1000 // 蓝牙SPP任务栈大小
+#define BT_SPP_TASK_PRIO 24           // 蓝牙SPP任务优先级
+#define BT_DEVICE_NAME "WS63_UART"    // 你的蓝牙名字
 
 /* SPP 数据接收回调：打印收到的数据并原样回显 */
 static void spp_data_recived_handler(const uint8_t *data, uint32_t len)

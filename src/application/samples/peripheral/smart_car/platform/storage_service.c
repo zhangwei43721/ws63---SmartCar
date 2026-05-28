@@ -39,9 +39,9 @@ typedef struct {
     uint8_t reserved[8]; // 保留字段，用于未来扩展
 } robot_nv_config_t;
 
-#define ROBOT_NV_CONFIG_KEY ((uint16_t)0x2000)
+#define ROBOT_NV_CONFIG_KEY ((uint16_t)0x2000)       // NV 存储键值
 #define ROBOT_NV_CONFIG_MAGIC ((uint32_t)0x524F4254) // "ROBT"
-#define ROBOT_NV_CONFIG_VERSION ((uint16_t)2)
+#define ROBOT_NV_CONFIG_VERSION ((uint16_t)2)        // NV 配置结构体版本号
 
 static robot_nv_config_t g_nv_cfg = {0};    // NV 存储的配置数据
 static osal_mutex g_storage_mutex;          // 保护 NV 存储访问的互斥锁

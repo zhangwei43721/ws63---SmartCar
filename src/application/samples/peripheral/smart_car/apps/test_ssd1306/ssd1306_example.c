@@ -27,14 +27,14 @@
 #include "app_init.h"
 
 // I2C 引脚定义 (使用 I2C1)
-#define CONFIG_I2C_SCL_MASTER_PIN 15
-#define CONFIG_I2C_SDA_MASTER_PIN 16
+#define CONFIG_I2C_SCL_MASTER_PIN 15 // I2C SCL引脚号
+#define CONFIG_I2C_SDA_MASTER_PIN 16 // I2C SDA引脚号
 #define CONFIG_I2C_MASTER_PIN_MODE 2 // I2C功能模式
-#define I2C_MASTER_ADDR 0x0
-#define I2C_SLAVE_ADDR 0x3C     // OLED默认地址
-#define I2C_SET_BANDRATE 400000 // 400kHz
-#define I2C_TASK_STACK_SIZE 0x1000
-#define I2C_TASK_PRIO 17
+#define I2C_MASTER_ADDR 0x0          // I2C主机地址
+#define I2C_SLAVE_ADDR 0x3C          // OLED默认地址
+#define I2C_SET_BANDRATE 400000      // 400kHz
+#define I2C_TASK_STACK_SIZE 0x1000   // I2C OLED任务栈大小
+#define I2C_TASK_PRIO 17             // I2C OLED任务优先级
 
 /**
  * @brief 初始化I2C引脚

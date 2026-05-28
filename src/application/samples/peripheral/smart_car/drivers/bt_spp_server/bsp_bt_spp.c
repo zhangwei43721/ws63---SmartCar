@@ -41,8 +41,8 @@
 #include "systick.h"
 
 // ==================== 常量定义 ====================
-#define OCTET_BIT_LEN 8
-#define UUID_LEN_2 2
+#define OCTET_BIT_LEN 8 // 字节位数
+#define UUID_LEN_2 2    // 2 字节 UUID 长度
 
 // ==================== 用户UUID配置 ====================
 // 服务 UUID: 0000ABCD-...
@@ -52,30 +52,30 @@
 // CCCD UUID: 0x2902
 #define BSP_BT_SPP_CCCD_UUID 0x2902
 
-#define BSP_BT_SPP_SERVER_ID 1
-#define BSP_BT_SPP_MTU_SIZE 247
-#define BSP_BT_SPP_BUFFER_SIZE 244
-#define NAME_MAX_LENGTH 20
+#define BSP_BT_SPP_SERVER_ID 1     // SPP 服务 ID
+#define BSP_BT_SPP_MTU_SIZE 247    // SPP MTU 大小
+#define BSP_BT_SPP_BUFFER_SIZE 244 // SPP 发送缓冲区大小
+#define NAME_MAX_LENGTH 20         // 设备名最大长度
 
 // BLE 广播相关定义
-#define BLE_ADV_FLAG_LEN 0x03
-#define BLE_ADV_FLAG_DATA 0x05
-#define BLE_ADV_APPEARANCE_LENGTH 4
-#define BLE_ADV_APPEARANCE_DATA_TYPE 0x19
-#define BLE_ADV_CATEGORY_KEYBOARD_VALUE 0x0080
-#define BLE_ADV_PARAM_DATATYPE_LENGTH 1
-#define BLE_ADV_LOCAL_NAME_DATA_TYPE 0x09
-#define BLE_ADV_TX_POWER_LEVEL 0x0A
-#define BLE_SCAN_RSP_TX_POWER_LEVEL_LEN 0x03
-#define EXT_ADV_OR_SCAN_RSP_DATA_LEN 251
+#define BLE_ADV_FLAG_LEN 0x03                  // 广播标志长度
+#define BLE_ADV_FLAG_DATA 0x05                 // 广播标志数据
+#define BLE_ADV_APPEARANCE_LENGTH 4            // 外观字段长度
+#define BLE_ADV_APPEARANCE_DATA_TYPE 0x19      // 外观数据类型
+#define BLE_ADV_CATEGORY_KEYBOARD_VALUE 0x0080 // 键盘外观值
+#define BLE_ADV_PARAM_DATATYPE_LENGTH 1        // 参数数据类型长度
+#define BLE_ADV_LOCAL_NAME_DATA_TYPE 0x09      // 本地名称数据类型
+#define BLE_ADV_TX_POWER_LEVEL 0x0A            // TX 功率等级类型
+#define BLE_SCAN_RSP_TX_POWER_LEVEL_LEN 0x03   // 扫描响应功率长度
+#define EXT_ADV_OR_SCAN_RSP_DATA_LEN 251       // 扩展广播数据最大长度
 
-#define BLE_ADV_MIN_INTERVAL 0x30
-#define BLE_ADV_MAX_INTERVAL 0x60
-#define BLE_ADV_TYPE_CONNECTABLE_UNDIRECTED 0x00
-#define BLE_ADV_FILTER_POLICY_SCAN_ANY_CONNECT_ANY 0x00
-#define BLE_ADV_CHANNEL_MAP_CH_DEFAULT 0x07
-#define BLE_PUBLIC_DEVICE_ADDRESS 0x00
-#define BTH_GAP_BLE_ADV_HANDLE_DEFAULT 0x01
+#define BLE_ADV_MIN_INTERVAL 0x30                       // 最小广播间隔
+#define BLE_ADV_MAX_INTERVAL 0x60                       // 最大广播间隔
+#define BLE_ADV_TYPE_CONNECTABLE_UNDIRECTED 0x00        // 可连接非定向广播
+#define BLE_ADV_FILTER_POLICY_SCAN_ANY_CONNECT_ANY 0x00 // 接受所有扫描和连接
+#define BLE_ADV_CHANNEL_MAP_CH_DEFAULT 0x07             // 默认全信道
+#define BLE_PUBLIC_DEVICE_ADDRESS 0x00                  // 公共设备地址类型
+#define BTH_GAP_BLE_ADV_HANDLE_DEFAULT 0x01             // 默认广播句柄
 
 // ==================== 全局变量 ====================
 static uint8_t g_server_id = BSP_BT_SPP_SERVER_ID; // BLE SPP 服务器 ID
@@ -85,13 +85,13 @@ static uint16_t g_cccd_handle = 0;                 // CCCD句柄 - 用于检测�
 static volatile bool g_notify_enabled = false;     // 手机是否订阅了通知
 
 // 共享状态互斥锁：保护 conn_hdl / status / notify_enabled / remote_addr
-static osal_mutex g_state_lock;
-static bool g_state_lock_inited = false;
+static osal_mutex g_state_lock;          // 连接状态并发保护锁
+static bool g_state_lock_inited = false; // 互斥锁初始化标志
 
 // 重新广播 worker：断连回调里 sem_up，worker 任务 sleep 100ms 后调用 start_adv
 // 避免在协议栈回调上下文里调用 msleep 引发协议栈阻塞
-static osal_semaphore g_restart_adv_sem;
-static bool g_restart_adv_inited = false;
+static osal_semaphore g_restart_adv_sem;  // 断连后重启广播通知信号量
+static bool g_restart_adv_inited = false; // restart 信号量初始化标志
 static osal_task *g_adv_worker_task = NULL;
 static volatile bool g_adv_worker_run = false;
 static uint8_t g_device_name[NAME_MAX_LENGTH] = {'W', 'S', '6', '3', '_', 'U', 'A', 'R', 'T'}; // 蓝牙设备名称

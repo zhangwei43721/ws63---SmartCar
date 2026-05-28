@@ -16,19 +16,19 @@
 #include "soc_osal.h"
 
 // TCRT5000 引脚定义
-#define TCRT5000_LEFT_GPIO 12
-#define TCRT5000_MIDDLE_GPIO 10
-#define TCRT5000_RIGHT_GPIO 9
+#define TCRT5000_LEFT_GPIO 12   // 左传感器 GPIO
+#define TCRT5000_MIDDLE_GPIO 10 // 中间传感器 GPIO
+#define TCRT5000_RIGHT_GPIO 9   // 右传感器 GPIO
 
 // ADC通道定义
-#define TCRT5000_LEFT_ADC_CHANNEL 5
-#define TCRT5000_MIDDLE_ADC_CHANNEL 3
-#define TCRT5000_RIGHT_ADC_CHANNEL 2
+#define TCRT5000_LEFT_ADC_CHANNEL 5   // 左传感器 ADC 通道
+#define TCRT5000_MIDDLE_ADC_CHANNEL 3 // 中间传感器 ADC 通道
+#define TCRT5000_RIGHT_ADC_CHANNEL 2  // 右传感器 ADC 通道
 
 // ADC阈值定义（mV）
-#define TCRT5000_LEFT_THRESHOLD 2000
-#define TCRT5000_MIDDLE_THRESHOLD 1900
-#define TCRT5000_RIGHT_THRESHOLD 1900
+#define TCRT5000_LEFT_THRESHOLD 2000   // 左传感器阈值(mV)
+#define TCRT5000_MIDDLE_THRESHOLD 1900 // 中间传感器阈值(mV)
+#define TCRT5000_RIGHT_THRESHOLD 1900  // 右传感器阈值(mV)
 
 // 三路 ADC 采样值。ADC 回调写入、消费者读取；32-bit 单值原子，
 // 但读三个时需要"快照"接口保证组合一致性。

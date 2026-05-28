@@ -23,8 +23,8 @@
 static const uint8_t MOTOR_CH[] = {4, 5, 0, 2};
 
 // 保护 PWM 占空更新（差速调用可能来自多个任务：UDP/SLE/语音）
-static osal_mutex g_motor_lock;
-static bool g_motor_lock_inited = false;
+static osal_mutex g_motor_lock;          // PWM 占空更新并发保护锁
+static bool g_motor_lock_inited = false; // 互斥锁初始化标志
 
 /* 更新指定 PWM 通道的占空比 */
 static void pwm_update(uint8_t ch, uint32_t duty)

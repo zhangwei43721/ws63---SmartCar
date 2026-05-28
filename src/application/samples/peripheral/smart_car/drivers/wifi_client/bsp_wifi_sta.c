@@ -13,28 +13,28 @@
 #include "wifi_device.h"
 #include "wifi_event.h"
 
-static bsp_wifi_status_t s_status = BSP_WIFI_STATUS_IDLE;
-static bsp_wifi_mode_t s_mode = BSP_WIFI_MODE_STA;
+static bsp_wifi_status_t s_status = BSP_WIFI_STATUS_IDLE; // WiFi 当前连接状态
+static bsp_wifi_mode_t s_mode = BSP_WIFI_MODE_STA;        // WiFi 工作模式（STA/AP）
 
-static bsp_wifi_event_cb_t s_event_cb = NULL;
-static void *s_event_arg = NULL;
+static bsp_wifi_event_cb_t s_event_cb = NULL; // WiFi 事件回调函数指针
+static void *s_event_arg = NULL;              // 事件回调用户参数
 static osal_task *s_sta_task = NULL;
 
 static char s_ssid[33] = {0};
 static char s_pwd[64] = {0};
 static void bsp_wifi_get_current_config(char *ssid, uint32_t ssid_len, char *pwd, uint32_t pwd_len);
 
-static osal_semaphore s_conn_sem;
-osal_semaphore s_wait_sem; // 关键挂起信号量，通过 bsp_wifi_sta_wakeup() 唤醒
-static bool s_wait_sem_inited = false;
-static osal_semaphore s_sync_sem;
-static bool s_sync_inited = false;
+static osal_semaphore s_conn_sem;      // WiFi 连接/断开/扫描完成通知信号量
+osal_semaphore s_wait_sem;             // 关键挂起信号量，通过 bsp_wifi_sta_wakeup() 唤醒
+static bool s_wait_sem_inited = false; // wait 信号量初始化标志
+static osal_semaphore s_sync_sem;      // 同步阻塞连接信号量
+static bool s_sync_inited = false;     // sync 信号量初始化标志
 static volatile bool s_should_exit = false;
 static int sta_task_main(void *arg);
-static osal_semaphore s_exit_sem;
-static bool s_exit_sem_inited = false;
-static osal_semaphore s_dhcp_sem;
-static bool s_dhcp_sem_inited = false;
+static osal_semaphore s_exit_sem;      // STA 任务退出确认信号量
+static bool s_exit_sem_inited = false; // exit 信号量初始化标志
+static osal_semaphore s_dhcp_sem;      // DHCP 地址获取完成信号量
+static bool s_dhcp_sem_inited = false; // dhcp 信号量初始化标志
 
 /* 获取当前 WiFi 连接状态 */
 bsp_wifi_status_t bsp_wifi_get_status(void)

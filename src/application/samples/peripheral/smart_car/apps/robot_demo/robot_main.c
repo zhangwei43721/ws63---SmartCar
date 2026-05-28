@@ -39,15 +39,15 @@
  * 状态机核心
  * ============================================================ */
 
-static CarStatus g_status = CAR_STOP_STATUS;
+static CarStatus g_status = CAR_STOP_STATUS; // 当前小车运行模式
 
-#define MODE_CMD_QUEUE_DEPTH 4
-static unsigned long g_mode_queue = 0;
-static bool g_mode_queue_inited = false;
+#define MODE_CMD_QUEUE_DEPTH 4           // 模式切换消息队列深度
+static unsigned long g_mode_queue = 0;   // 模式切换命令队列ID
+static bool g_mode_queue_inited = false; // 模式队列是否已初始化
 
-static RobotState g_robot_state = {0};
-static osal_mutex g_state_mutex;
-static bool g_state_mutex_inited = false;
+static RobotState g_robot_state = {0};    // 全局机器人状态（WiFi连接、电机等）
+static osal_mutex g_state_mutex;          // 保护g_robot_state的互斥锁
+static bool g_state_mutex_inited = false; // 状态互斥锁是否已初始化
 
 /* 初始化全局状态互斥锁（仅执行一次） */
 static void robot_mgr_state_mutex_init(void)
@@ -110,7 +110,7 @@ static void robot_mgr_do_enter(CarStatus status)
  * 按键中断
  * ============================================================ */
 
-#define ROBOT_MODE_SWITCH_GPIO 3
+#define ROBOT_MODE_SWITCH_GPIO 3 // 模式切换按键 GPIO 引脚号
 static unsigned long long button_time_tick = 0;
 
 /* 按键中断回调：200ms消抖后循环切换小车模式 */
@@ -231,8 +231,8 @@ static void robot_system_init(void)
     printf("[FIRMWARE] OTA_TEST_BUILD_20250519_V2\r\n");
 }
 
-#define ROBOT_TASK_STACK_SIZE (1024 * 4)
-#define ROBOT_TASK_PRIO 25
+#define ROBOT_TASK_STACK_SIZE (1024 * 4) // 主任务栈大小 4KB
+#define ROBOT_TASK_PRIO 25               // 主任务优先级
 
 /**
  * @brief 主状态机任务 —— 纯事件驱动

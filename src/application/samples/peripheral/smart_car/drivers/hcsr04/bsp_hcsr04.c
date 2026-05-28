@@ -17,25 +17,23 @@
 #include "tcxo.h"
 
 // HC-SR04引脚定义
-#define HCSR04_TRIG_GPIO 6
-#define HCSR04_ECHO_GPIO 11
+#define HCSR04_TRIG_GPIO 6  // 超声波 TRIG 触发引脚
+#define HCSR04_ECHO_GPIO 11 // 超声波 ECHO 回响引脚
 #define HCSR04_GPIO_FUNC HAL_PIO_FUNC_GPIO
 
-// 测距参数
-#define HCSR04_TIMEOUT_US 40000
-#define HCSR04_MIN_DISTANCE_CM 2.0f
-#define HCSR04_MAX_DISTANCE_CM 500.0f
+#define HCSR04_TIMEOUT_US 40000       // 测量超时时间（us）
+#define HCSR04_MIN_DISTANCE_CM 2.0f   // 最小有效距离（cm）
+#define HCSR04_MAX_DISTANCE_CM 500.0f // 最大有效距离（cm）
 
-// ECHO 上下沿时间戳（us），由中断写入
-static volatile uint32_t s_echo_rise_us = 0;
-static volatile uint32_t s_echo_fall_us = 0;
-static volatile bool s_echo_rose = false;
+static volatile uint32_t s_echo_rise_us = 0; // ECHO 上升沿时间戳（us）
+static volatile uint32_t s_echo_fall_us = 0; // ECHO 下降沿时间戳（us）
+static volatile bool s_echo_rose = false;    // 是否已捕获上升沿
 
 // 测量完成信号
-static osal_semaphore s_done_sem;
-static bool s_done_sem_inited = false;
-static osal_mutex s_meas_lock;
-static bool s_meas_lock_inited = false;
+static osal_semaphore s_done_sem;       // 测量完成二值信号量
+static bool s_done_sem_inited = false;  // 信号量初始化标志
+static osal_mutex s_meas_lock;          // 测距操作互斥锁
+static bool s_meas_lock_inited = false; // 互斥锁初始化标志
 
 /* ECHO 引脚双边沿中断：记录上升/下降沿时间戳，下降沿释放信号量 */
 static void hcsr04_echo_isr(pin_t pin, uintptr_t param)

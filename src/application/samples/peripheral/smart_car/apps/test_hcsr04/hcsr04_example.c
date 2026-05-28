@@ -24,9 +24,9 @@
 #include "app_init.h"
 #include "../../drivers/hcsr04/bsp_hcsr04.h"
 
-#define HCSR04_TASK_STACK_SIZE 0x1000
-#define HCSR04_TASK_PRIO 24
-#define HCSR04_DELAY_MS 200
+#define HCSR04_TASK_STACK_SIZE 0x1000 // 超声波测距任务栈大小
+#define HCSR04_TASK_PRIO 24           // 超声波测距任务优先级
+#define HCSR04_DELAY_MS 200           // 测距间隔(ms)
 
 /**
  * @brief HC-SR04超声波测距任务

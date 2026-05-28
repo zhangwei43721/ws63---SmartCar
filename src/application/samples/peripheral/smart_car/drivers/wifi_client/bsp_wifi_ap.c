@@ -8,9 +8,9 @@
 #include <stdio.h>
 
 // AP 配置
-#define BSP_WIFI_AP_SSID "WS63_Robot"
-#define BSP_WIFI_AP_PASSWORD ""
-#define BSP_WIFI_AP_CHANNEL 13
+#define BSP_WIFI_AP_SSID "WS63_Robot" // 热点名称
+#define BSP_WIFI_AP_PASSWORD ""       // 热点密码(空=开放)
+#define BSP_WIFI_AP_CHANNEL 13        // WiFi 信道
 #include <string.h>
 #include "lwip/netifapi.h"
 #include "lwip/dns.h"
@@ -21,10 +21,10 @@
 static volatile bool s_should_exit = false;
 static int ap_task_main(void *arg);
 static osal_task *s_ap_task = NULL;
-static osal_semaphore s_ap_exit_sem;
-static bool s_ap_exit_sem_inited = false;
-static osal_semaphore s_ap_wake_sem;
-static bool s_ap_wake_sem_inited = false;
+static osal_semaphore s_ap_exit_sem;      // AP 任务退出确认信号量
+static bool s_ap_exit_sem_inited = false; // exit 信号量初始化标志
+static osal_semaphore s_ap_wake_sem;      // AP 任务唤醒/退出通知信号量
+static bool s_ap_wake_sem_inited = false; // wake 信号量初始化标志
 
 /* 启动 WiFi AP 热点任务 */
 bool ap_task_start(void)

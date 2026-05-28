@@ -28,8 +28,8 @@
 
 // ==================== 配置参数 ====================
 
-#define SLE_DEVICE_NAME "SmartCar_SLE"
-#define SLE_DEVICE_NAME_MAX_LEN 15
+#define SLE_DEVICE_NAME "SmartCar_SLE" // SLE 设备广播名
+#define SLE_DEVICE_NAME_MAX_LEN 15     // 设备名最大长度
 
 // UUID 定义（2 字节短 UUID）
 #define SLE_UUID_SERVICE 0xA001 // 服务 UUID
@@ -39,30 +39,30 @@
 #define SLE_CONN_INTERVAL_MIN 0x10 // 20ms (125us * 0x10)
 #define SLE_CONN_INTERVAL_MAX 0x10 // 20ms
 #define SLE_CONN_TIMEOUT 0x1F4     // 5000ms (10ms * 0x1F4)
-#define SLE_CONN_MAX_LATENCY 0
+#define SLE_CONN_MAX_LATENCY 0     // 最大延迟(无跳过)
 
 // 广播参数
 #define SLE_ADV_INTERVAL_MIN 0xA0 // 20ms
 #define SLE_ADV_INTERVAL_MAX 0xA0 // 20ms
 #define SLE_ADV_TX_POWER 20       // 20dBm
 
-#define SLE_ADV_DATA_LEN_MAX 251
-#define SLE_MTU_SIZE 247 // 默认 MTU 大小
+#define SLE_ADV_DATA_LEN_MAX 251 // 广播数据最大长度
+#define SLE_MTU_SIZE 247         // 默认 MTU 大小
 
 // SLE 广播常量定义（从示例代码复制）
 #define SLE_ADV_HANDLE_DEFAULT 1 // 默认广播句柄
 
 // 广播信道映射
-#define SLE_ADV_CHANNEL_MAP_77 0x01
-#define SLE_ADV_CHANNEL_MAP_78 0x02
-#define SLE_ADV_CHANNEL_MAP_79 0x04
-#define SLE_ADV_CHANNEL_MAP_DEFAULT 0x07
+#define SLE_ADV_CHANNEL_MAP_77 0x01      // 信道 77 位掩码
+#define SLE_ADV_CHANNEL_MAP_78 0x02      // 信道 78 位掩码
+#define SLE_ADV_CHANNEL_MAP_79 0x04      // 信道 79 位掩码
+#define SLE_ADV_CHANNEL_MAP_DEFAULT 0x07 // 默认全信道
 
 // 广播数据类型
-#define SLE_ADV_DATA_TYPE_DISCOVERY_LEVEL 0x01
-#define SLE_ADV_DATA_TYPE_ACCESS_MODE 0x02
-#define SLE_ADV_DATA_TYPE_COMPLETE_LOCAL_NAME 0x0B
-#define SLE_ADV_DATA_TYPE_TX_POWER_LEVEL 0x0C
+#define SLE_ADV_DATA_TYPE_DISCOVERY_LEVEL 0x01     // 发现级别
+#define SLE_ADV_DATA_TYPE_ACCESS_MODE 0x02         // 访问模式
+#define SLE_ADV_DATA_TYPE_COMPLETE_LOCAL_NAME 0x0B // 完整本地名称
+#define SLE_ADV_DATA_TYPE_TX_POWER_LEVEL 0x0C      // 发射功率等级
 
 // SLE 广播数据结构（从示例代码复制）
 struct sle_adv_common_value {
@@ -73,19 +73,19 @@ struct sle_adv_common_value {
 
 // ==================== 内部状态 ====================
 
-static uint8_t g_server_id = 0;
-static uint16_t g_service_handle = 0;
-static uint16_t g_property_handle = 0;
-static uint16_t g_conn_id = 0xFFFF; // 0xFFFF 表示未连接
+static uint8_t g_server_id = 0;        // SSAP 服务端 ID
+static uint16_t g_service_handle = 0;  // SLE 服务句柄
+static uint16_t g_property_handle = 0; // SLE 数据特征句柄
+static uint16_t g_conn_id = 0xFFFF;    // 0xFFFF 表示未连接
 static volatile bool g_connected = false;
 
 // 共享状态互斥锁
-static osal_mutex g_sle_lock;
-static bool g_sle_lock_inited = false;
+static osal_mutex g_sle_lock;          // 连接状态并发保护锁
+static bool g_sle_lock_inited = false; // 互斥锁初始化标志
 
 // 重启广播 worker：协议栈回调不能直接调用 sle_start_announce 后立即处理逻辑
-static osal_semaphore g_restart_sem;
-static bool g_restart_sem_inited = false;
+static osal_semaphore g_restart_sem;      // 断连后重启广播通知信号量
+static bool g_restart_sem_inited = false; // restart 信号量初始化标志
 static osal_task *g_sle_worker = NULL;
 static volatile bool g_sle_worker_run = false;
 

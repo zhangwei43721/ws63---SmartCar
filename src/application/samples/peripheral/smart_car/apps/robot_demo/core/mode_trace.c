@@ -8,18 +8,18 @@
 #include "../robot_common.h"
 #include "soc_osal.h"
 
-#define TRACE_SPEED_FORWARD 40
-#define TRACE_LOST_TIMEOUT_MS 300
-#define TRACE_SEARCH_SPEED 30
-#define TRACE_TICK_MS 20
+#define TRACE_SPEED_FORWARD 40    // 循迹基础前进速度
+#define TRACE_LOST_TIMEOUT_MS 300 // 丢线后搜索超时(ms)
+#define TRACE_SEARCH_SPEED 30     // 丢线搜索速度
+#define TRACE_TICK_MS 20          // 循迹主循环周期(ms)
 
-#define TRACE_TASK_STACK_SIZE 2048
-#define TRACE_TASK_PRIO 22
-#define TRACE_EVENT_STOP 0x01
+#define TRACE_TASK_STACK_SIZE 2048 // 循迹任务栈大小
+#define TRACE_TASK_PRIO 22         // 循迹任务优先级
+#define TRACE_EVENT_STOP 0x01      // 停止循迹事件位
 
-#define TRACE_DETECT_BLACK 0
+#define TRACE_DETECT_BLACK 0 // 红外传感器检测到黑线的值
 
-#define TRACE_PID_MSG_DEPTH 8
+#define TRACE_PID_MSG_DEPTH 8 // PID 设参消息队列深度
 
 // PID 参数 + 运行态打包：所有字段只能被 trace_task 写入（单写者）
 typedef struct {
@@ -41,8 +41,8 @@ typedef struct {
     int32_t value;
 } pid_msg_t;
 
-#define PID_OP_SET 1
-#define PID_OP_SAVE 2
+#define PID_OP_SET 1  // PID 参数设置操作
+#define PID_OP_SAVE 2 // PID 参数保存到 NV 操作
 
 static pid_ctx_t g_pid = {
     .kp = 16.0f,
@@ -56,16 +56,16 @@ static pid_ctx_t g_pid = {
 };
 
 static osal_task *g_trace_task = NULL;
-static osal_event g_trace_event;
-static bool g_event_inited = false;
+static osal_event g_trace_event;    // 循迹任务事件组（STOP等信号）
+static bool g_event_inited = false; // 事件组是否已初始化
 
 // 退出同步信号量
 static osal_semaphore g_trace_exit_sem;
-static bool g_exit_sem_inited = false;
+static bool g_exit_sem_inited = false; // 退出信号量是否已初始化
 
 // PID 设参消息队列：UDP 任务 -> trace_task，单写者消费
 static unsigned long g_pid_msgq = 0;
-static bool g_pid_msgq_inited = false;
+static bool g_pid_msgq_inited = false; // PID消息队列是否已初始化
 
 typedef struct {
     uint8_t left;

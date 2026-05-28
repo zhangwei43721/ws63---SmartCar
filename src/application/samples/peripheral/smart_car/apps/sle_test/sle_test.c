@@ -23,9 +23,9 @@
 
 /* ==================== 测试状态 ==================== */
 
-static uint16_t g_test_conn_id = 0;
-static uint32_t g_rx_count = 0;
-static uint32_t g_tx_count = 0;
+static uint16_t g_test_conn_id = 0; // 当前 SLE 连接 ID，未连接时为 0
+static uint32_t g_rx_count = 0;     // 累计接收数据次数
+static uint32_t g_tx_count = 0;     // 累计发送数据次数
 
 /* ==================== 回调函数 ==================== */
 

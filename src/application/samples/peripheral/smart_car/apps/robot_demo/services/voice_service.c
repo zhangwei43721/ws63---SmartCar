@@ -18,23 +18,23 @@
 #include "../robot_common.h"
 #include "soc_osal.h"
 
-#define VOICE_CMD_TIMEOUT_MS 1000
-#define MOTOR_SPEED_HIGH 100
-#define MOTOR_SPEED_TURN 50
-#define TURN_DURATION_MS 400
+#define VOICE_CMD_TIMEOUT_MS 1000 // 语音命令超时时间(ms)
+#define MOTOR_SPEED_HIGH 100      // 高速电机速度
+#define MOTOR_SPEED_TURN 50       // 转弯电机速度
+#define TURN_DURATION_MS 400      // 转弯持续时间(ms)
 
-#define VOICE_TASK_STACK_SIZE 2048
-#define VOICE_TASK_PRIO 29
+#define VOICE_TASK_STACK_SIZE 2048 // 语音任务栈大小
+#define VOICE_TASK_PRIO 29         // 语音任务优先级
 
-#define VOICE_RX_QUEUE_DEPTH 32
+#define VOICE_RX_QUEUE_DEPTH 32 // UART 接收队列深度
 
-static osal_task *g_voice_task = NULL;
-static unsigned long g_rx_queue = 0;
-static bool g_rx_queue_inited = false;
+static osal_task *g_voice_task = NULL; // 语音命令处理任务句柄
+static unsigned long g_rx_queue = 0;   // UART 接收消息队列 ID
+static bool g_rx_queue_inited = false; // 接收队列是否已初始化
 
 // 命令超时停车看门狗：用 osal_timer 单次定时，避免 32-bit RISC-V 上做软件模拟 64-bit jiffies 减法
 static osal_timer g_voice_stop_timer;
-static bool g_voice_stop_timer_inited = false;
+static bool g_voice_stop_timer_inited = false;   // 停车定时器是否已初始化
 static volatile bool g_voice_cmd_active = false; // 单写者(voice_task)，定时器回调清除
 
 /* 语音命令超时回调，自动停车 */
@@ -84,8 +84,8 @@ static const CarStatus g_mode_table[] = {
     CAR_OBSTACLE_AVOIDANCE_STATUS,
     CAR_WIFI_CONTROL_STATUS,
 };
-#define VOICE_MODE_CMD_BASE 0x10
-#define VOICE_MODE_CMD_COUNT (sizeof(g_mode_table) / sizeof(g_mode_table[0]))
+#define VOICE_MODE_CMD_BASE 0x10                                              // 模式切换命令起始值
+#define VOICE_MODE_CMD_COUNT (sizeof(g_mode_table) / sizeof(g_mode_table[0])) // 模式表条目数
 
 /* 解析语音命令，执行运动或模式切换 */
 static void process_command(uint8_t cmd)

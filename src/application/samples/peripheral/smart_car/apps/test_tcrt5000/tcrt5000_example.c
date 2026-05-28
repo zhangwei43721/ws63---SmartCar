@@ -24,9 +24,9 @@
 #include "app_init.h"
 #include "../../drivers/tcrt5000/bsp_tcrt5000.h"
 
-#define TCRT5000_TASK_STACK_SIZE 0x1000
-#define TCRT5000_TASK_PRIO 24
-#define TCRT5000_DELAY_MS 100
+#define TCRT5000_TASK_STACK_SIZE 0x1000 // 循迹传感器任务栈大小
+#define TCRT5000_TASK_PRIO 24           // 循迹传感器任务优先级
+#define TCRT5000_DELAY_MS 100           // 采样间隔(ms)
 
 /**
  * @brief TCRT5000红外循迹传感器任务

@@ -7,13 +7,13 @@
 #include "soc_osal.h"
 #include "osal_timer.h"
 
-#define MOTOR_EXEC_TIMEOUT_MS 400
-#define MOTOR_EXEC_STACK_SIZE 2048
-#define MOTOR_EXEC_PRIO 10
+#define MOTOR_EXEC_TIMEOUT_MS 400  // 电机安全超时时间(ms)
+#define MOTOR_EXEC_STACK_SIZE 2048 // 电机任务栈大小
+#define MOTOR_EXEC_PRIO 10         // 电机任务优先级
 
 static unsigned long g_motor_queue = 0;
 static osal_task *g_motor_task = NULL;
-static osal_timer g_motor_timer;
+static osal_timer g_motor_timer; // 电机安全超时定时器
 
 /* 电机安全超时回调：超时未收到新指令则紧急停车 */
 static void motor_timeout_callback(unsigned long arg)

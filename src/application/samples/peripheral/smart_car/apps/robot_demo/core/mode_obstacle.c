@@ -48,14 +48,14 @@ static int8_t g_cur_l = 0;
 static int8_t g_cur_r = 0;
 
 static osal_task *g_obst_task = NULL;
-static osal_event g_obst_event;
-static bool g_event_inited = false;
+static osal_event g_obst_event;     // 避障任务事件组（STOP/TIMER信号）
+static bool g_event_inited = false; // 事件组是否已初始化
 
-static osal_semaphore g_obst_exit_sem;
-static bool g_exit_sem_inited = false;
+static osal_semaphore g_obst_exit_sem; // 退出同步信号量
+static bool g_exit_sem_inited = false; // 退出信号量是否已初始化
 
-static osal_timer g_obst_timer;
-static bool g_obst_timer_inited = false;
+static osal_timer g_obst_timer;          // 避障状态机推进定时器
+static bool g_obst_timer_inited = false; // 避障定时器是否已初始化
 
 /* 设置并推送电机速度命令，同时缓存当前值用于看门狗喂狗 */
 static void obst_push(int8_t l, int8_t r)

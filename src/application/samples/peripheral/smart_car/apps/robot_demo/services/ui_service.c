@@ -13,12 +13,12 @@
 #include "udp_service.h"
 
 // I2C 总线配置（用于 OLED 显示屏通信）
-#define ROBOT_I2C_BUS_ID 1
-#define ROBOT_I2C_BAUDRATE 400000
-#define ROBOT_I2C_HS_CODE 0x0
-#define ROBOT_I2C_SCL_PIN 15
-#define ROBOT_I2C_SDA_PIN 16
-#define ROBOT_I2C_PIN_MODE 2
+#define ROBOT_I2C_BUS_ID 1        // I2C 总线 ID
+#define ROBOT_I2C_BAUDRATE 400000 // I2C 波特率
+#define ROBOT_I2C_HS_CODE 0x0     // I2C 高速模式地址码
+#define ROBOT_I2C_SCL_PIN 15      // I2C SCL 引脚号
+#define ROBOT_I2C_SDA_PIN 16      // I2C SDA 引脚号
+#define ROBOT_I2C_PIN_MODE 2      // I2C 引脚复用模式
 
 /* ============================================================
  * 消息驱动 UI 任务：
@@ -27,9 +27,9 @@
  *     从而避免在主循环里轮询 OLED 导致的 I2C 占用与闪烁。
  * ============================================================ */
 
-#define UI_TASK_STACK_SIZE 4096
-#define UI_TASK_PRIO 28
-#define UI_MSG_QUEUE_DEPTH 4
+#define UI_TASK_STACK_SIZE 4096 // UI 任务栈大小
+#define UI_TASK_PRIO 28         // UI 任务优先级
+#define UI_MSG_QUEUE_DEPTH 4    // UI 消息队列深度
 
 typedef enum {
     UI_MSG_MODE = 0,
@@ -47,12 +47,12 @@ typedef struct {
 static bool g_oled_ready = false;       // OLED 是否已初始化并可用
 static volatile bool g_ui_busy = false; // OLED 是否被独占（OTA 写, ui_task 读，bool 32 位写入原子）
 
-static unsigned long g_ui_queue = 0;
-static bool g_queue_inited = false;
-static osal_task *g_ui_task = NULL;
+static unsigned long g_ui_queue = 0; // UI 消息队列 ID
+static bool g_queue_inited = false;  // UI 消息队列是否已初始化
+static osal_task *g_ui_task = NULL;  // UI 渲染任务句柄
 
 // UI 当前缓存的模式，用于待机页面判断
-static CarStatus g_ui_current_mode = CAR_STOP_STATUS;
+static CarStatus g_ui_current_mode = CAR_STOP_STATUS; // UI 当前缓存的模式，用于待机页面判断
 
 /**
  * @brief 模式显示信息结构体

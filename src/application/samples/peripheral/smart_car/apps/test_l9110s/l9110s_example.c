@@ -24,9 +24,9 @@
 #include "app_init.h"
 #include "../../drivers/l9110s/bsp_l9110s.h"
 
-#define L9110S_TASK_STACK_SIZE 0x1000
-#define L9110S_TASK_PRIO 24
-#define L9110S_DELAY_MS 1000
+#define L9110S_TASK_STACK_SIZE 0x1000 // 电机驱动任务栈大小
+#define L9110S_TASK_PRIO 24           // 电机驱动任务优先级
+#define L9110S_DELAY_MS 1000          // 动作间隔(ms)
 
 /**
  * @brief L9110S电机测试任务

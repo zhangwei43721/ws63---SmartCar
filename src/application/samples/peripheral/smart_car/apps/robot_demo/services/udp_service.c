@@ -46,11 +46,11 @@ typedef struct {
 } wifi_config_pkt_t;
 
 // --- 全局变量 ---
-static int g_sockfd = -1;
-static osal_task *g_udp_task = NULL;
-static volatile bool g_udp_should_exit = false;
-static osal_semaphore g_udp_exit_sem;
-static bool g_udp_exit_sem_inited = false;
+static int g_sockfd = -1;                       // UDP 服务 socket 文件描述符
+static osal_task *g_udp_task = NULL;            // UDP 服务任务句柄
+static volatile bool g_udp_should_exit = false; // UDP 任务退出标志
+static osal_semaphore g_udp_exit_sem;           // UDP 任务退出同步信号量
+static bool g_udp_exit_sem_inited = false;      // 退出信号量是否已初始化
 
 // --- 状态机 ---
 typedef enum {

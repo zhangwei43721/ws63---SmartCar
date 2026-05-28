@@ -18,38 +18,30 @@
 #include "captive_portal_control.h"
 #include "udp_net_common.h"
 
-#define CAPTIVE_PORTAL_STACK_SIZE 8192
-#define CAPTIVE_PORTAL_TASK_PRIO 23
-#define CAPTIVE_HTTP_RECV_TIMEOUT_MS 500
-#define CAPTIVE_HTTP_BUF_SIZE 1536
-#define CAPTIVE_HTTP_MAX_BODY 512
-#define CAPTIVE_DNS_BUF_SIZE 512
-
-// 常数化 Portal IP 地址，避免任何重连瞬间读取网卡的异常情况
-#define PORTAL_STATIC_IP "192.168.1.1"
+#define PORTAL_STATIC_IP "192.168.1.1" // AP 模式固定 IP 地址
 
 typedef enum {
-    PORTAL_STATUS_IDLE = 0,
-    PORTAL_STATUS_RUNNING,
-    PORTAL_STATUS_CONFIG_RECEIVED,
-    PORTAL_STATUS_SWITCHING,
-    PORTAL_STATUS_SUCCESS,
-    PORTAL_STATUS_FAILED
-} portal_status_t;
+    PORTAL_STATUS_IDLE = 0,        // 空闲：等待配网
+    PORTAL_STATUS_RUNNING,         // 运行中：HTTP 服务已启动
+    PORTAL_STATUS_CONFIG_RECEIVED, // 已收到 WiFi 配置
+    PORTAL_STATUS_SWITCHING,       // 正在切换到 STA 模式
+    PORTAL_STATUS_SUCCESS,         // 配网成功
+    PORTAL_STATUS_FAILED           // 配网失败
+} portal_status_t;                 // 门户服务定义
 
-static volatile portal_status_t g_portal_status = PORTAL_STATUS_IDLE;
-static osal_task *g_portal_task = NULL;
-static bool g_task_should_exit = false;
-static char g_status_text[32] = "等待配网";
+static volatile portal_status_t g_portal_status = PORTAL_STATUS_IDLE; // Portal 当前状态
+static osal_task *g_portal_task = NULL;                               // Portal 任务句柄
+static bool g_task_should_exit = false;                               // Portal 任务退出标志
+static char g_status_text[32] = "等待配网";                           // Portal 状态显示文本
 
-static osal_mutex g_portal_lock;
-static bool g_portal_lock_inited = false;
+static osal_mutex g_portal_lock;          // Portal 共享状态互斥锁
+static bool g_portal_lock_inited = false; // Portal 互斥锁是否已初始化
 
-#define PORTAL_EVT_AP_READY 0x01
-#define PORTAL_EVT_AP_STOPPED 0x02
-#define PORTAL_EVT_EXIT 0x04
-static osal_event g_portal_event;
-static bool g_portal_event_inited = false;
+#define PORTAL_EVT_AP_READY 0x01           // AP 热点就绪事件
+#define PORTAL_EVT_AP_STOPPED 0x02         // AP 热点停止事件
+#define PORTAL_EVT_EXIT 0x04               // Portal 退出事件
+static osal_event g_portal_event;          // Portal 事件组（AP_READY/AP_STOPPED/EXIT）
+static bool g_portal_event_inited = false; // Portal 事件组是否已初始化
 
 /* 加锁保护 Portal 共享状态 */
 static inline void portal_lock(void)
@@ -75,16 +67,16 @@ static void portal_set_status(portal_status_t st, const char *text)
     portal_unlock();
 }
 
-static int g_http_fd = -1;
-static int g_dns_fd = -1;
+static int g_http_fd = -1; // HTTP 服务器 socket 文件描述符
+static int g_dns_fd = -1;  // DNS 劫持服务器 socket 文件描述符
 
-static char g_switch_ssid[32] = {0};
-static char g_switch_password[64] = {0};
+static char g_switch_ssid[32] = {0};     // 待切换的目标 SSID
+static char g_switch_password[64] = {0}; // 待切换的目标密码
 
-#define SCAN_CACHE_MAX 16
-static bsp_wifi_scan_item_t g_scan_cache[SCAN_CACHE_MAX];
-static uint32_t g_scan_cache_count = 0;
-static bool g_scan_cache_ready = false;
+#define SCAN_CACHE_MAX 16                                 // 扫描结果缓存最大条目数
+static bsp_wifi_scan_item_t g_scan_cache[SCAN_CACHE_MAX]; // WiFi 扫描结果缓存
+static uint32_t g_scan_cache_count = 0;                   // 当前缓存的扫描结果数量
+static bool g_scan_cache_ready = false;                   // 扫描缓存是否已构建完成
 
 static const char s_html_page[] =
     "HTTP/1.1 200 OK\r\n"
@@ -423,10 +415,10 @@ static void handle_status_request(int client_fd)
 /* 处理单个 HTTP 客户端连接，解析请求并路由到对应处理函数 */
 static void handle_http_client(int client_fd)
 {
-    char buf[CAPTIVE_HTTP_BUF_SIZE];
+    char buf[1536];
     int total = 0, n;
 
-    struct timeval tv = {CAPTIVE_HTTP_RECV_TIMEOUT_MS / 1000, (CAPTIVE_HTTP_RECV_TIMEOUT_MS % 1000) * 1000};
+    struct timeval tv = {500 / 1000, (500 % 1000) * 1000};
     lwip_setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     while (total < (int)sizeof(buf) - 1) {
@@ -526,7 +518,7 @@ static void handle_http_client(int client_fd)
 
         char *body_start = strstr(buf, "\r\n\r\n");
         int body_received = 0;
-        char body[CAPTIVE_HTTP_MAX_BODY] = {0};
+        char body[512] = {0};
 
         if (body_start != NULL) {
             body_start += 4;
@@ -645,8 +637,8 @@ static void dns_server_handle(int fd)
 {
     struct sockaddr_in client_addr;
     socklen_t addr_len = sizeof(client_addr);
-    unsigned char buf[CAPTIVE_DNS_BUF_SIZE];
-    unsigned char resp[CAPTIVE_DNS_BUF_SIZE];
+    unsigned char buf[512];
+    unsigned char resp[512];
 
     int n = lwip_recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr *)&client_addr, &addr_len);
     if (n < 12)
@@ -780,8 +772,7 @@ void captive_portal_service_init(void)
     }
 
     g_task_should_exit = false;
-    g_portal_task = robot_task_create_locked("portal_task", (osal_kthread_handler)captive_portal_task, NULL,
-                                             CAPTIVE_PORTAL_STACK_SIZE, CAPTIVE_PORTAL_TASK_PRIO);
+    g_portal_task = robot_task_create_locked("portal_task", (osal_kthread_handler)captive_portal_task, NULL, 8192, 23);
 }
 
 /* 获取 AP 模式的静态 IP 地址字符串 */

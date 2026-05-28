@@ -21,17 +21,17 @@
 #include "uart.h"
 
 // UART配置参数
-#define UART_BAUDRATE 9600
-#define UART_RX_BUFFER_SIZE 64
+#define UART_BAUDRATE 9600     // 串口波特率
+#define UART_RX_BUFFER_SIZE 64 // 接收缓冲区大小
 
 // UART引脚配置
-#define UART_TXD_PIN 8
-#define UART_RXD_PIN 7
-#define UART_TXD_PIN_MODE 1
-#define UART_RXD_PIN_MODE 1
+#define UART_TXD_PIN 8      // 发送引脚编号
+#define UART_RXD_PIN 7      // 接收引脚编号
+#define UART_TXD_PIN_MODE 1 // 发送引脚复用模式
+#define UART_RXD_PIN_MODE 1 // 接收引脚复用模式
 
 // UART总线ID
-#define UART_BUS_ID 2
+#define UART_BUS_ID 2 // UART 总线 ID
 
 // 接收缓冲区
 static uint8_t g_uart_rx_buffer[UART_RX_BUFFER_SIZE] = {0};

@@ -27,19 +27,19 @@ static const char *const g_ota_state_str[] = {OTA_STATE_MAP(OTA_STATE_EXPAND)};
 #define OTA_STATE_TO_STR(state) (((uint32_t)(state) < OTA_STATE_MAX) ? g_ota_state_str[(uint32_t)(state)] : "UNKNOWN")
 
 // ---------- 内部状态 ----------
-static volatile ota_state_t g_ota_state = OTA_STATE_IDLE;
-static volatile uint8_t g_ota_progress = 0;
-static volatile uint32_t g_ota_received = 0;
-static volatile uint32_t g_ota_total = 0;
+static volatile ota_state_t g_ota_state = OTA_STATE_IDLE; // 当前 OTA 状态（IDLE/DOWNLOADING/VERIFYING/FAILED）
+static volatile uint8_t g_ota_progress = 0;               // OTA 下载进度百分比
+static volatile uint32_t g_ota_received = 0;              // 已接收固件字节数
+static volatile uint32_t g_ota_total = 0;                 // 固件总字节数
 
-static int g_tcp_listen_fd = -1;
-static int g_tcp_conn_fd = -1;
-static osal_task *g_ota_task_handle = NULL;
-static osal_mutex g_ota_mutex;
+static int g_tcp_listen_fd = -1;            // TCP 监听 socket 文件描述符
+static int g_tcp_conn_fd = -1;              // TCP 已连接 socket 文件描述符
+static osal_task *g_ota_task_handle = NULL; // OTA 任务句柄
+static osal_mutex g_ota_mutex;              // OTA 状态互斥锁
 
 // FAILED→IDLE 由定时器异步切换，避免 TCP 任务退出前 osal_msleep(500) 占线程
 static osal_timer g_ota_failed_timer;
-static bool g_ota_failed_timer_inited = false;
+static bool g_ota_failed_timer_inited = false; // 失败定时器是否已初始化
 
 static void ota_set_state(ota_state_t s);
 
@@ -49,7 +49,7 @@ static void ota_failed_to_idle_cb(unsigned long arg)
     (void)arg;
     ota_set_state(OTA_STATE_IDLE);
 }
-static bool g_ota_mutex_inited = false;
+static bool g_ota_mutex_inited = false; // OTA 互斥锁是否已初始化
 
 // ---------- UPG 回调 ----------
 /* UPG模块内存分配回调 */

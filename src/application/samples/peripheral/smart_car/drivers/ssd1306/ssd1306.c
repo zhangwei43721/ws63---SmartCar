@@ -26,12 +26,12 @@
 #include "i2c.h"
 #include "soc_osal.h"
 
-#define CONFIG_I2C_MASTER_BUS_ID 1
-#define I2C_SLAVE2_ADDR 0x3C
-#define SSD1306_CTRL_CMD 0x00
-#define SSD1306_CTRL_DATA 0x40
-#define SSD1306_CTRL_MASK_CONT (0x1 << 7)
-#define DOUBLE 2
+#define CONFIG_I2C_MASTER_BUS_ID 1        // I2C 总线 ID
+#define I2C_SLAVE2_ADDR 0x3C              // SSD1306 I2C 从机地址
+#define SSD1306_CTRL_CMD 0x00             // 控制字节：命令
+#define SSD1306_CTRL_DATA 0x40            // 控制字节：数据
+#define SSD1306_CTRL_MASK_CONT (0x1 << 7) // 控制字节：连续传输标志
+#define DOUBLE 2                          // 双倍系数
 
 /* 复位 SSD1306（延时等待硬件就绪） */
 void bsp_ssd1306_reset(void)
@@ -79,7 +79,7 @@ void bsp_ssd1306_write_data(uint8_t *buffer, size_t buff_size)
 }
 
 static uint8_t g_ssd1306_buffer[SSD1306_BUFFER_SIZE];
-static BspSsd1306Ctx g_ssd1306_ctx;
+static BspSsd1306Ctx g_ssd1306_ctx; // OLED 显示上下文（光标、状态）
 
 /* 将外部数据拷贝到内部帧缓冲区 */
 BspSsd1306Error bsp_ssd1306_fill_buffer(uint8_t *buf, uint32_t len)
@@ -448,8 +448,8 @@ uint8_t bsp_ssd1306_get_display_on(void)
     return g_ssd1306_ctx.DisplayOn;
 }
 
-static int g_ssd1306_current_loc_v = 0;
-#define SSD1306_INTERVAL_V (15)
+static int g_ssd1306_current_loc_v = 0; // 当前垂直打印行位置
+#define SSD1306_INTERVAL_V (15)         // 垂直行间距(像素)
 
 /* 清屏并重置垂直打印位置 */
 void bsp_ssd1306_clear_oled(void)
