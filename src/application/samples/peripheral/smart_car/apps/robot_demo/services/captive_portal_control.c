@@ -174,13 +174,13 @@ static void handle_api_status(int client_fd)
     robot_mgr_get_state_copy(&st);
 
     char json[256];
-    int json_len = snprintf(json, sizeof(json),
-                            "HTTP/1.1 200 OK\r\n"
-                            "Content-Type: application/json\r\n"
-                            "Connection: close\r\n\r\n"
-                            "{\"mode\":%d,\"dist\":%d.%d,\"ir\":[%u,%u,%u]}\r\n",
-                            (int)st.mode, (int)st.distance, ((int)(st.distance * 10)) % 10,
-                            st.ir_left, st.ir_middle, st.ir_right);
+    int json_len =
+        snprintf(json, sizeof(json),
+                 "HTTP/1.1 200 OK\r\n"
+                 "Content-Type: application/json\r\n"
+                 "Connection: close\r\n\r\n"
+                 "{\"mode\":%d,\"dist\":%d.%d,\"ir\":[%u,%u,%u]}\r\n",
+                 (int)st.mode, (int)st.distance, ((int)(st.distance * 10)) % 10, st.ir_left, st.ir_middle, st.ir_right);
     if (json_len < 0 || (size_t)json_len >= sizeof(json)) {
         json[sizeof(json) - 1] = '\0';
     }
@@ -248,6 +248,7 @@ static void handle_api_reset(int client_fd)
 
 // ---------- 公共接口 ----------
 
+/* 处理控制页面及 REST API 请求，匹配路径则处理并返回 true */
 bool captive_portal_control_handle(int client_fd, bool is_get, const char *path, const char *query)
 {
     if (is_get && strcmp(path, "/control") == 0) {

@@ -13,7 +13,6 @@
 
 #include "../apps/robot_demo/robot_common.h"
 
-
 #include "nv.h"
 #include "securec.h"
 #include "soc_osal.h"
@@ -183,8 +182,8 @@ errcode_t storage_service_save_pid_params(float kp, float ki, float kd, int16_t 
     g_nv_cfg.checksum = 0;
     g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
 
-    printf("[存储] 保存 PID: Kp=%d/1000, Ki=%d/10000, Kd=%d/500, 基础速度=%d\r\n",
-           (int)(kp * 1000), (int)(ki * 10000), (int)(kd * 500), speed);
+    printf("[存储] 保存 PID: Kp=%d/1000, Ki=%d/10000, Kd=%d/500, 基础速度=%d\r\n", (int)(kp * 1000), (int)(ki * 10000),
+           (int)(kd * 500), speed);
     errcode_t ret = uapi_nv_write(ROBOT_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
     printf("[存储] NV 写入: 返回值=%d\r\n", ret);
     STORAGE_UNLOCK();
@@ -229,5 +228,3 @@ errcode_t storage_service_save_wifi_config(const char *ssid, const char *passwor
     STORAGE_UNLOCK();
     return ret;
 }
-
-

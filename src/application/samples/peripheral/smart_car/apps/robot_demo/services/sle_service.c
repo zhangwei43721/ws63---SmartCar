@@ -39,6 +39,7 @@ static bool g_connected = false;
 /**
  * @brief 处理接收到的数据包
  */
+/* 解析SLE接收到的数据包，交由统一协议处理器处理 */
 static void process_packet(const uint8_t *data, uint16_t len)
 {
     if (len < 1)
@@ -62,6 +63,7 @@ static void process_packet(const uint8_t *data, uint16_t len)
 
 // ==================== SLE 设备回调 ====================
 
+/* SLE设备连接回调，标记连接状态 */
 static void sle_connect_callback(uint16_t conn_id)
 {
     unused(conn_id);
@@ -69,6 +71,7 @@ static void sle_connect_callback(uint16_t conn_id)
     printf("[SLE_SRV] 设备已连接\r\n");
 }
 
+/* SLE设备断开回调，清除连接状态并停车 */
 static void sle_disconnect_callback(uint16_t conn_id)
 {
     unused(conn_id);
@@ -78,6 +81,7 @@ static void sle_disconnect_callback(uint16_t conn_id)
     printf("[SLE_SRV] 设备已断开\r\n");
 }
 
+/* SLE数据接收回调，转发给process_packet处理 */
 static void sle_data_recv_callback(const uint8_t *data, uint16_t len)
 {
     process_packet(data, len);
@@ -85,6 +89,7 @@ static void sle_data_recv_callback(const uint8_t *data, uint16_t len)
 
 // ==================== 对外接口实现 ====================
 
+/* 初始化SLE遥控服务：注册回调并启动SLE设备 */
 void sle_service_init(void)
 {
     printf("[SLE_SRV] 初始化 SLE 遥控服务...\r\n");

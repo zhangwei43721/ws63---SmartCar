@@ -6,7 +6,7 @@
 
 #include "../robot_common.h"
 
-void ui_service_init(void);
+void ui_service_init(void); /* 初始化 UI 服务（创建 OLED 刷新任务） */
 
 // 以下接口为非阻塞：仅向 UI 任务消息队列投递请求，由 UI 任务异步刷屏
 void ui_show_mode_page(CarStatus status);

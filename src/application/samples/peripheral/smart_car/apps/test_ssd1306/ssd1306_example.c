@@ -72,7 +72,7 @@ static int ssd1306_task(void *arg)
     printf("I2C master initialized successfully\n");
 
     // 初始化OLED
-        bsp_ssd1306_init();
+    bsp_ssd1306_init();
     printf("SSD1306 initialized\n");
 
     // 清屏

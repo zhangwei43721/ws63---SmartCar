@@ -27,7 +27,7 @@
 #define BT_SPP_TASK_PRIO 24
 #define BT_DEVICE_NAME "WS63_UART" // 你的蓝牙名字
 
-// 接收回调函数：手机发来的数据会到这里
+/* SPP 数据接收回调：打印收到的数据并原样回显 */
 static void spp_data_recived_handler(const uint8_t *data, uint32_t len)
 {
     // 1. 打印收到的数据
@@ -44,7 +44,7 @@ static void spp_data_recived_handler(const uint8_t *data, uint32_t len)
     bsp_bt_spp_send(data, len);
 }
 
-// 事件回调函数：连接状态变化会到这里
+/* SPP 事件回调：处理蓝牙连接/断开状态变化 */
 static void spp_event_handler(bsp_bt_spp_event_t event, void *data)
 {
     UNUSED(data);
@@ -60,6 +60,7 @@ static void spp_event_handler(bsp_bt_spp_event_t event, void *data)
     }
 }
 
+/* 蓝牙 SPP 测试主任务：初始化蓝牙并定时发送心跳包 */
 static int bt_spp_task(void *arg)
 {
     UNUSED(arg);
@@ -106,6 +107,7 @@ static int bt_spp_task(void *arg)
     return 0;
 }
 
+/* 蓝牙 SPP 测试示例入口：创建蓝牙测试任务 */
 static void bt_spp_example_entry(void)
 {
     osal_task *task_handle = NULL;

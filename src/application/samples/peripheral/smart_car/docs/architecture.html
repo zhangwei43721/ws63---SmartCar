@@ -1,0 +1,1627 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartCar robot_demo 架构图 (HarmonyOS Style)</title>
+  <style>
+    :root {
+      /* 鸿蒙系统 (HarmonyOS) 经典色谱 */
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --ink: #182431;
+      /* 鸿蒙经典深灰 */
+      --muted: #556272;
+      /* 次级辅助灰 */
+      --line: #e1e4e8;
+
+      /* 语义卡片配色 (HarmonyOS Palette) */
+      --hw: #fff4e0;
+      /* 物理硬件: 温暖砂砾橙 */
+      --hw-b: #f6a600;
+      --hw-text: #825000;
+
+      --drv: #e8f4ff;
+      /* BSP 驱动: 鸿蒙深海蓝 */
+      --drv-b: #007dff;
+      --drv-text: #0056b3;
+
+      --core: #eef2f9;
+      /* 核心任务: 科技黛蓝 */
+      --core-b: #4c6ef5;
+      --core-text: #1a365d;
+
+      --svc: #e6f9ed;
+      /* 外部服务: 森林生态绿 */
+      --svc-b: #00b53f;
+      --svc-text: #006b25;
+
+      --motor: #ffebee;
+      /* 动力执行: 警示亮红 */
+      --motor-b: #f44336;
+      --motor-text: #b71c1c;
+
+      --queue: #f4ebff;
+      /* 消息队列: 极光幽紫 */
+      --queue-b: #9b51e0;
+      --queue-text: #5b21b6;
+
+      --accent: #007dff;
+      /* 鸿蒙主品牌色 (HUAWEI Blue) */
+      --accent-light: #e8f4ff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'HarmonyOS Sans SC', -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.4;
+      padding: 12px 12px 40px;
+    }
+
+    .wrap {
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+
+    /* 紧凑型鸿蒙渐变头部 */
+    header {
+      background: linear-gradient(115deg, #182431 0%, #007dff 100%);
+      color: #fff;
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 12px rgba(0, 125, 255, 0.15);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    header p {
+      opacity: 0.85;
+      font-size: 11.5px;
+      font-weight: 400;
+    }
+
+    section {
+      background: var(--card);
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+      border: 1px solid var(--line);
+    }
+
+    h2 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      padding-left: 8px;
+      border-left: 3px solid var(--accent);
+      color: var(--ink);
+    }
+
+    h3 {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 10px 0 6px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* 紧凑型分层架构卡片 */
+    .layer {
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 6px;
+      border: 1px solid var(--line);
+      background: #fafbfc;
+    }
+
+    .layer-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+      gap: 6px;
+      width: 100%;
+    }
+
+    .row .chip {
+      flex: none;
+      min-width: 0;
+      max-width: 100%;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .chip {
+      border-radius: 4px;
+      padding: 8px 10px;
+      font-size: 12.5px;
+      border: 1px solid transparent;
+      text-align: center;
+      line-height: 1.3;
+      transition: all 0.15s ease-in-out;
+      background: #fff;
+      cursor: default;
+    }
+
+    .chip:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+    }
+
+    .chip .sub {
+      display: block;
+      font-size: 10px;
+      opacity: 0.85;
+      margin-top: 2px;
+      font-family: 'JetBrains Mono', Consolas, monospace;
+    }
+
+    /* 绑定鸿蒙语义色 */
+    .hw {
+      background: var(--hw);
+      border-color: rgba(246, 166, 0, 0.25);
+      color: var(--hw-text);
+    }
+
+    .drv {
+      background: var(--drv);
+      border-color: rgba(0, 125, 255, 0.2);
+      color: var(--drv-text);
+    }
+
+    .core {
+      background: var(--core);
+      border-color: rgba(76, 110, 245, 0.2);
+      color: var(--core-text);
+    }
+
+    .svc {
+      background: var(--svc);
+      border-color: rgba(0, 181, 63, 0.2);
+      color: var(--svc-text);
+    }
+
+    .motor {
+      background: var(--motor);
+      border-color: rgba(244, 67, 54, 0.25);
+      color: var(--motor-text);
+      font-weight: 600;
+    }
+
+    .queue {
+      background: var(--queue);
+      border-color: rgba(155, 81, 224, 0.2);
+      color: var(--queue-text);
+    }
+
+    .arrows {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 6px 0;
+      position: relative;
+      height: 18px;
+    }
+
+    .arrows::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 0;
+      border-left: 2px dashed var(--line);
+      transform: translateX(-50%);
+      z-index: 1;
+    }
+
+    .arrows span {
+      background: var(--bg);
+      color: var(--accent);
+      font-size: 9px;
+      font-weight: bold;
+      padding: 1px 6px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      z-index: 2;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    }
+
+    /* 紧凑型表格 */
+    .table-responsive {
+      overflow-x: auto;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    table th,
+    table td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: middle;
+    }
+
+    table th {
+      background: #f5f7f9;
+      font-weight: 700;
+      color: var(--ink);
+      border-bottom: 2px solid var(--line);
+    }
+
+    table tbody tr {
+      transition: background 0.1s;
+    }
+
+    table tbody tr:hover {
+      background: #f5f7fa;
+    }
+
+    /* 鸿蒙轻量徽章 */
+    .prio-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10.5px;
+      font-weight: 700;
+    }
+
+    .prio-high {
+      background: var(--motor);
+      color: var(--motor-text);
+    }
+
+    .prio-mid {
+      background: var(--core);
+      color: var(--core-text);
+    }
+
+    .prio-low {
+      background: #eef2f6;
+      color: var(--muted);
+    }
+
+    code {
+      background: #f1f3f5;
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-size: 11px;
+      color: #0f172a;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      border: 1px solid rgba(0, 0, 0, 0.03);
+      white-space: nowrap;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+      font-size: 11px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .legend i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* 自适应紧凑 SVG 流程图 */
+    .flow-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fafbfc;
+      padding: 10px;
+      margin-top: 8px;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      min-width: 900px;
+    }
+
+    /* 鸿蒙状态机极简排版 */
+    .sm-container {
+      position: relative;
+      margin-top: 8px;
+    }
+
+    .sm {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    @media (max-width: 992px) {
+      .sm {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .state {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #fff;
+      position: relative;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+      transition: all 0.15s ease-in-out;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+    }
+
+    .state-body {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 6px;
+    }
+
+    .state:hover {
+      transform: translateY(-1px);
+      border-color: var(--accent);
+      box-shadow: 0 4px 8px rgba(0, 125, 255, 0.08);
+    }
+
+    .state h4 {
+      font-size: 12.5px;
+      color: var(--ink);
+      margin-bottom: 6px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .state p {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      min-height: auto;
+    }
+
+    .state .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #f1f3f5;
+      color: var(--muted);
+      font-size: 10px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      font-weight: 700;
+    }
+
+    .state.active-state {
+      border-color: var(--accent);
+      background: #f2f8ff;
+    }
+
+    .state.active-state .badge {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    ul.compact {
+      margin: 4px 0 0 12px;
+      font-size: 10.5px;
+      color: var(--muted);
+    }
+
+    ul.compact li {
+      margin: 2px 0;
+    }
+
+    .sm-arrow-connector {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 8px 0 0 0;
+      color: var(--muted);
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      padding: 16px 0 8px;
+      border-top: 1px solid var(--line);
+      margin-top: 20px;
+    }
+
+    /* 代码级点击跳转组件 */
+    .chip[data-file],
+    td[data-file],
+    g[data-file] {
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+
+    .chip[data-file]:hover {
+      box-shadow: 0 3px 10px rgba(0, 125, 255, 0.15);
+      border-color: var(--accent);
+    }
+
+    .chip[data-file]::after {
+      content: ' \2197';
+      font-size: 9px;
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+
+    .chip[data-file]:hover::after {
+      opacity: 0.7;
+    }
+
+    td[data-file]:hover {
+      color: var(--accent);
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-underline-offset: 2px;
+    }
+
+    g[data-file] rect {
+      transition: stroke-width 0.1s;
+    }
+
+    g[data-file]:hover rect {
+      stroke-width: 2.2;
+    }
+
+    g[data-file]:hover text {
+      font-weight: 700;
+    }
+
+    /* 鸿蒙轻量化 Toast */
+    #file-toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(40px);
+      background: rgba(24, 36, 49, 0.9);
+      backdrop-filter: blur(8px);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+      z-index: 9999;
+      opacity: 0;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+      max-width: 90vw;
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    #file-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    #file-toast .toast-hint {
+      display: block;
+      font-size: 10px;
+      opacity: 0.8;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+
+    <header>
+      <h1>SmartCar · robot_demo 架构图</h1>
+      <p>HiSpark WS63 SDK / Huawei LiteOS · 高并发、优先级调度与消息环路</p>
+    </header>
+
+    <!-- =================== 分层架构 =================== -->
+    <section>
+      <h2>分层架构总览</h2>
+
+      <div class="layer" style="border-color: var(--queue-b); background: #fdfbff">
+        <div class="layer-label" style="color: var(--queue-text)">通信通道 / 共享状态 (IPC & Shared Memory)</div>
+        <div class="row">
+          <div class="chip queue">模式切换队列<span class="sub">mode_q · Depth=4</span></div>
+          <div class="chip queue">显示消息队列<span class="sub">ui_msgq · Depth=4</span></div>
+          <div class="chip queue">语音接收队列<span class="sub">voice_rx · Depth=32</span></div>
+          <div class="chip queue">WiFi 事件队列<span class="sub">wifi_mgr · Depth=8</span></div>
+          <div class="chip queue">STA 唤醒信号量<span class="sub">s_wait_sem</span></div>
+          <div class="chip queue">状态互斥锁<span class="sub">g_state_mutex</span></div>
+        </div>
+      </div>
+
+      <div class="arrows"><span>▼</span></div>
+
+      <div class="layer" style="border-color: var(--svc-b); background: #f6fdf8">
+        <div class="layer-label" style="color: var(--svc-text)">应用任务层 (Tasks & Services)</div>
+        <h3 style="color: var(--core-text)">核心控制 (Core Tasks)</h3>
+        <div class="row" style="margin-bottom: 8px;">
+          <div class="chip core" data-file="apps/robot_demo/robot_main.c" data-name="robot_main_task">主任务<span
+              class="sub">robot_main · Prio 25</span></div>
+          <div class="chip core" data-file="apps/robot_demo/core/mode_trace.c" data-name="trace_task">循迹任务<span
+              class="sub">mode_trace · Prio 22</span></div>
+          <div class="chip core" data-file="apps/robot_demo/core/mode_obstacle.c" data-name="obst_task">避障任务<span
+              class="sub">mode_obstacle · Prio 22</span></div>
+        </div>
+        <h3 style="color: var(--svc-text)">网络控制</h3>
+        <div class="row" style="margin-bottom: 8px;">
+          <div class="chip svc" data-file="apps/robot_demo/services/wifi_mgr_service.c" data-name="wifi_mgr">WiFi
+            管理器<span class="sub">wifi_mgr · Prio 20</span></div>
+          <div class="chip svc" data-file="apps/robot_demo/services/udp_service.c" data-name="udp_task">UDP 遥控<span
+              class="sub">udp_task · Prio 24</span></div>
+          <div class="chip svc" data-file="apps/robot_demo/services/captive_portal_service.c" data-name="portal_task">
+            配网服务<span class="sub">portal_task · Prio 23</span></div>
+          <div class="chip svc" data-file="apps/robot_demo/services/ota_service.c" data-name="ota_tcp_task">OTA 升级<span
+              class="sub">ota_tcp_task · Prio 23</span></div>
+        </div>
+        <h3 style="color: var(--svc-text)">外设服务</h3>
+        <div class="row">
+          <div class="chip svc" data-file="apps/robot_demo/services/voice_service.c" data-name="voice_task">语音命令<span
+              class="sub">voice_task · Prio 29</span></div>
+          <div class="chip svc" data-file="apps/robot_demo/services/ui_service.c" data-name="ui_task">OLED 显示<span
+              class="sub">ui_task · Prio 28</span></div>
+          <div class="chip svc" data-file="apps/robot_demo/services/sle_service.c" data-name="sle_service">星闪遥控<span
+              class="sub">sle_service · 回调</span></div>
+        </div>
+      </div>
+
+      <div class="arrows"><span>▼</span></div>
+
+      <div class="layer" style="border-color: var(--drv-b); background: #f2f8ff">
+        <div class="layer-label" style="color: var(--drv-text)">板载功能驱动 (On-board)</div>
+        <div class="row" style="margin-bottom: 8px;">
+          <div class="chip drv" data-file="drivers/wifi_client/bsp_wifi_sta.c" data-name="bsp_wifi">WiFi STA<span
+              class="sub">bsp_wifi_sta · 路由连接</span></div>
+          <div class="chip drv" data-file="drivers/wifi_client/bsp_wifi_ap.c" data-name="bsp_wifi_ap">WiFi AP<span
+              class="sub">bsp_wifi_ap · 热点</span></div>
+          <div class="chip drv" data-file="drivers/sle/sle_device.c" data-name="sle_device">星闪 SLE<span
+              class="sub">sle_device · 近场通信</span></div>
+        </div>
+        <div class="layer-label" style="color: var(--drv-text)">外设模块驱动 (Peripherals)</div>
+        <div class="row">
+          <div class="chip drv" data-file="drivers/l9110s/bsp_l9110s.c" data-name="l9110s">电机驱动<span class="sub">l9110s
+              · PWM</span></div>
+          <div class="chip drv" data-file="drivers/motor_control/bsp_motor.c" data-name="bsp_motor">电机管理<span
+              class="sub">bsp_motor · 指令分发</span></div>
+          <div class="chip drv" data-file="drivers/hcsr04/bsp_hcsr04.c" data-name="hcsr04">超声波<span class="sub">hcsr04 ·
+              测距</span></div>
+          <div class="chip drv" data-file="drivers/tcrt5000/bsp_tcrt5000.c" data-name="tcrt5000">红外循迹<span
+              class="sub">tcrt5000 · ADC</span></div>
+          <div class="chip drv" data-file="drivers/ssd1306/ssd1306.c" data-name="ssd1306">OLED 屏幕<span
+              class="sub">ssd1306 · I2C</span></div>
+          <div class="chip drv" data-file="drivers/uart/bsp_uart.c" data-name="bsp_uart">串口驱动<span class="sub">bsp_uart
+              · 语音</span></div>
+        </div>
+      </div>
+
+      <div class="arrows"><span>▼</span></div>
+
+      <div class="layer" style="border-color: var(--hw-b); background: #fffcf6">
+        <div class="layer-label" style="color: var(--hw-text)">物理硬件 (Hardware Devices)</div>
+        <div class="row">
+          <div class="chip hw">模式物理按键<span class="sub">GPIO3 · 下降沿中断</span></div>
+          <div class="chip hw">双路直流电机<span class="sub">通过L9110S驱动</span></div>
+          <div class="chip hw">HC-SR04 超声头<span class="sub">一发一收硬件</span></div>
+          <div class="chip hw">TCRT5000 探头 ×3<span class="sub">左 / 中 / 右 循迹</span></div>
+          <div class="chip hw">OLED 128×64 屏<span class="sub">I2C 接口屏</span></div>
+          <div class="chip hw">智能语音播报板<span class="sub">串口离线语音</span></div>
+          <div class="chip hw">WS63 WiFi 6 芯片<span class="sub">STA + AP 双模</span></div>
+          <div class="chip hw">SLE 星闪天线<span class="sub">近场无线通信</span></div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span style="border-color:var(--core-b);color:var(--core-text)"><i style="background:var(--core-b)"></i>Core
+          核心任务</span>
+        <span style="border-color:var(--motor-b);color:var(--motor-text)"><i
+            style="background:var(--motor-b)"></i>动力出口/安全刹车</span>
+        <span style="border-color:var(--svc-b);color:var(--svc-text)"><i style="background:var(--svc-b)"></i>Service
+          外部服务</span>
+        <span style="border-color:var(--drv-b);color:var(--drv-text)"><i style="background:var(--drv-b)"></i>BSP
+          驱动</span>
+        <span style="border-color:var(--hw-b);color:var(--hw-text)"><i style="background:var(--hw-b)"></i>Physical
+          物理硬件</span>
+        <span style="border-color:var(--queue-b);color:var(--queue-text)"><i style="background:var(--queue-b)"></i>IPC
+          进程通信</span>
+      </div>
+    </section>
+
+    <!-- =================== Task 一览 =================== -->
+    <section>
+      <h2>任务(Task/ISR)一览与调度矩阵</h2>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>任务名称</th>
+              <th>源文件</th>
+              <th>优先级</th>
+              <th>栈大小</th>
+              <th>触发与调度机制</th>
+              <th>核心职责</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>robot_main_task</code></td>
+              <td data-file="apps/robot_demo/robot_main.c"><code>robot_main.c</code></td>
+              <td><span class="prio-badge prio-mid">25 (中低)</span></td>
+              <td><code>4 KB</code></td>
+              <td>自启动创建 · 事件驱动</td>
+              <td>初始化各服务模块；检测模式切换；按键中断绑定</td>
+            </tr>
+            <tr>
+              <td><code>trace_task</code></td>
+              <td data-file="apps/robot_demo/core/mode_trace.c"><code>core/mode_trace.c</code></td>
+              <td><span class="prio-badge prio-high">22 (高)</span></td>
+              <td><code>2 KB</code></td>
+              <td>模式激活创建 · 20ms 周期</td>
+              <td>采集 TCRT5000 红外 ADC + 超声波，运行 PID 算法校正并下推电机命令</td>
+            </tr>
+            <tr>
+              <td><code>obst_task</code></td>
+              <td data-file="apps/robot_demo/core/mode_obstacle.c"><code>core/mode_obstacle.c</code></td>
+              <td><span class="prio-badge prio-high">22 (高)</span></td>
+              <td><code>2 KB</code></td>
+              <td>模式激活创建 · 20ms 周期</td>
+              <td>执行 7 态避障状态机（前进/停/后退/转向等），内嵌超声波测距</td>
+            </tr>
+            <tr>
+              <td><code>udp_task</code></td>
+              <td data-file="apps/robot_demo/services/udp_service.c"><code>services/udp_service.c</code></td>
+              <td><span class="prio-badge prio-mid">24 (中)</span></td>
+              <td><code>8 KB</code></td>
+              <td>网卡接收阻塞 (recv)</td>
+              <td>端口 8888 监听。解析 5 字节 UDP 包（控制/模式/PID/OTA），WiFi 配置命令</td>
+            </tr>
+            <tr>
+              <td><code>wifi_mgr</code></td>
+              <td data-file="apps/robot_demo/services/wifi_mgr_service.c"><code>services/wifi_mgr_service.c</code></td>
+              <td><span class="prio-badge prio-high">20 (高)</span></td>
+              <td><code>2 KB</code></td>
+              <td>消息队列驱动</td>
+              <td>WiFi 状态管理：STA/AP 切换、连接失败恢复、事件分发（GOT_IP/FAIL/STOPPED）</td>
+            </tr>
+            <tr>
+              <td><code>ota_tcp_task</code></td>
+              <td data-file="apps/robot_demo/services/ota_service.c"><code>services/ota_service.c</code></td>
+              <td><span class="prio-badge prio-mid">23 (中高)</span></td>
+              <td><code>16 KB</code></td>
+              <td>UDP 触发后按需建立</td>
+              <td>端口 8890 接收 TCP 固件流，写入 UPG 暂存区，校验后请求升级重启</td>
+            </tr>
+            <tr>
+              <td><code>portal_task</code></td>
+              <td data-file="apps/robot_demo/services/captive_portal_service.c">
+                <code>services/captive_portal_service.c</code></td>
+              <td><span class="prio-badge prio-mid">23 (中高)</span></td>
+              <td><code>8 KB</code></td>
+              <td>AP 模式下启动</td>
+              <td>HTTP 80 / DNS 53 劫持配网，Web 页面配置 WiFi，遥控指令转发</td>
+            </tr>
+            <tr>
+              <td><code>voice_task</code></td>
+              <td data-file="apps/robot_demo/services/voice_service.c"><code>services/voice_service.c</code></td>
+              <td><span class="prio-badge prio-low">29 (低)</span></td>
+              <td><code>2 KB</code></td>
+              <td>阻塞读取 voice_rx 队列</td>
+              <td>消费 UART 接收字节，解析运动/模式命令，超时自动停车</td>
+            </tr>
+            <tr>
+              <td><code>ui_task</code></td>
+              <td data-file="apps/robot_demo/services/ui_service.c"><code>services/ui_service.c</code></td>
+              <td><span class="prio-badge prio-low">28 (低)</span></td>
+              <td><code>4 KB</code></td>
+              <td>阻塞读取 <code>ui_msgq</code></td>
+              <td>统一 OLED I2C 操作出口，解决多任务并发访问导致的花屏</td>
+            </tr>
+            <tr>
+              <td>SLE 回调</td>
+              <td data-file="apps/robot_demo/services/sle_service.c"><code>services/sle_service.c</code></td>
+              <td><span class="prio-badge prio-low">—</span></td>
+              <td>—</td>
+              <td>星闪协议栈回调</td>
+              <td>接收 5 字节数据包，通过 robot_proto_handle_packet 注入控制链</td>
+            </tr>
+            <tr>
+              <td>按键 ISR</td>
+              <td data-file="apps/robot_demo/robot_main.c"><code>robot_main.c</code></td>
+              <td><span class="prio-badge prio-high">中断</span></td>
+              <td>—</td>
+              <td>GPIO3 下降沿 · 200ms 消抖</td>
+              <td>物理轮询切换模式：<code>STOP → TRACE → OBSTACLE → REMOTE → STOP</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- =================== 消息流 =================== -->
+    <section>
+      <h2>消息流总览</h2>
+      <p style="color:var(--muted);font-size:11.5px;margin-bottom:8px">
+        系统有两条核心数据通路：<strong>电机控制</strong>（各模式直接调用 <code>bsp_motor_push_cmd()</code>，无中间队列，见
+        <code>bsp_motor.c:L78</code>）与
+        <strong>模式切换</strong>（通过 <code>mode_q</code> 队列投递 <code>ModeCmdMsg</code>，由状态机消费并执行切换，见
+        <code>robot_main.c:L210</code>）。
+      </p>
+
+      <div class="flow-wrap">
+        <svg viewBox="0 0 1080 540" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+              <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-opacity="0.04" />
+            </filter>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+              orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#556272" />
+            </marker>
+          </defs>
+
+          <!-- 中心：直接电机驱动 -->
+          <rect x="430" y="260" width="220" height="70" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
+            stroke-width="1.5" filter="url(#shadow)" />
+          <text x="540" y="288" text-anchor="middle" font-size="14" font-weight="800"
+            fill="var(--motor-text)">bsp_motor_push_cmd</text>
+          <text x="540" y="308" text-anchor="middle" font-size="10.5" fill="var(--motor-text)">直接驱动 · 无中间队列</text>
+
+          <!-- 硬件 -->
+          <rect x="430" y="370" width="220" height="40" rx="6" fill="var(--hw)" stroke="var(--hw-b)" stroke-width="1.5"
+            filter="url(#shadow)" />
+          <text x="540" y="394" text-anchor="middle" font-size="12" font-weight="700" fill="var(--hw-text)">L9110S H桥 ·
+            直流电机</text>
+          <line x1="540" y1="330" x2="540" y2="368" stroke="#556272" stroke-width="1.5" marker-end="url(#arr)" />
+
+          <!-- 遥控发送源（绿色服务） -->
+          <g filter="url(#shadow)">
+            <rect x="30" y="20" width="200" height="60" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1" />
+            <text x="130" y="42" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--svc-text)">udp_task
+              (遥控)</text>
+            <text x="130" y="58" text-anchor="middle" font-size="10" fill="var(--svc-text)">MOTOR_SRC_REMOTE</text>
+            <path d="M230,50 Q340,50 430,270" fill="none" stroke="var(--svc-b)" stroke-width="1.2"
+              marker-end="url(#arr)" />
+          </g>
+
+          <g filter="url(#shadow)">
+            <rect x="30" y="100" width="200" height="60" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1" />
+            <text x="130" y="122" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--svc-text)">SLE
+              星闪回调</text>
+            <text x="130" y="138" text-anchor="middle" font-size="10" fill="var(--svc-text)">MOTOR_SRC_REMOTE</text>
+            <path d="M230,130 Q340,130 430,280" fill="none" stroke="var(--svc-b)" stroke-width="1.2"
+              marker-end="url(#arr)" />
+          </g>
+
+          <g filter="url(#shadow)">
+            <rect x="30" y="180" width="200" height="60" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1" />
+            <text x="130" y="212" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--svc-text)">Web
+              Portal 遥控</text>
+            <text x="130" y="228" text-anchor="middle" font-size="10" fill="var(--svc-text)">MOTOR_SRC_REMOTE</text>
+            <path d="M230,210 Q330,210 430,285" fill="none" stroke="var(--svc-b)" stroke-width="1.2"
+              marker-end="url(#arr)" />
+          </g>
+
+          <g filter="url(#shadow)">
+            <rect x="30" y="260" width="200" height="60" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1" />
+            <text x="130" y="292" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--core-text)">语音模块
+              (串口解析)</text>
+            <text x="130" y="308" text-anchor="middle" font-size="10" fill="var(--core-text)">MOTOR_SRC_VOICE</text>
+            <path d="M230,290 Q330,290 430,290" fill="none" stroke="var(--core-b)" stroke-width="1.2"
+              marker-end="url(#arr)" />
+          </g>
+
+          <!-- 自动控制源（靛蓝控制） -->
+          <g filter="url(#shadow)">
+            <rect x="850" y="20" width="200" height="60" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1" />
+            <text x="950" y="42" text-anchor="middle" font-size="12.5" font-weight="700"
+              fill="var(--core-text)">trace_task (循迹)</text>
+            <text x="950" y="58" text-anchor="middle" font-size="10" fill="var(--core-text)">MOTOR_SRC_AUTO</text>
+            <path d="M850,50 Q740,50 650,270" fill="none" stroke="var(--core-b)" stroke-width="1.2"
+              marker-end="url(#arr)" />
+          </g>
+
+          <g filter="url(#shadow)">
+            <rect x="850" y="100" width="200" height="60" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1" />
+            <text x="950" y="122" text-anchor="middle" font-size="12.5" font-weight="700"
+              fill="var(--core-text)">obst_task (避障)</text>
+            <text x="950" y="138" text-anchor="middle" font-size="10" fill="var(--core-text)">MOTOR_SRC_AUTO</text>
+            <path d="M850,130 Q740,130 650,280" fill="none" stroke="var(--core-b)" stroke-width="1.2"
+              marker-end="url(#arr)" />
+          </g>
+
+          <g filter="url(#shadow)">
+            <rect x="850" y="180" width="200" height="60" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1" />
+            <text x="950" y="202" text-anchor="middle" font-size="12.5" font-weight="700"
+              fill="var(--core-text)">robot_mgr 异常干预</text>
+            <text x="950" y="218" text-anchor="middle" font-size="10" fill="var(--core-text)">强制刹车停泊 (0, 0)</text>
+            <path d="M850,210 Q740,210 650,290" fill="none" stroke="var(--core-b)" stroke-width="1.2"
+              marker-end="url(#arr)" />
+          </g>
+
+          <!-- 共享全局状态读写 -->
+          <g filter="url(#shadow)">
+            <rect x="850" y="260" width="200" height="60" rx="6" fill="var(--queue)" stroke="var(--queue-b)"
+              stroke-width="1" />
+            <text x="950" y="292" text-anchor="middle" font-size="12.5" font-weight="700"
+              fill="var(--queue-text)">RobotState (安全锁保护)</text>
+            <text x="950" y="308" text-anchor="middle" font-size="10" fill="var(--queue-text)">状态共享: 测距/红外/运行模式</text>
+          </g>
+          <path d="M850,290 Q780,340 650,360" fill="none" stroke="#556272" stroke-width="1" stroke-dasharray="3 2"
+            marker-end="url(#arr)" />
+          <text x="790" y="330" font-size="10" fill="#556272" font-weight="600">UDP 外发状态监控</text>
+
+          <!-- 传感器写状态 -->
+          <g filter="url(#shadow)">
+            <rect x="30" y="340" width="200" height="60" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1" />
+            <text x="130" y="372" text-anchor="middle" font-size="12.5" font-weight="700"
+              fill="var(--core-text)">trace/obst_task</text>
+            <text x="130" y="388" text-anchor="middle" font-size="10" fill="var(--core-text)">传感器采样实时刷新核心状态</text>
+            <path d="M230,370 Q500,360 850,290" fill="none" stroke="#556272" stroke-width="1" stroke-dasharray="3 2"
+              marker-end="url(#arr)" />
+          </g>
+
+          <!-- UI及物理屏幕 -->
+          <g filter="url(#shadow)">
+            <rect x="30" y="420" width="200" height="60" rx="6" fill="var(--queue)" stroke="var(--queue-b)"
+              stroke-width="1" />
+            <text x="130" y="448" text-anchor="middle" font-size="12.5" font-weight="700"
+              fill="var(--queue-text)">ui_msgq 消息队列</text>
+            <text x="130" y="464" text-anchor="middle" font-size="10" fill="var(--queue-text)">Depth = 4 · 异步渲染缓冲</text>
+          </g>
+          <g filter="url(#shadow)">
+            <rect x="30" y="490" width="200" height="40" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1" />
+            <text x="130" y="514" text-anchor="middle" font-size="12" font-weight="700" fill="var(--svc-text)">ui_task ➔
+              OLED 物理屏</text>
+            <line x1="130" y1="480" x2="130" y2="488" stroke="var(--svc-b)" stroke-width="1.5" marker-end="url(#arr)" />
+          </g>
+        </svg>
+      </div>
+
+      <h3 style="margin-top: 10px;">核心数据通路定义</h3>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>物理通道/原语</th>
+              <th>实现类型</th>
+              <th>数据流生产者</th>
+              <th>数据流接收者</th>
+              <th>系统级交互语义</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>bsp_motor_push_cmd()</code></td>
+              <td>直接函数调用</td>
+              <td>控制源: UDP / SLE / Portal / 语音 / 自动业务线程</td>
+              <td>L9110S 电机物理驱动</td>
+              <td>各执行模式独占式直接操控。切换时由 <code>robot_main_task</code> 强行清空输出防暴冲。</td>
+            </tr>
+            <tr>
+              <td><code>mode_q</code></td>
+              <td><code>LiteOS 消息队列 (Depth=4)</code></td>
+              <td>GPIO 按键 ISR / UDP 遥控 / SLE / Web Portal</td>
+              <td><code>robot_main_task</code> 主循环</td>
+              <td>模式指令的防抖与串行化入口。主任务依据事件周期分发切换流程。</td>
+            </tr>
+            <tr>
+              <td><code>ui_msgq</code></td>
+              <td><code>LiteOS 消息队列 (Depth=4)</code></td>
+              <td>网络状态机 / 模式转换器 / OTA 进程</td>
+              <td><code>ui_task</code> 显示线程</td>
+              <td>将并发的屏幕刷新请求串行化，规避 I2C 总线多线程竞争导致的硬件花屏问题。</td>
+            </tr>
+            <tr>
+              <td><code>voice_rx</code></td>
+              <td><code>LiteOS 消息队列 (Depth=32)</code></td>
+              <td>UART 串口接收中断 (ISR)</td>
+              <td><code>voice_task</code> 命令处理器</td>
+              <td>保障字符级串口接收的吞吐率，有效解耦外部离线语音包解析耗时。</td>
+            </tr>
+            <tr>
+              <td><code>wifi_mgr 队列</code></td>
+              <td><code>LiteOS 消息队列 (Depth=8)</code></td>
+              <td>系统初始化 / 断线事件回调 / UDP 配网命令</td>
+              <td><code>wifi_mgr</code> 守护服务</td>
+              <td>执行 STA 连接重试、热点状态退出的核心管理模块。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- =================== 模式状态机 =================== -->
+    <section>
+      <h2>物理运行模式状态机 (Finite State Machine)</h2>
+      <p style="color:var(--muted);font-size:11.5px;margin-bottom:8px">
+        <code>robot_mgr</code> 阻塞监听模式切换队列 <code>mode_q</code>，收到指令后执行退出/进入切换，保障平滑控制。
+      </p>
+
+      <div class="sm-container">
+        <div class="sm">
+          <div class="state active-state">
+            <div class="state-body">
+              <h4><span class="badge">0</span> CAR_STOP_STATUS · 待机模式</h4>
+              <p><strong>Enter:</strong> 调用物理阻尼刹车，电机零输出。</p>
+            </div>
+            <ul class="compact">
+              <li><strong>Tick:</strong> 500ms 高阶渲染待机屏（显示AP配网状态、IP地址）</li>
+              <li><strong>Exit:</strong> 无释放需求</li>
+            </ul>
+          </div>
+
+          <div class="state">
+            <div class="state-body">
+              <h4><span class="badge">1</span> CAR_TRACE_STATUS · PID循迹</h4>
+              <p><strong>Enter:</strong> 从物理闪存NV读 PID 配置 → 挂载 event 信号 → 动态建立 <code>trace_task</code></p>
+            </div>
+            <ul class="compact">
+              <li><strong>Tick:</strong> 挂空（由 trace 任务高频自处理）</li>
+              <li><strong>Exit:</strong> 发送全局 <code>STOP</code> 事件并等待任务销毁 → 推送物理停车指令保护</li>
+            </ul>
+          </div>
+
+          <div class="state">
+            <div class="state-body">
+              <h4><span class="badge">2</span> CAR_OBSTACLE_AVOIDANCE_STATUS · 避障</h4>
+              <p><strong>Enter:</strong> 重置避障子状态机至 FORWARD (前进) → 动态建立独立 <code>obst_task</code></p>
+            </div>
+            <ul class="compact">
+              <li><strong>Tick:</strong> 挂空（由避障状态机线程循环执行）</li>
+              <li><strong>Exit:</strong> 注入退出事件信号 → 回收运行空间并强制关闭输出</li>
+            </ul>
+          </div>
+
+          <div class="state">
+            <div class="state-body">
+              <h4><span class="badge">3</span> CAR_WIFI_CONTROL_STATUS · 移动遥控</h4>
+              <p><strong>Enter:</strong> 初始化系统并设置物理待命停车状态。</p>
+            </div>
+            <ul class="compact">
+              <li><strong>Tick:</strong> 无操作（控制流转为异步：直接由外部网络接口或星闪回调输入）</li>
+              <li><strong>Exit:</strong> 强制阻断物理动力链，进入物理断电防护</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="sm-arrow-connector">
+        <span>按键循环：待机 (0) ➔ 循迹 (1) ➔ 避障 (2) ➔ 遥控 (3) ➔ 待机 (0)</span>
+      </div>
+    </section>
+
+    <!-- =================== WiFi 网络连接流程 =================== -->
+    <section>
+      <h2>WiFi 网络连接流程</h2>
+      <p style="color:var(--muted);font-size:11.5px;margin-bottom:8px">
+        系统上电后根据持久化 NV 配置自动选择连接路由器（STA）或开启配网热点（AP）。
+      </p>
+
+      <div class="flow-wrap">
+        <svg viewBox="0 0 960 380" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="warr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+              orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#556272" />
+            </marker>
+          </defs>
+
+          <!-- 启动 -->
+          <g data-file="apps/robot_demo/robot_main.c">
+            <rect x="30" y="30" width="160" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="110" y="52" text-anchor="middle" font-size="12.5" font-weight="700"
+              fill="var(--core-text)">WIFI_MSG_START</text>
+            <text x="110" y="68" text-anchor="middle" font-size="10" fill="var(--core-text)">主任务引导唤醒</text>
+          </g>
+
+          <!-- wifi_mgr -->
+          <g data-file="apps/robot_demo/services/wifi_mgr_service.c">
+            <rect x="30" y="120" width="160" height="70" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="110" y="145" text-anchor="middle" font-size="12.5" font-weight="700"
+              fill="var(--svc-text)">wifi_mgr 状态队列</text>
+            <text x="110" y="162" text-anchor="middle" font-size="10" fill="var(--svc-text)">Prio 20 · 串行化事件</text>
+            <text x="110" y="178" text-anchor="middle" font-size="10" fill="var(--svc-text)">核心连接状态决策机</text>
+          </g>
+          <line x1="110" y1="80" x2="110" y2="118" stroke="var(--core-b)" stroke-width="1.2" marker-end="url(#warr)" />
+
+          <!-- 有配置分支 -->
+          <g data-file="platform/storage_service.c">
+            <rect x="260" y="100" width="180" height="55" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="350" y="122" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--svc-text)">NV 存在
+              WiFi 凭证?</text>
+            <text x="350" y="138" text-anchor="middle" font-size="10" fill="var(--svc-text)">提取历史存储自动载入</text>
+          </g>
+          <line x1="190" y1="155" x2="258" y2="127" stroke="var(--svc-b)" stroke-width="1.2" marker-end="url(#warr)" />
+
+          <!-- STA 任务 -->
+          <g data-file="drivers/wifi_client/bsp_wifi_sta.c">
+            <rect x="510" y="30" width="200" height="80" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="610" y="55" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--svc-text)">STA
+              连接任务</text>
+            <text x="610" y="72" text-anchor="middle" font-size="10" fill="var(--svc-text)">信号量唤醒 ➔ 扫描AP ➔ 接入</text>
+            <text x="610" y="88" text-anchor="middle" font-size="10" fill="var(--svc-text)">阻塞运行 · 零CPU空转占用</text>
+            <text x="610" y="102" text-anchor="middle" font-size="10" fill="var(--svc-text)">DHCP 动态请求分配 IP</text>
+          </g>
+          <line x1="350" y1="100" x2="508" y2="70" stroke="var(--svc-b)" stroke-width="1.2" marker-end="url(#warr)" />
+          <text x="420" y="80" font-size="10" fill="var(--svc-text)" font-weight="600">快速关联</text>
+
+          <!-- 无配置分支 - AP -->
+          <g data-file="drivers/wifi_client/bsp_wifi_ap.c">
+            <rect x="260" y="200" width="180" height="55" rx="6" fill="var(--hw)" stroke="var(--hw-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="350" y="222" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--hw-text)">无配置 ➔ 物理
+              AP 待命</text>
+            <text x="350" y="238" text-anchor="middle" font-size="10" fill="var(--hw-text)">ap_task_start() 调用</text>
+          </g>
+          <line x1="190" y1="165" x2="258" y2="227" stroke="var(--hw-b)" stroke-width="1.2" marker-end="url(#warr)" />
+          <text x="215" y="205" font-size="10" fill="var(--hw-text)" font-weight="600">引导配网</text>
+
+          <!-- AP 热点 -->
+          <g data-file="drivers/wifi_client/bsp_wifi_ap.c">
+            <rect x="510" y="180" width="200" height="70" rx="6" fill="var(--hw)" stroke="var(--hw-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="610" y="205" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--hw-text)">SoftAP
+              热点构建</text>
+            <text x="610" y="222" text-anchor="middle" font-size="10" fill="var(--hw-text)">SSID: WS63_Robot ·
+              192.168.1.1</text>
+            <text x="610" y="238" text-anchor="middle" font-size="10" fill="var(--hw-text)">开启 DNS & HTTP 强制劫持门户</text>
+          </g>
+          <line x1="350" y1="255" x2="508" y2="215" stroke="var(--hw-b)" stroke-width="1.2" marker-end="url(#warr)" />
+
+          <!-- 成功/失败回调 -->
+          <g data-file="apps/robot_demo/services/wifi_mgr_service.c">
+            <rect x="780" y="30" width="160" height="50" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="860" y="52" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--svc-text)">连接成功 ➔
+              注销 AP</text>
+            <text x="860" y="68" text-anchor="middle" font-size="10" fill="var(--svc-text)">释放配网通道回收物理资源</text>
+          </g>
+          <line x1="710" y1="55" x2="778" y2="55" stroke="var(--svc-b)" stroke-width="1.2" marker-end="url(#warr)" />
+
+          <g data-file="apps/robot_demo/services/wifi_mgr_service.c">
+            <rect x="780" y="110" width="160" height="60" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="860" y="132" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--motor-text)">连接失败
+              ➔ 降级重置</text>
+            <text x="860" y="148" text-anchor="middle" font-size="10" fill="var(--motor-text)">读取启动状态进行重连决策</text>
+            <text x="860" y="162" text-anchor="middle" font-size="10" fill="var(--motor-text)">保留热点允许再次输入</text>
+          </g>
+          <line x1="710" y1="70" x2="778" y2="125" stroke="var(--motor-b)" stroke-width="1.2" marker-end="url(#warr)" />
+
+          <!-- UDP 配网入口 -->
+          <g data-file="apps/robot_demo/services/udp_service.c">
+            <rect x="510" y="290" width="200" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="610" y="312" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--core-text)">UDP
+              配网指令通道 (0xE1)</text>
+            <text x="610" y="328" text-anchor="middle" font-size="10" fill="var(--core-text)">支持无线批量部署或上位机配置</text>
+          </g>
+          <line x1="610" y1="340" x2="610" y2="290" stroke="var(--core-b)" stroke-width="1" stroke-dasharray="3 2"
+            marker-end="url(#warr)" />
+
+          <text x="480" y="365" font-size="10" fill="var(--muted)" text-anchor="middle">WiFi
+            内部逻辑依靠队列统一解耦，规避总线上电时产生锁竞争</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- =================== Captive Portal 配网流程 =================== -->
+    <section>
+      <h2>Captive Portal 配网流程</h2>
+      <p style="color:var(--muted);font-size:11.5px;margin-bottom:8px">
+        零配置设备自建 AP，利用 DNS 劫持强制拉起配网网页，实现轻量化交互。
+      </p>
+
+      <div class="flow-wrap">
+        <svg viewBox="0 0 960 280" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="parr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+              orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#556272" />
+            </marker>
+          </defs>
+
+          <!-- 手机 -->
+          <rect x="30" y="40" width="160" height="85" rx="6" fill="var(--bg)" stroke="var(--muted)" stroke-width="1.2"
+            filter="url(#shadow)" />
+          <text x="110" y="60" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--ink)">终端手机 /
+            设备</text>
+          <text x="110" y="78" text-anchor="middle" font-size="9.5" fill="var(--muted)">1. 物理连接 WS63 热点</text>
+          <text x="110" y="93" text-anchor="middle" font-size="9.5" fill="var(--muted)">2. 输入账号凭证</text>
+          <text x="110" y="108" text-anchor="middle" font-size="9.5" fill="var(--muted)">3. POST 发送报文配网</text>
+
+          <!-- AP 热点 -->
+          <g data-file="drivers/wifi_client/bsp_wifi_ap.c:L29-L50">
+            <rect x="260" y="30" width="180" height="55" rx="6" fill="var(--hw)" stroke="var(--hw-b)" stroke-width="1.2"
+              filter="url(#shadow)" />
+            <text x="350" y="52" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--hw-text)">物理 SoftAP
+              (热点开启)</text>
+            <text x="350" y="70" text-anchor="middle" font-size="9.5" fill="var(--hw-text)">WS63_Robot ·
+              192.168.1.1</text>
+          </g>
+          <line x1="190" y1="90" x2="258" y2="60" stroke="#556272" stroke-width="1.2" marker-end="url(#parr)" />
+
+          <!-- DNS 劫持 -->
+          <g data-file="apps/robot_demo/services/captive_portal_service.c:L623-L680">
+            <rect x="260" y="110" width="180" height="50" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="350" y="132" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--motor-text)">DNS
+              Server (UDP 53)</text>
+            <text x="350" y="148" text-anchor="middle" font-size="9.5" fill="var(--motor-text)">解析流量全面重映射至本地网关</text>
+          </g>
+          <line x1="190" y1="105" x2="258" y2="135" stroke="var(--motor-b)" stroke-width="1" stroke-dasharray="3 2"
+            marker-end="url(#parr)" />
+
+          <!-- HTTP Server -->
+          <g data-file="apps/robot_demo/services/captive_portal_service.c:L435-L620">
+            <rect x="510" y="30" width="200" height="110" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="610" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--svc-text)">HTTP
+              Server (TCP 80)</text>
+            <text x="610" y="72" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">GET / ➔ 返回本地 HTML 主页</text>
+            <text x="610" y="87" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">POST /config ➔
+              解析配置载入</text>
+            <text x="610" y="102" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">302 Redirect ➔
+              唤醒门户自弹</text>
+            <text x="610" y="117" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">内嵌轻量遥控面板指令转发</text>
+          </g>
+          <line x1="350" y1="60" x2="508" y2="60" stroke="var(--svc-b)" stroke-width="1.2" marker-end="url(#parr)" />
+
+          <!-- 配网成功 -->
+          <g data-file="apps/robot_demo/services/wifi_mgr_service.c:L138-L143">
+            <rect x="510" y="170" width="200" height="55" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="610" y="192" text-anchor="middle" font-size="11.5" font-weight="700"
+              fill="var(--core-text)">触发配网重载</text>
+            <text x="610" y="210" text-anchor="middle" font-size="9.5" fill="var(--core-text)">信息入库并向 wifi_mgr
+              投递重连事件</text>
+          </g>
+          <line x1="610" y1="140" x2="610" y2="168" stroke="var(--core-b)" stroke-width="1.2" marker-end="url(#parr)" />
+
+          <!-- 结果反馈 -->
+          <g data-file="apps/robot_demo/services/wifi_mgr_service.c:L78-L94">
+            <rect x="780" y="170" width="160" height="55" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="860" y="192" text-anchor="middle" font-size="11.5" font-weight="700"
+              fill="var(--motor-text)">配网超时/失败</text>
+            <text x="860" y="210" text-anchor="middle" font-size="9.5" fill="var(--motor-text)">保留门户，等待用户修正重试</text>
+          </g>
+          <line x1="710" y1="195" x2="778" y2="195" stroke="var(--motor-b)" stroke-width="1.2"
+            marker-end="url(#parr)" />
+
+          <text x="480" y="255" font-size="10" fill="var(--muted)" text-anchor="middle">配网阶段，AP 热点与轻量 Web
+            维持活跃，保证本地通道的高稳定性</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- =================== OTA 固件升级流程 =================== -->
+    <section>
+      <h2>OTA 固件升级流程</h2>
+      <p style="color:var(--muted);font-size:11.5px;margin-bottom:8px">
+        本系统采用双分区升级（A/B 双备份机制）。运行时在 A 区处理固件下载并写入暂存区，重启后由 Bootloader 进行差分还原与分区切换。
+      </p>
+
+      <div class="flow-wrap">
+        <svg viewBox="0 0 960 350" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="oarr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+              orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#556272" />
+            </marker>
+          </defs>
+
+          <!-- 阶段1: App 运行时 -->
+          <rect x="30" y="20" width="580" height="200" rx="8" fill="none" stroke="var(--core-b)" stroke-width="1.2"
+            stroke-dasharray="6 3" />
+          <text x="45" y="40" font-size="12" font-weight="700" fill="var(--core-text)">阶段 1: APP 运行时（固件下载与就位）</text>
+
+          <!-- UDP 触发 -->
+          <g data-file="apps/robot_demo/services/udp_service.c:L264-L280">
+            <rect x="50" y="60" width="160" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="130" y="82" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--core-text)">UDP
+              升级握手 (0x05)</text>
+            <text x="130" y="98" text-anchor="middle" font-size="9.5" fill="var(--core-text)">ota_service_start()
+              激活</text>
+          </g>
+
+          <!-- TCP Server -->
+          <g data-file="apps/robot_demo/services/ota_service.c:L474-L490">
+            <rect x="270" y="60" width="180" height="50" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="360" y="82" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--svc-text)">TCP
+              本地服务器 (8890)</text>
+            <text x="360" y="98" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">建立可靠流传输链路</text>
+          </g>
+          <line x1="210" y1="85" x2="268" y2="85" stroke="var(--svc-b)" stroke-width="1.2" marker-end="url(#oarr)" />
+
+          <!-- 接收固件 -->
+          <g data-file="apps/robot_demo/services/ota_service.c:L328-L405">
+            <rect x="50" y="130" width="180" height="70" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="140" y="152" text-anchor="middle" font-size="11.5" font-weight="700"
+              fill="var(--svc-text)">接收固件数据流</text>
+            <text x="140" y="168" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">recv_all() ➔ 识别魔数
+              "OTAx"</text>
+            <text x="140" y="182" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">调用系统升级接口预分配空间</text>
+            <text x="140" y="196" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">循环拼装写入 FOTA 存储</text>
+          </g>
+          <line x1="360" y1="110" x2="228" y2="145" stroke="var(--svc-b)" stroke-width="1" marker-end="url(#oarr)" />
+
+          <!-- 写入暂存区 -->
+          <g data-file="apps/robot_demo/services/ota_service.c:L385-L395">
+            <rect x="290" y="130" width="180" height="70" rx="6" fill="var(--hw)" stroke="var(--hw-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="380" y="152" text-anchor="middle" font-size="11.5" font-weight="700"
+              fill="var(--hw-text)">同步烧写物理闪存</text>
+            <text x="380" y="168" text-anchor="middle" font-size="9.5"
+              fill="var(--hw-text)">uapi_upg_write_package_sync()</text>
+            <text x="380" y="182" text-anchor="middle" font-size="9.5" fill="var(--hw-text)">写入逻辑 B 区升级暂存区</text>
+            <text x="380" y="196" text-anchor="middle" font-size="9.5" fill="var(--hw-text)">偏置基地址: 0x270000</text>
+          </g>
+          <line x1="230" y1="165" x2="288" y2="165" stroke="var(--hw-b)" stroke-width="1.2" marker-end="url(#oarr)" />
+
+          <!-- 设置标志 + 重启 -->
+          <g data-file="apps/robot_demo/services/ota_service.c:L425-L430">
+            <rect x="490" y="130" width="100" height="70" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="540" y="155" text-anchor="middle" font-size="11" font-weight="700"
+              fill="var(--motor-text)">标记并下电</text>
+            <text x="540" y="172" text-anchor="middle" font-size="9.5" fill="var(--motor-text)">置位 Upgrade Flag</text>
+            <text x="540" y="186" text-anchor="middle" font-size="9.5" fill="var(--motor-text)">执行安全软重启</text>
+          </g>
+          <line x1="470" y1="165" x2="488" y2="165" stroke="var(--motor-b)" stroke-width="1.2"
+            marker-end="url(#oarr)" />
+
+          <!-- 阶段2: Bootloader -->
+          <rect x="30" y="240" width="580" height="90" rx="8" fill="none" stroke="var(--hw-b)" stroke-width="1.2"
+            stroke-dasharray="6 3" />
+          <text x="45" y="258" font-size="12" font-weight="700" fill="var(--hw-text)">阶段 2: Bootloader 引导启动（硬件刷写）</text>
+
+          <!-- Bootloader 检查 -->
+          <rect x="50" y="270" width="160" height="45" rx="6" fill="var(--hw)" stroke="var(--hw-b)" stroke-width="1.2"
+            filter="url(#shadow)" />
+          <text x="130" y="292" text-anchor="middle" font-size="11" font-weight="700"
+            fill="var(--hw-text)">引导层安全自检</text>
+          <text x="130" y="306" text-anchor="middle" font-size="9.5" fill="var(--hw-text)">读 FOTA 分区包头与 CRC</text>
+          <line x1="540" y1="200" x2="130" y2="268" stroke="var(--hw-b)" stroke-width="1.2" stroke-dasharray="3 2"
+            marker-end="url(#oarr)" />
+          <text x="340" y="235" font-size="9.5" fill="var(--muted)">冷复位</text>
+
+          <!-- 解压还原 -->
+          <rect x="270" y="270" width="180" height="45" rx="6" fill="var(--hw)" stroke="var(--hw-b)" stroke-width="1.2"
+            filter="url(#shadow)" />
+          <text x="360" y="292" text-anchor="middle" font-size="11" font-weight="700"
+            fill="var(--hw-text)">解压与镜像比对还原</text>
+          <text x="360" y="306" text-anchor="middle" font-size="9.5" fill="var(--hw-text)">释放物理代码至 B 运行区间</text>
+          <line x1="210" y1="292" x2="268" y2="292" stroke="var(--hw-b)" stroke-width="1.2" marker-end="url(#oarr)" />
+
+          <!-- 修改指针 -->
+          <rect x="490" y="270" width="100" height="45" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
+            stroke-width="1.2" filter="url(#shadow)" />
+          <text x="540" y="290" text-anchor="middle" font-size="11" font-weight="700" fill="var(--motor-text)">Run
+            Partition ➔ B</text>
+          <text x="540" y="306" text-anchor="middle" font-size="9.5" fill="var(--motor-text)">修改运行指针跳转</text>
+          <line x1="450" y1="292" x2="488" y2="292" stroke="var(--motor-b)" stroke-width="1.2"
+            marker-end="url(#oarr)" />
+
+          <!-- Flash 分区图 -->
+          <rect x="640" y="60" width="300" height="130" rx="6" fill="#f8fafc" stroke="var(--line)" stroke-width="1.2" />
+          <text x="790" y="80" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)">WS63 On-chip
+            Flash 布局</text>
+          <rect x="650" y="95" width="80" height="25" rx="3" fill="var(--svc)" stroke="var(--svc-b)"
+            stroke-width="0.8" />
+          <text x="690" y="111" text-anchor="middle" font-size="9" fill="var(--svc-text)">A 区 (活动区)</text>
+          <text x="690" y="134" text-anchor="middle" font-size="9" fill="var(--muted)">0x00030000</text>
+          <rect x="735" y="95" width="80" height="25" rx="3" fill="var(--hw)" stroke="var(--hw-b)" stroke-width="0.8" />
+          <text x="775" y="111" text-anchor="middle" font-size="9" fill="var(--hw-text)">FOTA 暂存存储</text>
+          <text x="775" y="134" text-anchor="middle" font-size="9" fill="var(--muted)">0x00270000</text>
+          <rect x="820" y="95" width="60" height="25" rx="3" fill="var(--motor)" stroke="var(--motor-b)"
+            stroke-width="0.8" />
+          <text x="850" y="111" text-anchor="middle" font-size="9" fill="var(--motor-text)">B区备份镜像</text>
+          <text x="850" y="134" text-anchor="middle" font-size="9" fill="var(--muted)">物理后半部</text>
+          <rect x="885" y="95" width="50" height="25" rx="3" fill="var(--core)" stroke="var(--core-b)"
+            stroke-width="0.8" />
+          <text x="910" y="111" text-anchor="middle" font-size="9" fill="var(--core-text)">配置页</text>
+          <text x="910" y="134" text-anchor="middle" font-size="9" fill="var(--muted)">run=A</text>
+          <text x="790" y="172" text-anchor="middle" font-size="9.5" fill="var(--muted)">Bootloader 自动根据配置读取启动物理 A 区或 B
+            区</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- =================== OLED 同步机制 =================== -->
+    <section>
+      <h2>OLED 刷新同步机制</h2>
+      <p style="color:var(--muted);font-size:11.5px;margin-bottom:8px">
+        OLED 基于 I2C 总线传输（标准 400KHz 高速模式），该总线无原生硬件互斥。系统采用“消息队列队列化”将所有总线写操作收纳在单一任务中执行，规避多并发冲突。
+      </p>
+
+      <div class="flow-wrap">
+        <svg viewBox="0 0 960 280" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="uarr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+              orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#556272" />
+            </marker>
+          </defs>
+
+          <!-- 生产者 -->
+          <g data-file="robot_main.c:L106-L110">
+            <rect x="30" y="30" width="160" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="110" y="52" text-anchor="middle" font-size="11.5" font-weight="700"
+              fill="var(--core-text)">robot_main_task</text>
+            <text x="110" y="68" text-anchor="middle" font-size="9.5" fill="var(--core-text)">ui_show_mode_page()</text>
+          </g>
+
+          <g data-file="apps/robot_demo/services/ota_service.c:L119-L146">
+            <rect x="30" y="100" width="160" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="110" y="122" text-anchor="middle" font-size="11.5" font-weight="700"
+              fill="var(--core-text)">ota_service</text>
+            <text x="110" y="138" text-anchor="middle" font-size="9.5"
+              fill="var(--core-text)">ui_show_ota_progress()</text>
+          </g>
+
+          <g data-file="apps/robot_demo/services/ui_service.c:L231-L237">
+            <rect x="30" y="170" width="160" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="110" y="192" text-anchor="middle" font-size="11.5" font-weight="700"
+              fill="var(--core-text)">wifi_mgr 状态监控</text>
+            <text x="110" y="208" text-anchor="middle" font-size="9.5" fill="var(--core-text)">网卡事件通知刷新界面</text>
+          </g>
+
+          <!-- ui_msgq -->
+          <g data-file="apps/robot_demo/services/ui_service.c:L200-L210">
+            <rect x="260" y="70" width="180" height="100" rx="8" fill="var(--queue)" stroke="var(--queue-b)"
+              stroke-width="1.5" filter="url(#shadow)" />
+            <text x="350" y="100" text-anchor="middle" font-size="13" font-weight="800" fill="var(--queue-text)">ui_msgq
+              消息缓冲</text>
+            <text x="350" y="120" text-anchor="middle" font-size="11.5" fill="var(--queue-text)">深度 = 4</text>
+            <text x="350" y="138" text-anchor="middle" font-size="9.5" fill="var(--queue-text)">支持自覆盖最旧未消费帧</text>
+          </g>
+
+          <!-- ui_task -->
+          <g data-file="apps/robot_demo/services/ui_service.c:L145-L175">
+            <rect x="510" y="60" width="200" height="120" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="610" y="85" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--svc-text)">ui_task
+              线程 (Prio 28)</text>
+            <text x="610" y="105" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">同步阻塞轮询队列消费 ➔</text>
+            <text x="610" y="120" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">bsp_ssd1306_fill()
+              清屏缓冲区</text>
+            <text x="610" y="135" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">bsp_ssd1306_draw
+              拼装字符</text>
+            <text x="610" y="150" text-anchor="middle" font-size="9.5" fill="var(--svc-text)">update_screen
+              串行物理全屏渲染</text>
+          </g>
+
+          <!-- OLED 硬件 -->
+          <g data-file="drivers/ssd1306/ssd1306.c:L121-L185">
+            <rect x="780" y="90" width="150" height="60" rx="6" fill="var(--hw)" stroke="var(--hw-b)" stroke-width="1.2"
+              filter="url(#shadow)" />
+            <text x="855" y="112" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--hw-text)">SSD1306
+              OLED 屏</text>
+            <text x="855" y="128" text-anchor="middle" font-size="9.5" fill="var(--hw-text)">128×64 · I2C 400KHz</text>
+            <text x="855" y="142" text-anchor="middle" font-size="9.5" fill="var(--hw-text)">SCL=GPIO15 |
+              SDA=GPIO16</text>
+          </g>
+
+          <!-- OTA 独占机制 -->
+          <g data-file="apps/robot_demo/services/ota_service.c:L155-L168">
+            <rect x="510" y="200" width="200" height="55" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
+              stroke-width="1.2" filter="url(#shadow)" />
+            <text x="610" y="220" text-anchor="middle" font-size="11" font-weight="700" fill="var(--motor-text)">FOTA
+              物理屏幕保护机制</text>
+            <text x="610" y="236" text-anchor="middle" font-size="9.5" fill="var(--motor-text)">ui_service_acquire()
+              屏蔽模式切换页</text>
+            <text x="610" y="248" text-anchor="middle" font-size="9.5" fill="var(--motor-text)">阻断常规事件，保障升级进度全程展示</text>
+          </g>
+
+          <!-- 连线 -->
+          <path d="M190,55 Q225,55 258,100" fill="none" stroke="var(--queue-b)" stroke-width="1.2"
+            marker-end="url(#uarr)" />
+          <path d="M190,125 Q225,125 258,120" fill="none" stroke="var(--queue-b)" stroke-width="1.2"
+            marker-end="url(#uarr)" />
+          <path d="M190,195 Q225,195 258,145" fill="none" stroke="var(--queue-b)" stroke-width="1.2"
+            marker-end="url(#uarr)" />
+          <line x1="440" y1="120" x2="508" y2="120" stroke="var(--svc-b)" stroke-width="1.2" marker-end="url(#uarr)" />
+          <line x1="710" y1="120" x2="778" y2="120" stroke="var(--hw-b)" stroke-width="1.5" marker-end="url(#uarr)" />
+
+          <text x="480" y="268" font-size="10" fill="var(--muted)" text-anchor="middle">所有 I2C 底层时序彻底收拢于 ui_task
+            线程，依靠天然顺序执行规避死锁</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- =================== 初始化序列 =================== -->
+    <section>
+      <h2>开机引导启动序列 (Power-on Sequence)</h2>
+      <ol style="padding-left:14px; font-size:12px; color:var(--muted); line-height:1.8">
+        <li>内核系统入口 <code>app_run(robot_demo_entry)</code> 注册调用，分配核心栈空间并建立 <code>robot_main_task</code> 守护线程。</li>
+        <li>底层外设 BSP 链初始化：
+          <span style="color:var(--ink)">配置信息闪存入库 ➔ 物理 H 桥 PWM 定时器挂载 ➔ HC-SR04 定时器捕获开启 ➔ 循迹 ADC 多通道映射 ➔ OLED
+            物理驱动挂载</span>。
+        </li>
+        <li>上游网络与数据业务服务唤醒：
+          <span style="color:var(--ink)">创建事件队列 mode_q ➔ 绑定 GPIO3 硬件消抖中断 ➔ 开启配网服务 ➔ 载入星闪(SLE)回调 ➔ 唤醒 wifi_mgr 根据 NV
+            选择自启动机制</span>。
+        </li>
+        <li>系统进入 20ms 主物理大循环：喂狗重置、周期轮询执行当前活跃模式的 <code>tick()</code> 控制业务。</li>
+      </ol>
+    </section>
+
+    <footer>
+      SmartCar/src/application/samples/peripheral/smart_car/apps/robot_demo · 系统级交互逻辑与任务调度大底版
+    </footer>
+
+  </div>
+
+  <div id="file-toast"></div>
+
+  <script>
+    (function () {
+      const toast = document.getElementById('file-toast');
+      let timer = null;
+      const ROOT = 'd:\\SmartCar\\src\\application\\samples\\peripheral\\smart_car\\';
+
+      function showToast(text, sub) {
+        toast.innerHTML = text + (sub ? '<span class="toast-hint">' + sub + '</span>' : '');
+        toast.classList.add('show');
+        clearTimeout(timer);
+        timer = setTimeout(() => toast.classList.remove('show'), 2500);
+      }
+
+      function copyToClipboard(text) {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+      }
+
+      function parseFileAttr(val) {
+        const parts = val.split(':');
+        const path = parts[0];
+        let line = '';
+        if (parts.length > 1) {
+          line = parts[1];
+        }
+        return { path, line };
+      }
+
+      function resolveAbsPath(relPath) {
+        const p = relPath.replace(/\\/g, '/');
+        return ROOT + p;
+      }
+
+      function tryOpenVSCode(filePath, line) {
+        try {
+          const normalized = filePath.replace(/\\/g, '/');
+          let url = 'vscode://file/' + normalized;
+          if (line) {
+            const lineNum = parseInt(line.replace('L', ''));
+            url += ':' + lineNum;
+          }
+          window.open(url, '_blank');
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function handleClick(e) {
+        const el = e.target.closest('[data-file]');
+        if (!el) return;
+        e.preventDefault();
+
+        const raw = el.getAttribute('data-file');
+        const { path, line } = parseFileAttr(raw);
+        const absPath = resolveAbsPath(path);
+
+        tryOpenVSCode(absPath, line);
+
+        const displayName = path.split('/').pop();
+        const lineInfo = line ? ':' + line : '';
+        copyToClipboard(absPath + lineInfo);
+        showToast(
+          '📂 ' + displayName + (lineInfo ? ' <span style="opacity:0.7">' + lineInfo + '</span>' : ''),
+          '已复制到剪贴板 · 双击可尝试在 VS Code 中直接定位打开'
+        );
+      }
+
+      function handleDblClick(e) {
+        const el = e.target.closest('[data-file]');
+        if (!el) return;
+
+        const raw = el.getAttribute('data-file');
+        const { path, line } = parseFileAttr(raw);
+        const absPath = resolveAbsPath(path);
+        tryOpenVSCode(absPath, line);
+      }
+
+      document.addEventListener('click', handleClick);
+      document.addEventListener('dblclick', handleDblClick);
+    })();
+  </script>
+</body>
+
+</html>

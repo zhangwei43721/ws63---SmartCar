@@ -26,6 +26,7 @@ static const uint8_t MOTOR_CH[] = {4, 5, 0, 2};
 static osal_mutex g_motor_lock;
 static bool g_motor_lock_inited = false;
 
+/* 更新指定 PWM 通道的占空比 */
 static void pwm_update(uint8_t ch, uint32_t duty)
 {
     // WS63(V151) 无 uapi_pwm_update_duty_ratio，运行期沿用 open 重配；用 mutex 保证并发安全
@@ -35,6 +36,7 @@ static void pwm_update(uint8_t ch, uint32_t duty)
     uapi_pwm_open(ch, &cfg);
 }
 
+/* 初始化 L9110S 电机驱动：初始化 PWM、互斥锁，配置引脚并启动 PWM 组 */
 void l9110s_init(void)
 {
     uapi_pwm_init();
@@ -72,6 +74,7 @@ static inline void set_side(uint8_t idx_a, uint8_t idx_b, int8_t speed)
     pwm_update(MOTOR_CH[idx_b], (speed > 0) ? duty : 0);
 }
 
+/* 设置左右电机差速（-100~100），加锁保证并发安全 */
 void l9110s_set_differential(int8_t left, int8_t right)
 {
     if (g_motor_lock_inited)

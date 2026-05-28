@@ -36,37 +36,6 @@
 #include "services/wifi_mgr_service.h"
 
 /* ============================================================
- * 按键中断
- * ============================================================ */
-
-#define ROBOT_MODE_SWITCH_GPIO 3
-static unsigned long long button_time_tick = 0;
-
-static void mode_switch_isr(pin_t pin, uintptr_t param)
-{
-    UNUSED(pin);
-    UNUSED(param);
-
-    unsigned long long current_tick = osal_get_jiffies();
-    if ((current_tick - button_time_tick) < osal_msecs_to_jiffies(200)) {
-        return;
-    }
-    button_time_tick = current_tick;
-
-    CarStatus next_status = (CarStatus)((robot_mgr_get_status() + 1) % 4);
-    robot_mgr_post_mode(next_status, MODE_SRC_BUTTON);
-}
-
-static void robot_key_init(void)
-{
-    uapi_pin_set_mode(ROBOT_MODE_SWITCH_GPIO, HAL_PIO_FUNC_GPIO);
-    uapi_gpio_set_dir(ROBOT_MODE_SWITCH_GPIO, GPIO_DIRECTION_INPUT);
-    uapi_pin_set_pull(ROBOT_MODE_SWITCH_GPIO, PIN_PULL_TYPE_UP);
-
-    uapi_gpio_register_isr_func(ROBOT_MODE_SWITCH_GPIO, GPIO_INTERRUPT_FALLING_EDGE, mode_switch_isr);
-}
-
-/* ============================================================
  * 状态机核心
  * ============================================================ */
 
@@ -80,6 +49,7 @@ static RobotState g_robot_state = {0};
 static osal_mutex g_state_mutex;
 static bool g_state_mutex_inited = false;
 
+/* 初始化全局状态互斥锁（仅执行一次） */
 static void robot_mgr_state_mutex_init(void)
 {
     if (g_state_mutex_inited)
@@ -91,6 +61,7 @@ static void robot_mgr_state_mutex_init(void)
     }
 }
 
+/* 应用新模式：更新全局状态、刷新OLED显示 */
 static void robot_mgr_apply_status(CarStatus status)
 {
     if (g_status == status)
@@ -106,6 +77,7 @@ static void robot_mgr_apply_status(CarStatus status)
     ui_show_mode_page(status);
 }
 
+/* 根据模式执行对应的退出处理 */
 static void robot_mgr_do_exit(CarStatus status)
 {
     switch (status) {
@@ -120,6 +92,7 @@ static void robot_mgr_do_exit(CarStatus status)
     }
 }
 
+/* 根据模式执行对应的进入处理 */
 static void robot_mgr_do_enter(CarStatus status)
 {
     switch (status) {
@@ -133,16 +106,44 @@ static void robot_mgr_do_enter(CarStatus status)
             break;
     }
 }
+/* ============================================================
+ * 按键中断
+ * ============================================================ */
+
+#define ROBOT_MODE_SWITCH_GPIO 3
+static unsigned long long button_time_tick = 0;
+
+/* 按键中断回调：200ms消抖后循环切换小车模式 */
+static void mode_switch_isr(pin_t pin, uintptr_t param)
+{
+    UNUSED(pin);
+    UNUSED(param);
+
+    unsigned long long current_tick = osal_get_jiffies();
+    if ((current_tick - button_time_tick) < osal_msecs_to_jiffies(200))
+        return;
+
+    button_time_tick = current_tick;
+
+    CarStatus next_status = (CarStatus)((g_status + 1) % 4);
+    robot_mgr_post_mode(next_status, MODE_SRC_BUTTON);
+}
+
+/* 初始化模式切换按键GPIO及下降沿中断 */
+static void robot_key_init(void)
+{
+    uapi_pin_set_mode(ROBOT_MODE_SWITCH_GPIO, HAL_PIO_FUNC_GPIO);
+    uapi_gpio_set_dir(ROBOT_MODE_SWITCH_GPIO, GPIO_DIRECTION_INPUT);
+    uapi_pin_set_pull(ROBOT_MODE_SWITCH_GPIO, PIN_PULL_TYPE_UP);
+
+    uapi_gpio_register_isr_func(ROBOT_MODE_SWITCH_GPIO, GPIO_INTERRUPT_FALLING_EDGE, mode_switch_isr);
+}
 
 /* ============================================================
  * 公共接口
  * ============================================================ */
 
-CarStatus robot_mgr_get_status(void)
-{
-    return g_status;
-}
-
+/* 向模式切换消息队列投递切换请求（可在中断中调用） */
 bool robot_mgr_post_mode(CarStatus status, uint32_t source)
 {
     if (!g_mode_queue_inited)
@@ -157,6 +158,7 @@ bool robot_mgr_post_mode(CarStatus status, uint32_t source)
     return (ret == OSAL_SUCCESS);
 }
 
+/* 线程安全地获取当前RobotState快照 */
 void robot_mgr_get_state_copy(RobotState *out)
 {
     if (out == NULL)
@@ -166,6 +168,7 @@ void robot_mgr_get_state_copy(RobotState *out)
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 
+/* 更新全局状态中的超声波测距值 */
 void robot_mgr_update_distance(float distance)
 {
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
@@ -173,6 +176,7 @@ void robot_mgr_update_distance(float distance)
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 
+/* 更新全局状态中的三路循迹红外传感器状态 */
 void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right)
 {
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
@@ -186,6 +190,7 @@ void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned
  * 统一初始化与任务入口
  * ============================================================ */
 
+/* 统一初始化：驱动、互斥锁、WiFi、各服务、按键、模式队列 */
 static void robot_system_init(void)
 {
     storage_service_init();
@@ -198,7 +203,7 @@ static void robot_system_init(void)
     // 关键控制任务先创建，确保任务池不会因后续网络服务耗尽而抢占
     robot_mgr_state_mutex_init();
     bsp_motor_init();
-    
+
     // WiFi 管理任务
     bsp_wifi_mgr_init();
     bsp_wifi_msg_t wifi_start = {.id = WIFI_MSG_START};
@@ -273,6 +278,7 @@ static int robot_main_task(void *arg)
     return 0;
 }
 
+/* 应用入口：创建主状态机任务 */
 static void robot_demo_entry(void)
 {
     (void)robot_task_create_locked("robot_main_task", (osal_kthread_handler)robot_main_task, NULL,

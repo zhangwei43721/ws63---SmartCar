@@ -15,6 +15,7 @@ static unsigned long g_motor_queue = 0;
 static osal_task *g_motor_task = NULL;
 static osal_timer g_motor_timer;
 
+/* 电机安全超时回调：超时未收到新指令则紧急停车 */
 static void motor_timeout_callback(unsigned long arg)
 {
     (void)arg;
@@ -22,6 +23,7 @@ static void motor_timeout_callback(unsigned long arg)
     osal_timer_stop(&g_motor_timer);
 }
 
+/* 电机执行任务：从消息队列读取指令并驱动电机，同时管理超时定时器 */
 static int motor_executor_task(void *arg)
 {
     (void)arg;
@@ -49,6 +51,7 @@ static int motor_executor_task(void *arg)
     return 0;
 }
 
+/* 初始化电机控制模块：创建消息队列、超时定时器和执行任务 */
 void bsp_motor_init(void)
 {
     if (g_motor_queue != 0)
@@ -75,6 +78,7 @@ void bsp_motor_init(void)
     }
 }
 
+/* 推送电机指令到消息队列（覆盖写入），限幅 -100~100 */
 bool bsp_motor_push_cmd(int8_t left, int8_t right)
 {
     if (g_motor_queue == 0)

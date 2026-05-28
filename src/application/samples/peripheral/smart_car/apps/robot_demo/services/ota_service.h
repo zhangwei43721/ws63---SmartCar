@@ -15,7 +15,7 @@
 #define OTA_TCP_STACK_SIZE (1024 * 16) // 16KB 栈，TCP+UPG 操作需要较大空间
 #define OTA_TCP_TASK_PRIORITY 23
 
-#define OTA_RECV_CHUNK_SIZE 32768  // 每次 recv 缓冲大小
+#define OTA_RECV_CHUNK_SIZE 32768 // 每次 recv 缓冲大小
 
 #define OTA_MAGIC_STR "OTAx"
 #define OTA_MAGIC_LEN 4
@@ -35,7 +35,7 @@
 
 typedef enum { OTA_STATE_MAP(OTA_STATE_ENUM) OTA_STATE_MAX } ota_state_t;
 
-void ota_service_init(void);
+void ota_service_init(void); /* 初始化 OTA 服务（创建状态机任务） */
 
 /**
  * @brief 启动 OTA TCP 接收流程（由 UDP 触发调用）
@@ -44,6 +44,6 @@ void ota_service_init(void);
  */
 bool ota_service_start(uint32_t expected_size);
 
-void ota_service_cancel(void);
+void ota_service_cancel(void); /* 取消正在进行的 OTA 传输 */
 
 #endif // OTA_SERVICE_H

@@ -37,6 +37,7 @@ static osal_timer g_voice_stop_timer;
 static bool g_voice_stop_timer_inited = false;
 static volatile bool g_voice_cmd_active = false; // 单写者(voice_task)，定时器回调清除
 
+/* 语音命令超时回调，自动停车 */
 static void voice_stop_timer_cb(unsigned long arg)
 {
     (void)arg;
@@ -44,6 +45,7 @@ static void voice_stop_timer_cb(unsigned long arg)
     bsp_motor_push_cmd(0, 0);
 }
 
+/* 设置电机运动并启动/重置超时定时器 */
 static void voice_set_motion(int8_t l, int8_t r, uint32_t ms)
 {
     bsp_motor_push_cmd(l, r);
@@ -68,11 +70,11 @@ typedef struct {
 } voice_motion_entry_t;
 
 static const voice_motion_entry_t g_motion_table[] = {
-    {VOICE_CMD_STOP,     0,                  0,                  0},
-    {VOICE_CMD_FORWARD,  MOTOR_SPEED_HIGH,   MOTOR_SPEED_HIGH,   VOICE_CMD_TIMEOUT_MS},
-    {VOICE_CMD_BACKWARD, -MOTOR_SPEED_HIGH,  -MOTOR_SPEED_HIGH,  VOICE_CMD_TIMEOUT_MS},
-    {VOICE_CMD_LEFT,     -MOTOR_SPEED_TURN,  MOTOR_SPEED_TURN,   TURN_DURATION_MS},
-    {VOICE_CMD_RIGHT,    MOTOR_SPEED_TURN,   -MOTOR_SPEED_TURN,  TURN_DURATION_MS},
+    {VOICE_CMD_STOP, 0, 0, 0},
+    {VOICE_CMD_FORWARD, MOTOR_SPEED_HIGH, MOTOR_SPEED_HIGH, VOICE_CMD_TIMEOUT_MS},
+    {VOICE_CMD_BACKWARD, -MOTOR_SPEED_HIGH, -MOTOR_SPEED_HIGH, VOICE_CMD_TIMEOUT_MS},
+    {VOICE_CMD_LEFT, -MOTOR_SPEED_TURN, MOTOR_SPEED_TURN, TURN_DURATION_MS},
+    {VOICE_CMD_RIGHT, MOTOR_SPEED_TURN, -MOTOR_SPEED_TURN, TURN_DURATION_MS},
 };
 
 // 模式切换表：cmd 0x10..0x13 对应索引
@@ -85,6 +87,7 @@ static const CarStatus g_mode_table[] = {
 #define VOICE_MODE_CMD_BASE 0x10
 #define VOICE_MODE_CMD_COUNT (sizeof(g_mode_table) / sizeof(g_mode_table[0]))
 
+/* 解析语音命令，执行运动或模式切换 */
 static void process_command(uint8_t cmd)
 {
     if (cmd >= VOICE_MODE_CMD_BASE) {
@@ -131,6 +134,7 @@ static int voice_main_task(void *arg)
     return 0;
 }
 
+/* 初始化语音服务：创建定时器、消息队列、UART和语音任务 */
 void voice_service_init(void)
 {
     g_voice_cmd_active = false;

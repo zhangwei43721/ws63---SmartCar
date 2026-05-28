@@ -7,6 +7,7 @@
 
 #include "../../drivers/motor_control/bsp_motor.h"
 
+/* 解析并分发机器人协议数据包（控制/模式切换/心跳） */
 bool robot_proto_handle_packet(const robot_packet_t *pkt, uint32_t mode_source)
 {
     if (!pkt)
@@ -32,9 +33,13 @@ bool robot_proto_handle_packet(const robot_packet_t *pkt, uint32_t mode_source)
 }
 
 static const char *const k_mode_names[] = {
-    "停止", "循迹", "避障", "遥控",
+    "停止",
+    "循迹",
+    "避障",
+    "遥控",
 };
 
+/* 将CarStatus枚举值转换为中文模式名称字符串 */
 const char *robot_mode_name(CarStatus status)
 {
     unsigned idx = (unsigned)status;

@@ -20,6 +20,7 @@
 #define EXAMPLE_WIFI_SSID "BS-8"
 #define EXAMPLE_WIFI_PASSWORD "BS88888888"
 
+/* WiFi 连接测试任务：同步连接 AP 并获取 IP 地址 */
 static void wifi_task_entry(const char *arg)
 {
     UNUSED(arg);
@@ -43,6 +44,7 @@ static void wifi_task_entry(const char *arg)
     }
 }
 
+/* WiFi 测试示例入口：创建 WiFi 连接任务 */
 static void wifi_example_entry(void)
 {
     osThreadAttr_t attr;

@@ -29,14 +29,15 @@
 // ECHO 上下沿时间戳（us），由中断写入
 static volatile uint32_t s_echo_rise_us = 0;
 static volatile uint32_t s_echo_fall_us = 0;
-static volatile bool     s_echo_rose    = false;
+static volatile bool s_echo_rose = false;
 
 // 测量完成信号
 static osal_semaphore s_done_sem;
-static bool           s_done_sem_inited = false;
-static osal_mutex     s_meas_lock;
-static bool           s_meas_lock_inited = false;
+static bool s_done_sem_inited = false;
+static osal_mutex s_meas_lock;
+static bool s_meas_lock_inited = false;
 
+/* ECHO 引脚双边沿中断：记录上升/下降沿时间戳，下降沿释放信号量 */
 static void hcsr04_echo_isr(pin_t pin, uintptr_t param)
 {
     UNUSED(param);
@@ -44,7 +45,7 @@ static void hcsr04_echo_isr(pin_t pin, uintptr_t param)
     gpio_level_t lv = uapi_gpio_get_val(pin);
     if (lv == GPIO_LEVEL_HIGH) {
         s_echo_rise_us = now;
-        s_echo_rose    = true;
+        s_echo_rose = true;
     } else {
         s_echo_fall_us = now;
         if (s_done_sem_inited) {
@@ -53,6 +54,7 @@ static void hcsr04_echo_isr(pin_t pin, uintptr_t param)
     }
 }
 
+/* 初始化 HC-SR04：创建信号量和互斥锁，配置 TRIG 输出和 ECHO 双边沿中断 */
 void hcsr04_init(void)
 {
     if (!s_done_sem_inited) {
@@ -76,6 +78,7 @@ void hcsr04_init(void)
     (void)uapi_gpio_register_isr_func(HCSR04_ECHO_GPIO, GPIO_INTERRUPT_DEDGE, hcsr04_echo_isr);
 }
 
+/* 触发一次超声波测距，返回距离（厘米），失败返回 0.0 */
 float hcsr04_get_distance(void)
 {
     if (!s_done_sem_inited || !s_meas_lock_inited) {
@@ -87,7 +90,8 @@ float hcsr04_get_distance(void)
     s_echo_rose = false;
     s_echo_rise_us = 0;
     s_echo_fall_us = 0;
-    while (osal_sem_trydown(&s_done_sem) == OSAL_SUCCESS) { }
+    while (osal_sem_trydown(&s_done_sem) == OSAL_SUCCESS) {
+    }
 
     // 发送 >=10us 触发脉冲
     uapi_gpio_set_val(HCSR04_TRIG_GPIO, GPIO_LEVEL_HIGH);

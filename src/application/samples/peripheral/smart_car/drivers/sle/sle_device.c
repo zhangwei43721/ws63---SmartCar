@@ -99,6 +99,7 @@ static uint8_t g_property_value[8] = {0};
 
 // ==================== UUID 辅助函数 ====================
 
+/* 设置 SLE UUID 基础模板 */
 static void sle_uuid_set_base(sle_uuid_t *out)
 {
     static const uint8_t sle_uuid_base[] = {0x37, 0xBE, 0xA8, 0x80, 0xFC, 0x70, 0x11, 0xEA,
@@ -107,6 +108,7 @@ static void sle_uuid_set_base(sle_uuid_t *out)
     out->len = 2; // 2 字节 UUID
 }
 
+/* 基于模板填充 2 字节短 UUID */
 static void sle_uuid_set_u2(uint16_t u2, sle_uuid_t *out)
 {
     sle_uuid_set_base(out);
@@ -122,6 +124,7 @@ static void sle_uuid_set_u2(uint16_t u2, sle_uuid_t *out)
 
 // ==================== SSAP 回调函数 ====================
 
+/* SSAP 读请求回调 */
 static void ssaps_read_request_cbk(uint8_t server_id,
                                    uint16_t conn_id,
                                    ssaps_req_read_cb_t *read_cb_para,
@@ -134,6 +137,7 @@ static void ssaps_read_request_cbk(uint8_t server_id,
     // 读请求：读取当前特征值
 }
 
+/* SSAP 写请求回调：更新特征值并触发数据接收回调 */
 static void ssaps_write_request_cbk(uint8_t server_id,
                                     uint16_t conn_id,
                                     ssaps_req_write_cb_t *write_cb_para,
@@ -154,6 +158,7 @@ static void ssaps_write_request_cbk(uint8_t server_id,
     }
 }
 
+/* SSAP MTU 变更回调 */
 static void ssaps_mtu_changed_cbk(uint8_t server_id, uint16_t conn_id, ssap_exchange_info_t *mtu_size, errcode_t status)
 {
     unused(server_id);
@@ -162,6 +167,7 @@ static void ssaps_mtu_changed_cbk(uint8_t server_id, uint16_t conn_id, ssap_exch
     unused(status);
 }
 
+/* SSAP 服务启动回调 */
 static void ssaps_start_service_cbk(uint8_t server_id, uint16_t handle, errcode_t status)
 {
     unused(server_id);
@@ -169,6 +175,7 @@ static void ssaps_start_service_cbk(uint8_t server_id, uint16_t handle, errcode_
     unused(status);
 }
 
+/* 注册 SSAP 服务端所有回调 */
 static void sle_ssaps_register_cbks(void)
 {
     ssaps_callbacks_t ssaps_cbk = {0};
@@ -181,6 +188,7 @@ static void sle_ssaps_register_cbks(void)
 
 // ==================== 连接管理回调 ====================
 
+/* SLE 连接状态变化回调：更新连接状态，断连时通知 worker 重新广播 */
 static void sle_connect_state_changed_cbk(uint16_t conn_id,
                                           const sle_addr_t *addr,
                                           sle_acb_state_t conn_state,
@@ -236,6 +244,7 @@ static void sle_connect_state_changed_cbk(uint16_t conn_id,
     }
 }
 
+/* SLE 配对完成回调 */
 static void sle_pair_complete_cbk(uint16_t conn_id, const sle_addr_t *addr, errcode_t status)
 {
     unused(conn_id);
@@ -243,6 +252,7 @@ static void sle_pair_complete_cbk(uint16_t conn_id, const sle_addr_t *addr, errc
     unused(status);
 }
 
+/* 注册 SLE 连接管理回调 */
 static void sle_conn_register_cbks(void)
 {
     sle_connection_callbacks_t conn_cbks = {0};
@@ -253,23 +263,27 @@ static void sle_conn_register_cbks(void)
 
 // ==================== 广播相关 ====================
 
+/* 广播使能回调 */
 static void sle_announce_enable_cbk(uint32_t announce_id, errcode_t status)
 {
     unused(announce_id);
     unused(status);
 }
 
+/* 广播禁用回调 */
 static void sle_announce_disable_cbk(uint32_t announce_id, errcode_t status)
 {
     unused(announce_id);
     unused(status);
 }
 
+/* SLE 使能完成回调 */
 static void sle_enable_cbk(errcode_t status)
 {
     unused(status);
 }
 
+/* 注册 SLE 广播/发现相关回调 */
 static void sle_announce_register_cbks(void)
 {
     sle_announce_seek_callbacks_t seek_cbks = {0};
@@ -279,6 +293,7 @@ static void sle_announce_register_cbks(void)
     sle_announce_seek_register_callbacks(&seek_cbks);
 }
 
+/* 将设备名称填入广播数据 */
 static uint16_t sle_set_adv_local_name(uint8_t *adv_data, uint16_t max_len)
 {
     uint8_t index = 0;
@@ -293,6 +308,7 @@ static uint16_t sle_set_adv_local_name(uint8_t *adv_data, uint16_t max_len)
     return (uint16_t)index + local_name_len;
 }
 
+/* 组装 SLE 广播数据（发现等级） */
 static uint16_t sle_set_adv_data(uint8_t *adv_data)
 {
     uint16_t idx = 0;
@@ -311,6 +327,7 @@ static uint16_t sle_set_adv_data(uint8_t *adv_data)
     return idx;
 }
 
+/* 组装 SLE 扫描响应数据（发射功率+设备名称） */
 static uint16_t sle_set_scan_response_data(uint8_t *scan_rsp_data)
 {
     uint16_t idx = 0;
@@ -332,6 +349,7 @@ static uint16_t sle_set_scan_response_data(uint8_t *scan_rsp_data)
     return idx;
 }
 
+/* 设置 SLE 广播参数和广播/扫描响应数据 */
 static errcode_t sle_set_announce_param_and_data(void)
 {
     uint8_t mac[SLE_ADDR_LEN] = ROBOT_LOCAL_MAC;
@@ -384,6 +402,7 @@ static errcode_t sle_set_announce_param_and_data(void)
 
 // ==================== 服务添加 ====================
 
+/* 添加 SLE GATT 服务 */
 static errcode_t sle_add_service(void)
 {
     errcode_t ret;
@@ -400,6 +419,7 @@ static errcode_t sle_add_service(void)
     return ERRCODE_SLE_SUCCESS;
 }
 
+/* 添加 SLE 数据特征（可读+可写+可通知） */
 static errcode_t sle_add_property(void)
 {
     errcode_t ret;
@@ -425,6 +445,7 @@ static errcode_t sle_add_property(void)
     return ERRCODE_SLE_SUCCESS;
 }
 
+/* 注册 SSAP 服务端，添加服务和特征，设置 MTU 和连接参数 */
 static errcode_t sle_add_service_and_property(void)
 {
     errcode_t ret;
@@ -482,6 +503,7 @@ static errcode_t sle_add_service_and_property(void)
 }
 
 // ==================== 重启广播 Worker ====================
+/* 重启广播 worker：断连后延时再重启广播，避免阻塞协议栈回调 */
 static int sle_adv_worker(void *arg)
 {
     (void)arg;
@@ -496,6 +518,7 @@ static int sle_adv_worker(void *arg)
     return 0;
 }
 
+/* 启动重启广播 worker 任务（仅首次创建） */
 static void sle_adv_worker_start(void)
 {
     if (!g_sle_lock_inited) {
@@ -518,6 +541,7 @@ static void sle_adv_worker_start(void)
 
 // ==================== 对外接口实现 ====================
 
+/* 初始化 SLE 设备：使能 SLE、注册回调、添加服务特征、启动广播 */
 errcode_t sle_device_init(void)
 {
     printf("[SLE] 初始化 SLE 设备...\r\n");
@@ -559,21 +583,25 @@ errcode_t sle_device_init(void)
     return ERRCODE_SLE_SUCCESS;
 }
 
+/* 注册 SLE 连接成功回调 */
 void sle_device_register_connect_callback(sle_connect_cb_t cb)
 {
     g_connect_cb = cb;
 }
 
+/* 注册 SLE 断开连接回调 */
 void sle_device_register_disconnect_callback(sle_disconnect_cb_t cb)
 {
     g_disconnect_cb = cb;
 }
 
+/* 注册 SLE 数据接收回调 */
 void sle_device_register_data_callback(sle_data_recv_cb_t cb)
 {
     g_data_recv_cb = cb;
 }
 
+/* 通过 SLE 通知发送数据（锁内拿连接状态快照） */
 errcode_t sle_device_send(const uint8_t *data, uint16_t len)
 {
     if (data == NULL || len == 0) {
@@ -609,6 +637,7 @@ errcode_t sle_device_send(const uint8_t *data, uint16_t len)
     return ERRCODE_SLE_SUCCESS;
 }
 
+/* 查询 SLE 是否已连接 */
 bool sle_device_is_connected(void)
 {
     bool snap;

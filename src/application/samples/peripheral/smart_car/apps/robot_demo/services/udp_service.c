@@ -27,7 +27,6 @@
 // --- 配置常量 ---
 #define BROADCAST_INTERVAL_MS 500 // 寻找期：高频广播，快速被发现
 #define CONNECTED_HEART_MS 2000   // 连接期：低频心跳
-#define TIMEOUT_LIMIT_MS 5000     // 增加容错到 5秒，防止网络抖动导致的误判
 #define UDP_RECV_TIMEOUT_MS 10    // 接收阻塞时间 (短时间，保证循环响应)
 #define KEEPALIVE_MAX_COUNT 3     // 容错计次：连续3次未收到心跳才判定断连
 
@@ -80,6 +79,7 @@ static void build_discovery_packet(void);
 // 外部接口实现
 // --------------------------------------------------------------------------
 
+/* 初始化UDP服务，创建退出信号量和UDP任务线程 */
 void udp_service_init(void)
 {
     if (g_udp_task != NULL)
@@ -89,13 +89,15 @@ void udp_service_init(void)
         osal_sem_binary_sem_init(&g_udp_exit_sem, 0);
         g_udp_exit_sem_inited = true;
     }
-    while (osal_sem_trydown(&g_udp_exit_sem) == OSAL_SUCCESS) { }
+    while (osal_sem_trydown(&g_udp_exit_sem) == OSAL_SUCCESS) {
+    }
 
     // 创建线程
     g_udp_task = robot_task_create_locked("udp_task", (osal_kthread_handler)udp_service_task, NULL, UDP_STACK_SIZE,
                                           UDP_TASK_PRIORITY);
 }
 
+/* 获取当前WiFi连接状态（STA/AP模式映射） */
 WifiConnectStatus udp_service_get_wifi_status(void)
 {
     bsp_wifi_mode_t mode = bsp_wifi_get_mode();
@@ -110,6 +112,7 @@ WifiConnectStatus udp_service_get_wifi_status(void)
     return WIFI_STATUS_DISCONNECTED;
 }
 
+/* 获取当前WiFi的IP地址字符串 */
 const char *udp_service_get_ip(void)
 {
     static char ip_buf[BUF_IP] = "0.0.0.0";
@@ -121,9 +124,7 @@ const char *udp_service_get_ip(void)
 // 内部逻辑实现
 // --------------------------------------------------------------------------
 
-/**
- * @brief 在WiFi连接成功后，延迟构建发现包(确保获取到MAC)
- */
+/* 延迟构建UDP广播发现包（等待MAC地址就绪） */
 static void build_discovery_packet(void)
 {
     if (g_discovery_ready)
@@ -143,17 +144,19 @@ static void build_discovery_packet(void)
     }
 }
 
-/**
- * @brief 处理具体的业务包逻辑
- */
+/* 发送WiFi配置操作的ACK应答包 */
 static void send_wifi_config_ack(uint8_t type, uint8_t status, struct sockaddr_in *sender)
 {
     uint8_t ack[3] = {type, status, 0};
     udp_net_common_send_to_addr(g_sockfd, ack, sizeof(ack), sender);
 }
 
-static void wifi_config_extract_creds(const wifi_config_pkt_t *pkt, char *ssid, size_t ssid_sz,
-                                      char *pwd, size_t pwd_sz)
+/* 从WiFi配置包中提取SSID和密码 */
+static void wifi_config_extract_creds(const wifi_config_pkt_t *pkt,
+                                      char *ssid,
+                                      size_t ssid_sz,
+                                      char *pwd,
+                                      size_t pwd_sz)
 {
     if (pkt->ssid_len > 0 && pkt->ssid_len < ssid_sz) {
         (void)memcpy_s(ssid, ssid_sz, pkt->payload, pkt->ssid_len);
@@ -165,6 +168,7 @@ static void wifi_config_extract_creds(const wifi_config_pkt_t *pkt, char *ssid, 
     }
 }
 
+/* 处理WiFi配置命令（保存/连接/查询） */
 static void handle_wifi_config(uint8_t *data, size_t len, struct sockaddr_in *sender)
 {
     if (len < 3)
@@ -218,6 +222,7 @@ static void handle_wifi_config(uint8_t *data, size_t len, struct sockaddr_in *se
     }
 }
 
+/* 根据包类型分发处理：WiFi配置、统一协议、PID调参、OTA触发 */
 static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender)
 {
     if (len < 1)
@@ -269,9 +274,7 @@ static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender
     }
 }
 
-/**
- * @brief 接收处理
- */
+/* 非阻塞接收UDP数据包，更新连接状态并分发处理 */
 static void handle_udp_receive(void)
 {
     uint8_t buf[128];
@@ -301,9 +304,7 @@ static void handle_udp_receive(void)
     }
 }
 
-/**
- * @brief 发送机器人状态 (同时作为心跳包)
- */
+/* 发送机器人状态心跳包到已连接的控制器 */
 static void send_heartbeat(void)
 {
     RobotState curr;
@@ -317,9 +318,7 @@ static void send_heartbeat(void)
     udp_net_common_send_to_addr(g_sockfd, &pkt, sizeof(pkt), &g_server_addr);
 }
 
-/**
- * @brief UDP 服务主任务
- */
+/* UDP服务主任务：状态机驱动广播发现、心跳维持与接收处理 */
 static int udp_service_task(void *arg)
 {
     (void)arg;
@@ -406,7 +405,8 @@ static int udp_service_task(void *arg)
                 if (now - t_send_loop >= osal_msecs_to_jiffies(BROADCAST_INTERVAL_MS)) {
                     t_send_loop = now;
                     if (g_discovery_ready)
-                        udp_net_common_send_broadcast(g_sockfd, &g_discovery_pkt, sizeof(g_discovery_pkt), UDP_BROADCAST_PORT);
+                        udp_net_common_send_broadcast(g_sockfd, &g_discovery_pkt, sizeof(g_discovery_pkt),
+                                                      UDP_BROADCAST_PORT);
                 }
                 break;
 

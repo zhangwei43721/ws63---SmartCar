@@ -4,6 +4,7 @@
 #include "ssd1306.h"
 #include "ssd1306_fonts.h"
 
+/* 获取 UTF-8 字符的字节长度（1~4） */
 static int GetUtf8CharLength(const char *target)
 {
     unsigned char c = (unsigned char)target[0];
@@ -18,6 +19,7 @@ static int GetUtf8CharLength(const char *target)
     return 1;
 }
 
+/* 在字模索引表中查找目标字符，返回索引，未找到返回 -1 */
 static int FindFontIndex(const char *target, int len)
 {
     int i;
@@ -32,6 +34,7 @@ static int FindFontIndex(const char *target, int len)
     return -1;
 }
 
+/* 绘制中英文混合字符串（ASCII 用 7x10 字体，中文用 16x16 点阵） */
 void bsp_ssd1306_draw_string16(uint8_t x, uint8_t y, const char *str, BspSsd1306Color color)
 {
     uint8_t curr_x = x;

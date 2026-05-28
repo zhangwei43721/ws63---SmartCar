@@ -44,8 +44,8 @@ typedef struct {
     char text[32];
 } ui_msg_t;
 
-static bool g_oled_ready = false;          // OLED 是否已初始化并可用
-static volatile bool g_ui_busy = false;    // OLED 是否被独占（OTA 写, ui_task 读，bool 32 位写入原子）
+static bool g_oled_ready = false;       // OLED 是否已初始化并可用
+static volatile bool g_ui_busy = false; // OLED 是否被独占（OTA 写, ui_task 读，bool 32 位写入原子）
 
 static unsigned long g_ui_queue = 0;
 static bool g_queue_inited = false;
@@ -87,6 +87,7 @@ static const ModeDisplayInfo g_mode_display[] = {
 
 // ---------- 实际渲染函数（仅 UI 任务调用） ----------
 
+/* 根据小车状态渲染对应的模式页面到 OLED */
 static void ui_render_mode(CarStatus status)
 {
     if (!g_oled_ready)
@@ -96,7 +97,7 @@ static void ui_render_mode(CarStatus status)
 
     size_t mode_count = sizeof(g_mode_display) / sizeof(g_mode_display[0]);
     if (status >= CAR_STOP_STATUS && (size_t)status < mode_count) {
-                bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
+        bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
         bsp_ssd1306_draw_string16(0, 0, g_mode_display[status].line0, BSP_SSD1306_COLOR_WHITE);
         bsp_ssd1306_draw_string16(0, 16, g_mode_display[status].line1, BSP_SSD1306_COLOR_WHITE);
         bsp_ssd1306_draw_string16(0, 32, g_mode_display[status].line2, BSP_SSD1306_COLOR_WHITE);
@@ -104,6 +105,7 @@ static void ui_render_mode(CarStatus status)
     }
 }
 
+/* 渲染待机页面，显示WiFi状态和IP地址 */
 static void ui_render_standby_impl(WifiConnectStatus wifi_state, const char *ip_addr)
 {
     if (!g_oled_ready)
@@ -119,13 +121,14 @@ static void ui_render_standby_impl(WifiConnectStatus wifi_state, const char *ip_
     };
     const char *state_str = (wifi_state >= 0 && wifi_state < 4) ? wifi_state_str[wifi_state] : "WiFi: 未知状态";
 
-        bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
+    bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
     bsp_ssd1306_draw_string16(0, 0, "模式: 停止", BSP_SSD1306_COLOR_WHITE);
     bsp_ssd1306_draw_string16(0, 16, state_str, BSP_SSD1306_COLOR_WHITE);
     bsp_ssd1306_draw_string16(0, 32, ip_addr, BSP_SSD1306_COLOR_WHITE);
     bsp_ssd1306_update_screen();
 }
 
+/* 渲染OTA升级进度页面 */
 static void ui_render_ota(uint8_t percent, const char *status_line)
 {
     if (!g_oled_ready)
@@ -134,7 +137,7 @@ static void ui_render_ota(uint8_t percent, const char *status_line)
     char line2[32] = {0};
     (void)snprintf(line2, sizeof(line2), "%s %u%%", status_line, percent);
 
-        bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
+    bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
     bsp_ssd1306_draw_string16(0, 0, "OTA 升级", BSP_SSD1306_COLOR_WHITE);
     bsp_ssd1306_draw_string16(0, 16, line2, BSP_SSD1306_COLOR_WHITE);
     bsp_ssd1306_update_screen();
@@ -142,6 +145,7 @@ static void ui_render_ota(uint8_t percent, const char *status_line)
 
 // ---------- UI 任务主循环 ----------
 
+/* UI任务主循环，阻塞等待消息队列并渲染对应页面 */
 static int ui_task_entry(void *arg)
 {
     (void)arg;
@@ -183,6 +187,7 @@ static int ui_task_entry(void *arg)
 
 // ---------- 初始化 ----------
 
+/* 初始化OLED显示屏、消息队列和UI任务 */
 void ui_service_init(void)
 {
     static bool init_attempted = false;
@@ -226,6 +231,7 @@ void ui_service_init(void)
 
 // ---------- 对外接口：仅投递消息 ----------
 
+/* 向UI消息队列投递消息，队列满时覆盖最旧消息 */
 static void ui_post(const ui_msg_t *msg)
 {
     if (!g_queue_inited)
@@ -235,6 +241,7 @@ static void ui_post(const ui_msg_t *msg)
     (void)osal_msgq_overwrite(g_ui_queue, UI_MSG_QUEUE_DEPTH, msg, sizeof(*msg));
 }
 
+/* 异步显示指定模式的页面 */
 void ui_show_mode_page(CarStatus status)
 {
     ui_msg_t msg = {0};
@@ -243,6 +250,7 @@ void ui_show_mode_page(CarStatus status)
     ui_post(&msg);
 }
 
+/* 异步显示OTA升级进度 */
 void ui_show_ota_progress(uint8_t percent, const char *status_line)
 {
     ui_msg_t msg = {0};
@@ -254,15 +262,18 @@ void ui_show_ota_progress(uint8_t percent, const char *status_line)
     ui_post(&msg);
 }
 
+/* 查询OLED是否已初始化就绪 */
 bool ui_service_is_ready(void)
 {
     return g_oled_ready;
 }
 
+/* 独占OLED，阻止UI任务刷新屏幕（OTA写入时使用） */
 void ui_service_acquire(void)
 {
     g_ui_busy = true;
 }
+/* 释放OLED独占，恢复UI任务刷新 */
 void ui_service_release(void)
 {
     g_ui_busy = false;

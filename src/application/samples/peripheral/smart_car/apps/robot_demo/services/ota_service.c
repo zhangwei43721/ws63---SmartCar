@@ -43,6 +43,7 @@ static bool g_ota_failed_timer_inited = false;
 
 static void ota_set_state(ota_state_t s);
 
+/* OTA失败后延迟回调，将状态重置为空闲 */
 static void ota_failed_to_idle_cb(unsigned long arg)
 {
     (void)arg;
@@ -51,16 +52,19 @@ static void ota_failed_to_idle_cb(unsigned long arg)
 static bool g_ota_mutex_inited = false;
 
 // ---------- UPG 回调 ----------
+/* UPG模块内存分配回调 */
 static void *fota_upg_malloc(const uint32_t size)
 {
     return osal_kmalloc(size, OSAL_GFP_ATOMIC);
 }
 
+/* UPG模块内存释放回调 */
 static void fota_upg_free(void *ptr)
 {
     osal_kfree(ptr);
 }
 
+/* UPG模块串口输出回调 */
 static void fota_upg_serial_putc(const char c)
 {
     uint8_t ch = (uint8_t)c;
@@ -72,6 +76,7 @@ static const upg_func_t s_upg_funcs = {.malloc = fota_upg_malloc,
                                        .serial_putc = fota_upg_serial_putc};
 
 // ---------- UPG 校验 ----------
+/* 校验已存储的升级包完整性和签名 */
 static errcode_t fota_upg_verify_stored_package(void)
 {
     upg_package_header_t hdr;
@@ -91,6 +96,7 @@ static errcode_t fota_upg_verify_stored_package(void)
 }
 
 // ---------- UPG 预准备 ----------
+/* 预准备UPG存储空间，检查升级包大小是否合法 */
 static errcode_t fota_upg_prepare_once(uint32_t package_len)
 {
     if (package_len == 0U) {
@@ -116,6 +122,7 @@ static errcode_t fota_upg_prepare_once(uint32_t package_len)
 }
 
 // ---------- UI 进度更新 ----------
+/* 根据当前OTA状态更新OLED显示 */
 static void ota_update_ui(void)
 {
     if (!ui_service_is_ready())
@@ -146,6 +153,7 @@ static void ota_update_ui(void)
 }
 
 // ---------- 状态管理 ----------
+/* 线程安全地切换OTA状态，并控制OLED独占 */
 static void ota_set_state(ota_state_t s)
 {
     if (g_ota_mutex_inited)
@@ -164,6 +172,7 @@ static void ota_set_state(ota_state_t s)
     ota_update_ui();
 }
 
+/* 线程安全地更新OTA进度百分比，节流OLED刷新频率 */
 static void ota_set_progress(uint8_t pct)
 {
     if (g_ota_mutex_inited)
@@ -434,6 +443,7 @@ cleanup:
 
 // ---------- 公共接口 ----------
 
+/* 初始化OTA服务：创建互斥锁、定时器，初始化UPG模块 */
 void ota_service_init(void)
 {
     if (!g_ota_mutex_inited) {
@@ -471,6 +481,7 @@ void ota_service_init(void)
     printf("[OTA] 初始化完成\r\n");
 }
 
+/* 启动OTA升级，创建TCP服务端任务接收固件 */
 bool ota_service_start(uint32_t expected_size)
 {
     (void)expected_size;
@@ -497,6 +508,7 @@ bool ota_service_start(uint32_t expected_size)
     return true;
 }
 
+/* 取消OTA升级，关闭TCP连接使任务自行退出 */
 void ota_service_cancel(void)
 {
     printf("[OTA] 收到取消请求\r\n");

@@ -26,9 +26,11 @@ static bool s_ap_exit_sem_inited = false;
 static osal_semaphore s_ap_wake_sem;
 static bool s_ap_wake_sem_inited = false;
 
+/* 启动 WiFi AP 热点任务 */
 bool ap_task_start(void)
 {
-    if (s_ap_task) return true;
+    if (s_ap_task)
+        return true;
     s_should_exit = false;
     if (!s_ap_exit_sem_inited) {
         osal_sem_binary_sem_init(&s_ap_exit_sem, 0);
@@ -38,31 +40,39 @@ bool ap_task_start(void)
         osal_sem_binary_sem_init(&s_ap_wake_sem, 0);
         s_ap_wake_sem_inited = true;
     }
-    while (osal_sem_trydown(&s_ap_exit_sem) == OSAL_SUCCESS) {}
-    while (osal_sem_trydown(&s_ap_wake_sem) == OSAL_SUCCESS) {}
+    while (osal_sem_trydown(&s_ap_exit_sem) == OSAL_SUCCESS) {
+    }
+    while (osal_sem_trydown(&s_ap_wake_sem) == OSAL_SUCCESS) {
+    }
 
     osal_kthread_lock();
     s_ap_task = osal_kthread_create((osal_kthread_handler)ap_task_main, NULL, "wifi_ap", 4096);
-    if (s_ap_task) osal_kthread_set_priority(s_ap_task, 24);
+    if (s_ap_task)
+        osal_kthread_set_priority(s_ap_task, 24);
     osal_kthread_unlock();
     return s_ap_task ? true : false;
 }
 
+/* 停止 WiFi AP 热点任务并等待退出 */
 void ap_task_stop(void)
 {
-    if (!s_ap_task) return;
+    if (!s_ap_task)
+        return;
     s_should_exit = true;
-    if (s_ap_wake_sem_inited) osal_sem_up(&s_ap_wake_sem);
+    if (s_ap_wake_sem_inited)
+        osal_sem_up(&s_ap_wake_sem);
     (void)osal_sem_down_timeout(&s_ap_exit_sem, 2000);
     s_ap_task = NULL;
 }
 
+/* AP 任务主函数：配置热点、启动 DHCP 服务器，挂起等待退出信号 */
 static int ap_task_main(void *arg)
 {
     (void)arg;
     wifi_softap_disable();
     struct netif *ap = netifapi_netif_find("ap0");
-    if (ap) netifapi_dhcps_stop(ap);
+    if (ap)
+        netifapi_dhcps_stop(ap);
 
     softap_config_stru conf = {0};
     memcpy_s(conf.ssid, sizeof(conf.ssid), BSP_WIFI_AP_SSID, strlen(BSP_WIFI_AP_SSID));
@@ -77,7 +87,8 @@ static int ap_task_main(void *arg)
 
     if (wifi_softap_enable(&conf) != 0) {
         bsp_wifi_notify_event(BSP_WIFI_EVENT_AP_STOPPED);
-        if (s_ap_exit_sem_inited) osal_sem_up(&s_ap_exit_sem);
+        if (s_ap_exit_sem_inited)
+            osal_sem_up(&s_ap_exit_sem);
         return 0;
     }
 
@@ -106,9 +117,11 @@ static int ap_task_main(void *arg)
 
     wifi_softap_disable();
     ap = netifapi_netif_find("ap0");
-    if (ap) netifapi_dhcps_stop(ap);
+    if (ap)
+        netifapi_dhcps_stop(ap);
 
     bsp_wifi_notify_event(BSP_WIFI_EVENT_AP_STOPPED);
-    if (s_ap_exit_sem_inited) osal_sem_up(&s_ap_exit_sem);
+    if (s_ap_exit_sem_inited)
+        osal_sem_up(&s_ap_exit_sem);
     return 0;
 }

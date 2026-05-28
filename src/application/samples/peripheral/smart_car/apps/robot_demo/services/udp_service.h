@@ -17,8 +17,8 @@
 #define UDP_CMD_WIFI_CONFIG_CONNECT 0xE1 // 连接到指定WiFi并切换到STA模式
 #define UDP_CMD_WIFI_CONFIG_GET 0xE2     // 获取当前WiFi配置
 
-void udp_service_init(void);
-WifiConnectStatus udp_service_get_wifi_status(void);
-const char *udp_service_get_ip(void);
+void udp_service_init(void);                         /* 初始化 UDP 控制服务（创建监听任务） */
+WifiConnectStatus udp_service_get_wifi_status(void); /* 获取当前 WiFi 连接状态 */
+const char *udp_service_get_ip(void);                /* 获取当前 IP 地址字符串 */
 
 #endif

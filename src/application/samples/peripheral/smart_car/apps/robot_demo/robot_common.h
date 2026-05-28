@@ -9,23 +9,22 @@
 #include "../../board_config.h"
 
 // ================ 缓冲区大小常量 ================
-#define BUF_IP 32            // IP 地址字符串缓冲区
+#define BUF_IP 32 // IP 地址字符串缓冲区
 
 // 通用互斥锁操作宏。调用前需确保 inited==true（init 失败应 panic）。
 // 旧版在 inited==false 时"静默放行"让临界区裸跑；当前版打印一次 BUG 警告
 // 便于定位漏 init 的 bug，但仍然不调用 osal_mutex_lock（传未初始化句柄可能 crash）。
-#define MUTEX_LOCK(mutex, inited)                                                \
-    do {                                                                         \
-        if ((inited)) {                                                          \
-            (void)osal_mutex_lock(&(mutex));                                     \
-        } else {                                                                 \
-            static int _mutex_warned_##__LINE__ = 0;                             \
-            if (!_mutex_warned_##__LINE__) {                                     \
-                _mutex_warned_##__LINE__ = 1;                                    \
-                printf("[BUG] mutex used before init @ %s:%d\r\n", __FILE__,     \
-                       __LINE__);                                                \
-            }                                                                    \
-        }                                                                        \
+#define MUTEX_LOCK(mutex, inited)                                                       \
+    do {                                                                                \
+        if ((inited)) {                                                                 \
+            (void)osal_mutex_lock(&(mutex));                                            \
+        } else {                                                                        \
+            static int _mutex_warned_##__LINE__ = 0;                                    \
+            if (!_mutex_warned_##__LINE__) {                                            \
+                _mutex_warned_##__LINE__ = 1;                                           \
+                printf("[BUG] mutex used before init @ %s:%d\r\n", __FILE__, __LINE__); \
+            }                                                                           \
+        }                                                                               \
     } while (0)
 
 #define MUTEX_UNLOCK(mutex, inited)      \
@@ -36,8 +35,11 @@
 
 // 封装 osal_kthread_lock/create/set_priority/unlock 4 步模板，
 // 统一任务创建模式并保证 lock/unlock 配对。失败时打印 BUG 日志。
-static inline osal_task *robot_task_create_locked(const char *name, osal_kthread_handler entry, void *arg,
-                                                  unsigned int stack_size, unsigned int priority)
+static inline osal_task *robot_task_create_locked(const char *name,
+                                                  osal_kthread_handler entry,
+                                                  void *arg,
+                                                  unsigned int stack_size,
+                                                  unsigned int priority)
 {
     osal_task *handle = NULL;
     osal_kthread_lock();
@@ -74,9 +76,15 @@ typedef enum {
 } CarStatus;
 
 // 模式切换命令（投递到 mode_q，由 robot_main_task 消费）
-typedef struct { CarStatus status; uint32_t source; } ModeCmdMsg;
+typedef struct {
+    CarStatus status;
+    uint32_t source;
+} ModeCmdMsg;
 // 电机控制命令（投递到 motor_q，由 motor_exec 消费）
-typedef struct { int8_t left; int8_t right; } MotorCmdMsg;
+typedef struct {
+    int8_t left;
+    int8_t right;
+} MotorCmdMsg;
 
 /**
  * @brief WiFi 连接状态枚举
@@ -115,12 +123,12 @@ typedef enum {
  *        type 字段统一定义在此，禁止散落到各 .c 里魔数化。
  */
 typedef enum {
-    ROBOT_PKT_CONTROL = 0x01,     // 控制：[type, l_speed, r_speed, 0, 0]
-    ROBOT_PKT_MODE = 0x03,        // 模式切换：[type, mode, 0, 0, 0]
-    ROBOT_PKT_PID = 0x04,         // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
-    ROBOT_PKT_OTA = 0x05,         // OTA 触发：[type, sub_cmd, ...]
-    ROBOT_PKT_HEARTBEAT = 0xFE,   // 心跳
-    ROBOT_PKT_DISCOVERY = 0xFF,   // 设备发现广播
+    ROBOT_PKT_CONTROL = 0x01,   // 控制：[type, l_speed, r_speed, 0, 0]
+    ROBOT_PKT_MODE = 0x03,      // 模式切换：[type, mode, 0, 0, 0]
+    ROBOT_PKT_PID = 0x04,       // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
+    ROBOT_PKT_OTA = 0x05,       // OTA 触发：[type, sub_cmd, ...]
+    ROBOT_PKT_HEARTBEAT = 0xFE, // 心跳
+    ROBOT_PKT_DISCOVERY = 0xFF, // 设备发现广播
 } RobotPktType;
 
 /**
@@ -144,10 +152,10 @@ typedef enum {
 // ---------- 统一协议包体（UDP / SLE / 强制门户共用 5 字节格式）----------
 #pragma pack(1)
 typedef struct {
-    uint8_t type;  // RobotPktType 枚举值
-    uint8_t cmd;   // 子命令 / 模式号 / PID 参数索引
-    int8_t motor1; // 左电机速度 (-100~100) / PID value_hi
-    int8_t motor2; // 右电机速度 (-100~100) / PID value_lo
+    uint8_t type;   // RobotPktType 枚举值
+    uint8_t cmd;    // 子命令 / 模式号 / PID 参数索引
+    int8_t motor1;  // 左电机速度 (-100~100) / PID value_hi
+    int8_t motor2;  // 右电机速度 (-100~100) / PID value_lo
     int8_t ir_data; // 红外数据 / 保留
 } robot_packet_t;
 #pragma pack()
@@ -160,13 +168,14 @@ typedef struct {
 bool robot_proto_handle_packet(const robot_packet_t *pkt, uint32_t mode_source);
 
 // ---------- 主状态机接口 ----------
-CarStatus robot_mgr_get_status(void);
-bool robot_mgr_post_mode(CarStatus status, uint32_t source);
-void robot_mgr_get_state_copy(RobotState *out);
-void robot_mgr_update_distance(float distance);
-void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right);
+bool robot_mgr_post_mode(CarStatus status, uint32_t source); /* 投递模式切换命令到状态机消息队列 */
+void robot_mgr_get_state_copy(RobotState *out);              /* 线程安全地获取 RobotState 快照 */
+void robot_mgr_update_distance(float distance);              /* 更新超声波距离值（避障模式写入） */
+void robot_mgr_update_ir_status(unsigned int left,
+                                unsigned int middle,
+                                unsigned int right); /* 更新三路红外传感器状态 */
 
 // ---------- 模式名字符串 ----------
-const char *robot_mode_name(CarStatus status);
+const char *robot_mode_name(CarStatus status); /* 将模式枚举转为可读字符串 */
 
 #endif
