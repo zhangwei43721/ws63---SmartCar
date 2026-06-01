@@ -4,11 +4,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "../robot_common.h"
+#include "../car_common.h"
 
 #define UDP_SERVER_PORT 8888 // UDP 监听端口
-#define UDP_STACK_SIZE 8192  // UDP 任务栈大小
-#define UDP_TASK_PRIORITY 24 // UDP 任务优先级
 
 #define UDP_BROADCAST_PORT 8889 // UDP 广播端口
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file        captive_portal_service.c
  * @brief       AP 配网服务（Captive Portal）
  */
@@ -11,7 +11,7 @@
 #include "wifi_mgr_service.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
-#include "../robot_common.h"
+#include "../car_common.h"
 #include "securec.h"
 #include "soc_osal.h"
 #include "../../../platform/storage_service.h"
@@ -37,9 +37,6 @@ static char g_status_text[32] = "等待配网";                           // Por
 static osal_mutex g_portal_lock;          // Portal 共享状态互斥锁
 static bool g_portal_lock_inited = false; // Portal 互斥锁是否已初始化
 
-#define PORTAL_EVT_AP_READY 0x01           // AP 热点就绪事件
-#define PORTAL_EVT_AP_STOPPED 0x02         // AP 热点停止事件
-#define PORTAL_EVT_EXIT 0x04               // Portal 退出事件
 static osal_event g_portal_event;          // Portal 事件组（AP_READY/AP_STOPPED/EXIT）
 static bool g_portal_event_inited = false; // Portal 事件组是否已初始化
 
@@ -89,7 +86,7 @@ static const char s_html_page[] =
     "<style>"
     "*{box-sizing:border-box;margin:0;padding:0}"
     "body{font-family:-apple-system,BlinkMacSystemFont,Segoe "
-    "UI,Roboto,Helvetica,Arial,sans-serif;background:#f2f3f5;display:flex;justify-content:center;align-items:center;"
+    "UI,Caro,Helvetica,Arial,sans-serif;background:#f2f3f5;display:flex;justify-content:center;align-items:center;"
     "min-height:100vh;padding:16px}"
     ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px "
     "rgba(0,0,0,.08);padding:28px;width:100%;max-width:360px}"
@@ -190,7 +187,7 @@ static const char s_html_busy[] =
     "<title>处理中</title>"
     "<style>"
     "body{font-family:-apple-system,BlinkMacSystemFont,Segoe "
-    "UI,Roboto,Helvetica,Arial,sans-serif;background:#f2f3f5;display:flex;justify-content:center;align-items:center;"
+    "UI,Caro,Helvetica,Arial,sans-serif;background:#f2f3f5;display:flex;justify-content:center;align-items:center;"
     "min-height:100vh;margin:0}"
     ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px "
     "rgba(0,0,0,.08);padding:32px;width:100%;max-width:320px;text-align:center}"
@@ -745,7 +742,7 @@ static int captive_portal_task(void *arg)
                 portal_set_status(PORTAL_STATUS_IDLE, NULL);
             }
             // 超时 500ms：事件正常立即唤醒，事件丢失时兜底检测 AP 模式
-            unsigned int wait_mask = PORTAL_EVT_AP_READY | PORTAL_EVT_EXIT;
+            unsigned int wait_mask = 0x01 | 0x04;
             (void)osal_event_read(&g_portal_event, wait_mask, 500, OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
         }
     }
@@ -772,7 +769,7 @@ void captive_portal_service_init(void)
     }
 
     g_task_should_exit = false;
-    g_portal_task = robot_task_create_locked("portal_task", (osal_kthread_handler)captive_portal_task, NULL, 8192, 23);
+    g_portal_task = car_task_create_locked("portal_task", (osal_kthread_handler)captive_portal_task, NULL, 8192, 23);
 }
 
 /* 获取 AP 模式的静态 IP 地址字符串 */
@@ -785,14 +782,14 @@ const char *captive_portal_service_get_ap_ip(void)
 void captive_portal_service_notify_ap_ready(void)
 {
     if (g_portal_event_inited)
-        (void)osal_event_write(&g_portal_event, PORTAL_EVT_AP_READY);
+        (void)osal_event_write(&g_portal_event, 0x01);
 }
 
 /* 通知 Portal 任务 AP 模式已停止 */
 void captive_portal_service_notify_ap_stopped(void)
 {
     if (g_portal_event_inited)
-        (void)osal_event_write(&g_portal_event, PORTAL_EVT_AP_STOPPED);
+        (void)osal_event_write(&g_portal_event, 0x02);
 }
 
 /* 通知 Portal 任务 STA 连接失败，提示用户重新配网 */

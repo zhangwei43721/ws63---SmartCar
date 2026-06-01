@@ -412,7 +412,7 @@ function handleProxyMessage(msg) {
     const deviceKey = mac || ip;
     const isNew = !appState.devices.has(deviceKey);
     appState.devices.set(deviceKey, {
-      name: name || `Robot_${ip.split('.').pop()}`,
+      name: name || `Car_${ip.split('.').pop()}`,
       ip: ip,
       lastSeen: Date.now(),
       status: null,

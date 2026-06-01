@@ -1,6 +1,6 @@
 /**
  ****************************************************************************************************
- * @file        robot_demo.c
+ * @file        car_demo.c
  * @author      SkyForever
  * @version     V1.1
  * @date        2025-01-16
@@ -13,7 +13,7 @@
 #include "common_def.h"
 #include "core/mode_obstacle.h"
 #include "core/mode_trace.h"
-#include "robot_common.h"
+#include "car_common.h"
 #include "gpio.h"
 #include "hal_gpio.h"
 #include "osal_timer.h"
@@ -45,72 +45,43 @@ static CarStatus g_status = CAR_STOP_STATUS; // 当前小车运行模式
 static unsigned long g_mode_queue = 0;   // 模式切换命令队列ID
 static bool g_mode_queue_inited = false; // 模式队列是否已初始化
 
-static RobotState g_robot_state = {0};    // 全局机器人状态（WiFi连接、电机等）
-static osal_mutex g_state_mutex;          // 保护g_robot_state的互斥锁
+static CarState g_car_state = {0};    // 全局机器人状态（WiFi连接、电机等）
+static osal_mutex g_state_mutex;          // 保护g_car_state的互斥锁
 static bool g_state_mutex_inited = false; // 状态互斥锁是否已初始化
 
 /* 初始化全局状态互斥锁（仅执行一次） */
-static void robot_mgr_state_mutex_init(void)
+static void car_mgr_state_mutex_init(void)
 {
     if (g_state_mutex_inited)
         return;
-    if (osal_mutex_init(&g_state_mutex) == OSAL_SUCCESS) {
+    if (osal_mutex_init(&g_state_mutex) == OSAL_SUCCESS)
         g_state_mutex_inited = true;
-    } else {
-        printf("RobotMgr: 状态互斥锁初始化失败\r\n");
-    }
+    else
+        printf("CarMgr: 状态互斥锁初始化失败\r\n");
 }
 
-/* 应用新模式：更新全局状态、刷新OLED显示 */
-static void robot_mgr_apply_status(CarStatus status)
+/* 应用新模式：更新全局状态、刷新OLED显示。返回 true 表示状态发生了变化 */
+static bool car_mgr_apply_status(CarStatus status)
 {
     if (g_status == status)
-        return;
+        return false;
 
-    printf("模式切换：%s -> %s\r\n", robot_mode_name(g_status), robot_mode_name(status));
+    printf("模式切换：%s -> %s\r\n", car_mode_name(g_status), car_mode_name(status));
 
     g_status = status;
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
-    g_robot_state.mode = status;
+    g_car_state.mode = status;
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 
     ui_show_mode_page(status);
+    return true;
 }
 
-/* 根据模式执行对应的退出处理 */
-static void robot_mgr_do_exit(CarStatus status)
-{
-    switch (status) {
-        case CAR_TRACE_STATUS:
-            mode_trace_exit();
-            break;
-        case CAR_OBSTACLE_AVOIDANCE_STATUS:
-            mode_obstacle_exit();
-            break;
-        default:
-            break;
-    }
-}
-
-/* 根据模式执行对应的进入处理 */
-static void robot_mgr_do_enter(CarStatus status)
-{
-    switch (status) {
-        case CAR_TRACE_STATUS:
-            mode_trace_enter();
-            break;
-        case CAR_OBSTACLE_AVOIDANCE_STATUS:
-            mode_obstacle_enter();
-            break;
-        default:
-            break;
-    }
-}
 /* ============================================================
  * 按键中断
  * ============================================================ */
 
-#define ROBOT_MODE_SWITCH_GPIO 3 // 模式切换按键 GPIO 引脚号
+#define CAR_MODE_SWITCH_GPIO 3 // 模式切换按键 GPIO 引脚号
 static unsigned long long button_time_tick = 0;
 
 /* 按键中断回调：200ms消抖后循环切换小车模式 */
@@ -126,17 +97,17 @@ static void mode_switch_isr(pin_t pin, uintptr_t param)
     button_time_tick = current_tick;
 
     CarStatus next_status = (CarStatus)((g_status + 1) % 4);
-    robot_mgr_post_mode(next_status, MODE_SRC_BUTTON);
+    car_mgr_post_mode(next_status, MODE_SRC_BUTTON);
 }
 
 /* 初始化模式切换按键GPIO及下降沿中断 */
-static void robot_key_init(void)
+static void car_key_init(void)
 {
-    uapi_pin_set_mode(ROBOT_MODE_SWITCH_GPIO, HAL_PIO_FUNC_GPIO);
-    uapi_gpio_set_dir(ROBOT_MODE_SWITCH_GPIO, GPIO_DIRECTION_INPUT);
-    uapi_pin_set_pull(ROBOT_MODE_SWITCH_GPIO, PIN_PULL_TYPE_UP);
+    uapi_pin_set_mode(CAR_MODE_SWITCH_GPIO, HAL_PIO_FUNC_GPIO);
+    uapi_gpio_set_dir(CAR_MODE_SWITCH_GPIO, GPIO_DIRECTION_INPUT);
+    uapi_pin_set_pull(CAR_MODE_SWITCH_GPIO, PIN_PULL_TYPE_UP);
 
-    uapi_gpio_register_isr_func(ROBOT_MODE_SWITCH_GPIO, GPIO_INTERRUPT_FALLING_EDGE, mode_switch_isr);
+    uapi_gpio_register_isr_func(CAR_MODE_SWITCH_GPIO, GPIO_INTERRUPT_FALLING_EDGE, mode_switch_isr);
 }
 
 /* ============================================================
@@ -144,7 +115,7 @@ static void robot_key_init(void)
  * ============================================================ */
 
 /* 向模式切换消息队列投递切换请求（可在中断中调用） */
-bool robot_mgr_post_mode(CarStatus status, uint32_t source)
+bool car_mgr_post_mode(CarStatus status, uint32_t source)
 {
     if (!g_mode_queue_inited)
         return false;
@@ -158,31 +129,31 @@ bool robot_mgr_post_mode(CarStatus status, uint32_t source)
     return (ret == OSAL_SUCCESS);
 }
 
-/* 线程安全地获取当前RobotState快照 */
-void robot_mgr_get_state_copy(RobotState *out)
+/* 线程安全地获取当前CarState快照 */
+void car_mgr_get_state_copy(CarState *out)
 {
     if (out == NULL)
         return;
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
-    *out = g_robot_state;
+    *out = g_car_state;
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 
 /* 更新全局状态中的超声波测距值 */
-void robot_mgr_update_distance(float distance)
+void car_mgr_update_distance(float distance)
 {
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
-    g_robot_state.distance = distance;
+    g_car_state.distance = distance;
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 
 /* 更新全局状态中的三路循迹红外传感器状态 */
-void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right)
+void car_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right)
 {
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
-    g_robot_state.ir_left = left;
-    g_robot_state.ir_middle = middle;
-    g_robot_state.ir_right = right;
+    g_car_state.ir_left = left;
+    g_car_state.ir_middle = middle;
+    g_car_state.ir_right = right;
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 
@@ -191,7 +162,7 @@ void robot_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned
  * ============================================================ */
 
 /* 统一初始化：驱动、互斥锁、WiFi、各服务、按键、模式队列 */
-static void robot_system_init(void)
+static void car_system_init(void)
 {
     storage_service_init();
 
@@ -201,7 +172,7 @@ static void robot_system_init(void)
     tcrt5000_adc_init();
 
     // 关键控制任务先创建，确保任务池不会因后续网络服务耗尽而抢占
-    robot_mgr_state_mutex_init();
+    car_mgr_state_mutex_init();
     bsp_motor_init();
 
     // WiFi 管理任务
@@ -217,35 +188,30 @@ static void robot_system_init(void)
     captive_portal_service_init();
     voice_service_init();
 
-    robot_key_init();
+    car_key_init();
     if (!g_mode_queue_inited) {
         if (osal_msg_queue_create("mode_q", MODE_CMD_QUEUE_DEPTH, &g_mode_queue, 0, sizeof(ModeCmdMsg)) == OSAL_SUCCESS)
             g_mode_queue_inited = true;
         else
-            printf("RobotMgr: 模式队列创建失败\r\n");
+            printf("CarMgr: 模式队列创建失败\r\n");
     }
 
-    robot_mgr_apply_status(CAR_STOP_STATUS);
+    car_mgr_apply_status(CAR_STOP_STATUS);
 
-    printf("Robot: 系统初始化完成\r\n");
+    printf("Car: 系统初始化完成\r\n");
     printf("[FIRMWARE] OTA_TEST_BUILD_20250519_V2\r\n");
 }
-
-#define ROBOT_TASK_STACK_SIZE (1024 * 4) // 主任务栈大小 4KB
-#define ROBOT_TASK_PRIO 25               // 主任务优先级
 
 /**
  * @brief 主状态机任务 —— 纯事件驱动
  * @note 阻塞在模式切换消息队列上，无消息时永久休眠让出 CPU。
  *       只在收到模式切换请求时才执行 enter/exit 状态转移。
  */
-static int robot_main_task(void *arg)
+static int car_main_task(void *arg)
 {
     UNUSED(arg);
 
-    robot_system_init();
-
-    CarStatus last_status = CAR_STOP_STATUS;
+    car_system_init();
 
     while (1) {
         ModeCmdMsg msg;
@@ -264,14 +230,24 @@ static int robot_main_task(void *arg)
             dsz = sizeof(drain);
         }
 
-        // 只对最终意图 apply 一次
-        robot_mgr_apply_status(msg.status);
+        // 只对最终意图 apply 一次，状态未变则跳过
+        if (!car_mgr_apply_status(msg.status))
+            continue;
 
         // 执行状态转移
-        if (g_status != last_status) {
-            robot_mgr_do_exit(last_status);
-            robot_mgr_do_enter(g_status);
-            last_status = g_status;
+        switch (g_status) {
+            case CAR_TRACE_STATUS:
+                mode_obstacle_exit();
+                mode_trace_enter();
+                break;
+            case CAR_OBSTACLE_AVOIDANCE_STATUS:
+                mode_trace_exit();
+                mode_obstacle_enter();
+                break;
+            default:
+                mode_trace_exit();
+                mode_obstacle_exit();
+                break;
         }
     }
 
@@ -279,11 +255,10 @@ static int robot_main_task(void *arg)
 }
 
 /* 应用入口：创建主状态机任务 */
-static void robot_demo_entry(void)
+static void car_demo_entry(void)
 {
-    (void)robot_task_create_locked("robot_main_task", (osal_kthread_handler)robot_main_task, NULL,
-                                   ROBOT_TASK_STACK_SIZE, ROBOT_TASK_PRIO);
+    (void)car_task_create_locked("car_main_task", (osal_kthread_handler)car_main_task, NULL, 4096, 25);
     printf("智能小车主任务已创建\r\n");
 }
 
-app_run(robot_demo_entry);
+app_run(car_demo_entry);

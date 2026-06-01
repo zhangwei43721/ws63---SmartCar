@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../robot_common.h"
+#include "../car_common.h"
 #include "errcode.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
@@ -496,8 +496,8 @@ bool ota_service_start(uint32_t expected_size)
     g_ota_received = 0;
     g_ota_total = 0;
 
-    g_ota_task_handle = robot_task_create_locked("ota_tcp_task", (osal_kthread_handler)ota_tcp_server_task, NULL,
-                                                 OTA_TCP_STACK_SIZE, OTA_TCP_TASK_PRIORITY);
+    g_ota_task_handle = car_task_create_locked("ota_tcp_task", (osal_kthread_handler)ota_tcp_server_task, NULL,
+                                                 1024 * 16, 23);
 
     if (g_ota_task_handle == NULL) {
         ota_set_state(OTA_STATE_FAILED);

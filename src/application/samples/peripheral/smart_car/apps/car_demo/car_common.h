@@ -1,5 +1,5 @@
-#ifndef ROBOT_COMMON_H
-#define ROBOT_COMMON_H
+#ifndef CAR_COMMON_H
+#define CAR_COMMON_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -7,9 +7,6 @@
 #include "soc_osal.h"
 
 #include "../../board_config.h"
-
-// ================ 缓冲区大小常量 ================
-#define BUF_IP 32 // IP 地址字符串缓冲区
 
 // 通用互斥锁操作宏。调用前需确保 inited==true（init 失败应 panic）。
 // 旧版在 inited==false 时"静默放行"让临界区裸跑；当前版打印一次 BUG 警告
@@ -35,11 +32,11 @@
 
 // 封装 osal_kthread_lock/create/set_priority/unlock 4 步模板，
 // 统一任务创建模式并保证 lock/unlock 配对。失败时打印 BUG 日志。
-static inline osal_task *robot_task_create_locked(const char *name,
-                                                  osal_kthread_handler entry,
-                                                  void *arg,
-                                                  unsigned int stack_size,
-                                                  unsigned int priority)
+static inline osal_task *car_task_create_locked(const char *name,
+                                                osal_kthread_handler entry,
+                                                void *arg,
+                                                unsigned int stack_size,
+                                                unsigned int priority)
 {
     osal_task *handle = NULL;
     osal_kthread_lock();
@@ -72,19 +69,14 @@ typedef enum {
     CAR_STOP_STATUS = 0,           // 停止模式：小车停止运动
     CAR_TRACE_STATUS,              // 循迹模式：根据红外传感器进行黑线跟踪
     CAR_OBSTACLE_AVOIDANCE_STATUS, // 避障模式：根据超声波传感器自动避障
-    CAR_WIFI_CONTROL_STATUS,       // WiFi遥控模式：通过UDP/WiFi接收控制命令
+    CAR_WIFI_CONTROL_STATUS,       // 遥控模式：通过各种方式接收控制命令
 } CarStatus;
 
-// 模式切换命令（投递到 mode_q，由 robot_main_task 消费）
+// 模式切换命令（投递到 mode_q，由 car_main_task 消费）
 typedef struct {
     CarStatus status;
     uint32_t source;
 } ModeCmdMsg;
-// 电机控制命令（投递到 motor_q，由 motor_exec 消费）
-typedef struct {
-    int8_t left;
-    int8_t right;
-} MotorCmdMsg;
 
 /**
  * @brief WiFi 连接状态枚举
@@ -106,10 +98,11 @@ typedef struct {
     unsigned int ir_left;   // 左红外状态 (0:黑线, 1:白色)
     unsigned int ir_middle; // 中红外状态 (0:黑线, 1:白色)
     unsigned int ir_right;  // 右红外状态 (0:黑线, 1:白色)
-} RobotState;
+} CarState;
 
 // ---------- 模式命令来源 ----------
 typedef enum {
+    OTA_SUBCMD_START = 0x01,  // OTA命令
     MODE_SRC_BUTTON = 0x01,   // 按键 ISR
     MODE_SRC_UDP = 0x02,      // WiFi UDP 遥控
     MODE_SRC_HTTP = 0x03,     // 强制门户 HTTP
@@ -123,41 +116,34 @@ typedef enum {
  *        type 字段统一定义在此，禁止散落到各 .c 里魔数化。
  */
 typedef enum {
-    ROBOT_PKT_CONTROL = 0x01,   // 控制：[type, l_speed, r_speed, 0, 0]
-    ROBOT_PKT_MODE = 0x03,      // 模式切换：[type, mode, 0, 0, 0]
-    ROBOT_PKT_PID = 0x04,       // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
-    ROBOT_PKT_OTA = 0x05,       // OTA 触发：[type, sub_cmd, ...]
-    ROBOT_PKT_HEARTBEAT = 0xFE, // 心跳
-    ROBOT_PKT_DISCOVERY = 0xFF, // 设备发现广播
-} RobotPktType;
+    CAR_PKT_CONTROL = 0x01,   // 控制：[type, l_speed, r_speed, 0, 0]
+    CAR_PKT_MODE = 0x03,      // 模式切换：[type, mode, 0, 0, 0]
+    CAR_PKT_PID = 0x04,       // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
+    CAR_PKT_OTA = 0x05,       // OTA 触发：[type, sub_cmd, ...]
+    CAR_PKT_HEARTBEAT = 0xFE, // 心跳
+    CAR_PKT_DISCOVERY = 0xFF, // 设备发现广播
+} CarPktType;
 
 /**
- * @brief OTA 子命令（type=ROBOT_PKT_OTA 时 cmd 字段）
- */
-typedef enum {
-    OTA_SUBCMD_START = 0x01,
-} RobotOtaSubCmd;
-
-/**
- * @brief PID 子参数索引（type=ROBOT_PKT_PID 时 cmd 字段）
+ * @brief PID 子参数索引（type=CAR_PKT_PID 时 cmd 字段）
  */
 typedef enum {
     PID_PARAM_KP = 1,
     PID_PARAM_KI = 2,
     PID_PARAM_KD = 3,
     PID_PARAM_BASE_SPEED = 4,
-    PID_PARAM_SAVE = 0xFF, // cmd 子字段 == 0xFF 表示请求落盘
-} RobotPidParam;
+    PID_PARAM_SAVE = 0xFF, // cmd 子字段 == 0xFF 表示保存到flash
+} CarPidParam;
 
 // ---------- 统一协议包体（UDP / SLE / 强制门户共用 5 字节格式）----------
 #pragma pack(1)
 typedef struct {
-    uint8_t type;   // RobotPktType 枚举值
+    uint8_t type;   // CarPktType 枚举值
     uint8_t cmd;    // 子命令 / 模式号 / PID 参数索引
     int8_t motor1;  // 左电机速度 (-100~100) / PID value_hi
     int8_t motor2;  // 右电机速度 (-100~100) / PID value_lo
     int8_t ir_data; // 红外数据 / 保留
-} robot_packet_t;
+} car_packet_t;
 #pragma pack()
 
 /**
@@ -165,17 +151,16 @@ typedef struct {
  * @return true  包已被消费
  * @return false 包未处理，调用方需自行处理（PID / OTA / WiFi 配置等）
  */
-bool robot_proto_handle_packet(const robot_packet_t *pkt, uint32_t mode_source);
+bool car_proto_handle_packet(const car_packet_t *pkt, uint32_t mode_source);
 
 // ---------- 主状态机接口 ----------
-bool robot_mgr_post_mode(CarStatus status, uint32_t source); /* 投递模式切换命令到状态机消息队列 */
-void robot_mgr_get_state_copy(RobotState *out);              /* 线程安全地获取 RobotState 快照 */
-void robot_mgr_update_distance(float distance);              /* 更新超声波距离值（避障模式写入） */
-void robot_mgr_update_ir_status(unsigned int left,
-                                unsigned int middle,
-                                unsigned int right); /* 更新三路红外传感器状态 */
+bool car_mgr_post_mode(CarStatus status, uint32_t source); // 投递模式切换命令到状态机消息队列
+void car_mgr_get_state_copy(CarState *out);                // 线程安全地获取 CarState 快照
+void car_mgr_update_distance(float distance);              // 更新超声波距离值（避障模式写入）
+void car_mgr_update_ir_status(unsigned int left, unsigned int middle,
+                              unsigned int right); // 更新三路红外传感器状态
 
 // ---------- 模式名字符串 ----------
-const char *robot_mode_name(CarStatus status); /* 将模式枚举转为可读字符串 */
+const char *car_mode_name(CarStatus status); // 将模式枚举转为可读字符串
 
 #endif

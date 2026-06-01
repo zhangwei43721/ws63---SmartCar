@@ -5,18 +5,12 @@
 #include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
 #include "../../../platform/storage_service.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
-#include "../robot_common.h"
+#include "../car_common.h"
 #include "soc_osal.h"
 
 #define TRACE_SPEED_FORWARD 40    // 循迹基础前进速度
 #define TRACE_LOST_TIMEOUT_MS 300 // 丢线后搜索超时(ms)
 #define TRACE_SEARCH_SPEED 30     // 丢线搜索速度
-#define TRACE_TICK_MS 20          // 循迹主循环周期(ms)
-
-#define TRACE_TASK_STACK_SIZE 2048 // 循迹任务栈大小
-#define TRACE_TASK_PRIO 22         // 循迹任务优先级
-#define TRACE_EVENT_STOP 0x01      // 停止循迹事件位
-
 #define TRACE_DETECT_BLACK 0 // 红外传感器检测到黑线的值
 
 #define TRACE_PID_MSG_DEPTH 8 // PID 设参消息队列深度
@@ -168,7 +162,7 @@ static void trace_tick_once(void)
                (unsigned)adc_r);
     }
 
-    robot_mgr_update_ir_status(left, middle, right);
+    car_mgr_update_ir_status(left, middle, right);
     float error = calculate_trace_error(left, middle, right);
 
     if (left == TRACE_DETECT_BLACK || middle == TRACE_DETECT_BLACK || right == TRACE_DETECT_BLACK) {
@@ -220,8 +214,8 @@ static int trace_task_entry(void *arg)
 
     while (1) {
         int ret =
-            osal_event_read(&g_trace_event, TRACE_EVENT_STOP, TRACE_TICK_MS, OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
-        if (ret > 0 && ((unsigned int)ret & TRACE_EVENT_STOP)) {
+            osal_event_read(&g_trace_event, 0x01, 20, OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
+        if (ret > 0 && ((unsigned int)ret & 0x01)) {
             break;
         }
         trace_tick_once();
@@ -296,8 +290,8 @@ void mode_trace_enter(void)
     if (g_trace_task != NULL)
         return;
 
-    g_trace_task = robot_task_create_locked("trace_task", (osal_kthread_handler)trace_task_entry, NULL,
-                                            TRACE_TASK_STACK_SIZE, TRACE_TASK_PRIO);
+    g_trace_task = car_task_create_locked("trace_task", (osal_kthread_handler)trace_task_entry, NULL,
+                                            2048, 22);
 }
 
 /* 退出循迹模式：发送停止事件并等待任务退出 */
@@ -305,7 +299,7 @@ void mode_trace_exit(void)
 {
     if (g_trace_task != NULL) {
         if (g_event_inited) {
-            osal_event_write(&g_trace_event, TRACE_EVENT_STOP);
+            osal_event_write(&g_trace_event, 0x01);
         }
         if (g_exit_sem_inited) {
             (void)osal_sem_down_timeout(&g_trace_exit_sem, 500);

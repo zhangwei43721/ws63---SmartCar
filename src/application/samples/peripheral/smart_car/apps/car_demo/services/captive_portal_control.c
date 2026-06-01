@@ -11,7 +11,7 @@
 #include <string.h>
 
 #include "../../../drivers/motor_control/bsp_motor.h"
-#include "../robot_common.h"
+#include "../car_common.h"
 #include "lwip/sockets.h"
 #include "udp_net_common.h"
 
@@ -27,7 +27,7 @@ static const char s_html_control[] =
     "<style>"
     "*{box-sizing:border-box;margin:0;padding:0}"
     "body{font-family:-apple-system,BlinkMacSystemFont,Segoe "
-    "UI,Roboto,sans-serif;background:#f2f3f5;min-height:100vh;padding:16px}"
+    "UI,Caro,sans-serif;background:#f2f3f5;min-height:100vh;padding:16px}"
     ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px "
     "rgba(0,0,0,.08);padding:20px;max-width:360px;margin:0 auto}"
     "h1{font-size:20px;color:#1a1a1a;margin-bottom:16px;text-align:center}"
@@ -170,8 +170,8 @@ static int query_get_int(const char *query, const char *key)
  */
 static void handle_api_status(int client_fd)
 {
-    RobotState st;
-    robot_mgr_get_state_copy(&st);
+    CarState st; // 模式状态
+    car_mgr_get_state_copy(&st);
 
     char json[256];
     int json_len =
@@ -195,7 +195,7 @@ static void handle_api_mode(int client_fd, const char *query)
 {
     int mode = query_get_int(query, "m");
     if (mode >= 0 && mode <= 3) {
-        robot_mgr_post_mode((CarStatus)mode, MODE_SRC_HTTP);
+        car_mgr_post_mode((CarStatus)mode, MODE_SRC_HTTP);
         printf("[Portal] HTTP 设置模式: %d\r\n", mode);
     }
 

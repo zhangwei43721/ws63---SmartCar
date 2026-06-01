@@ -23,7 +23,7 @@
 
 #include "../../../drivers/sle/sle_device.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
-#include "../robot_common.h"
+#include "../car_common.h"
 #include "common_def.h"
 #include "errcode.h"
 #include "soc_osal.h"
@@ -45,19 +45,19 @@ static void process_packet(const uint8_t *data, uint16_t len)
     if (len < 1)
         return;
 
-    if (len == sizeof(robot_packet_t)) {
-        const robot_packet_t *pkt = (const robot_packet_t *)data;
+    if (len == sizeof(car_packet_t)) {
+        const car_packet_t *pkt = (const car_packet_t *)data;
 
-        if (robot_proto_handle_packet(pkt, MODE_SRC_SLE))
+        if (car_proto_handle_packet(pkt, MODE_SRC_SLE))
             return; // CONTROL / MODE / HEARTBEAT 已由统一处理器消费
 
         // PID 仅 UDP 实现，SLE 收到忽略
-        if (pkt->type == ROBOT_PKT_PID)
+        if (pkt->type == CAR_PKT_PID)
             return;
 
         printf("[SLE_SRV] 未知包类型: 0x%02X\r\n", pkt->type);
     } else {
-        printf("[SLE_SRV] 包长度错误: %d (期望 %zu)\r\n", len, sizeof(robot_packet_t));
+        printf("[SLE_SRV] 包长度错误: %d (期望 %zu)\r\n", len, sizeof(car_packet_t));
     }
 }
 

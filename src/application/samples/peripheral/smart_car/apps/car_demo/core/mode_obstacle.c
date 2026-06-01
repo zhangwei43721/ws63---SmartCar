@@ -7,7 +7,7 @@
 
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
-#include "../robot_common.h"
+#include "../car_common.h"
 #include "soc_osal.h"
 
 // ================= 参数配置 =================
@@ -21,15 +21,8 @@
 #define OBST_BACK_SPEED 60 // 后退电机速度
 #define OBST_TURN_SPEED 60 // 原地转弯速度
 
-#define OBST_TICK_MS 20 // 主循环 tick（FORWARD/CHECKING 主动测距）
-#define OBST_TASK_STACK_SIZE 2048
-#define OBST_TASK_PRIO 22
-
-#define OBST_EVENT_STOP 0x01  // 请求退出避障任务
-#define OBST_EVENT_TIMER 0x02 // 定时器到期 → 推进状态机
-
-// 避障状态机：obstacle_step() 每 OBST_TICK_MS 被调用，
-// 定时阶段由 osal_timer 单次触发 OBST_EVENT_TIMER 推进
+// 避障状态机：obstacle_step() 每 20ms 被调用，
+// 定时阶段由 osal_timer 单次触发 0x02 推进
 typedef enum {
     OBST_STATE_FORWARD = 0,       // 向前行驶，主动测距
     OBST_STATE_STOP_BEFORE_BACK,  // 刹车 100ms → 后退
@@ -70,7 +63,7 @@ static void obst_timer_cb(unsigned long arg)
 {
     (void)arg;
     if (g_event_inited) {
-        (void)osal_event_write(&g_obst_event, OBST_EVENT_TIMER);
+        (void)osal_event_write(&g_obst_event, 0x02);
     }
 }
 
@@ -90,7 +83,7 @@ static void obstacle_step(bool timer_fired)
     switch (g_obst_state) {
         case OBST_STATE_FORWARD: {
             float d = hcsr04_get_distance();
-            robot_mgr_update_distance(d);
+            car_mgr_update_distance(d);
             if (d > OBSTACLE_LIMIT) {
                 obst_push(OBST_FWD_SPEED, OBST_FWD_SPEED);
             } else {
@@ -137,7 +130,7 @@ static void obstacle_step(bool timer_fired)
             break;
         case OBST_STATE_CHECKING: {
             float d = hcsr04_get_distance();
-            robot_mgr_update_distance(d);
+            car_mgr_update_distance(d);
             printf("转向后距离: %dcm\r\n", (int)d);
             if (d > OBSTACLE_LIMIT) {
                 printf("找到出口！继续前进。\r\n");
@@ -163,12 +156,11 @@ static int obstacle_task_entry(void *arg)
     while (1) {
         // 始终 20ms 唤醒：FORWARD/CHECKING 需要主动测距，其余状态需要喂 motor 400ms 看门狗
         // （TURNING=650ms > 400ms，不喂狗中途电机会被强停，看上去就是"抽搐"）
-        int ret = osal_event_read(&g_obst_event, OBST_EVENT_STOP | OBST_EVENT_TIMER, OBST_TICK_MS,
-                                  OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
-        if (ret > 0 && ((unsigned int)ret & OBST_EVENT_STOP)) {
+        int ret = osal_event_read(&g_obst_event, 0x01 | 0x02, 20, OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
+        if (ret > 0 && ((unsigned int)ret & 0x01))
             break;
-        }
-        bool timer_fired = (ret > 0 && ((unsigned int)ret & OBST_EVENT_TIMER));
+
+        bool timer_fired = (ret > 0 && ((unsigned int)ret & 0x02));
         obstacle_step(timer_fired);
 
         // 复推当前目标速度，喂 motor_executor 看门狗
@@ -223,25 +215,24 @@ void mode_obstacle_enter(void)
     if (g_obst_task != NULL)
         return;
 
-    g_obst_task = robot_task_create_locked("obst_task", (osal_kthread_handler)obstacle_task_entry, NULL,
-                                           OBST_TASK_STACK_SIZE, OBST_TASK_PRIO);
+    g_obst_task = car_task_create_locked("obst_task", (osal_kthread_handler)obstacle_task_entry, NULL, 2048, 22);
 }
 
 /* 退出避障模式：停止定时器、发送停止事件并等待任务退出 */
 void mode_obstacle_exit(void)
 {
     if (g_obst_task != NULL) {
-        if (g_event_inited) {
-            osal_event_write(&g_obst_event, OBST_EVENT_STOP);
-        }
-        if (g_exit_sem_inited) {
+        if (g_event_inited)
+            osal_event_write(&g_obst_event, 0x01);
+
+        if (g_exit_sem_inited)
             (void)osal_sem_down_timeout(&g_obst_exit_sem, 500);
-        }
+
         g_obst_task = NULL;
     }
-    if (g_obst_timer_inited) {
+    if (g_obst_timer_inited)
         osal_timer_stop(&g_obst_timer);
-    }
+
     bsp_motor_push_cmd(0, 0);
     g_obst_state = OBST_STATE_FORWARD;
 }

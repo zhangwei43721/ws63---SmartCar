@@ -8,14 +8,12 @@
 #include <string.h>
 #include "../../../drivers/wifi_client/bsp_wifi_sta.h"
 #include "../../../drivers/wifi_client/bsp_wifi_ap.h"
-#include "../robot_common.h"
+#include "../car_common.h"
 #include "securec.h"
 #include "soc_osal.h"
 #include "../../../platform/storage_service.h"
 #include "captive_portal_service.h"
 
-#define MGR_STACK_SIZE 2048 // 管理任务栈大小
-#define MGR_PRIO 20         // 管理任务优先级
 
 static osal_task *s_mgr_task = NULL;   // WiFi 管理任务句柄
 static unsigned long s_msg_queue = 0;  // WiFi 管理消息队列 ID
@@ -131,7 +129,7 @@ int bsp_wifi_mgr_init(void)
     if (osal_msg_queue_create("wifi_mgr", 8, &s_msg_queue, 0, sizeof(bsp_wifi_msg_t)) != OSAL_SUCCESS)
         return -1;
     s_mgr_task =
-        robot_task_create_locked("wifi_mgr", (osal_kthread_handler)mgr_task_main, NULL, MGR_STACK_SIZE, MGR_PRIO);
+        car_task_create_locked("wifi_mgr", (osal_kthread_handler)mgr_task_main, NULL, 2048, 20);
     return s_mgr_task ? 0 : -1;
 }
 

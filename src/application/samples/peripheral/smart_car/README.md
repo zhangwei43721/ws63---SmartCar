@@ -26,7 +26,7 @@
 |                      应用业务层 (Apps)                            |
 |  - 任务调度、状态机管理 (State Machine)                             |
 |  - 人机交互 (OLED/按键)                                           |
-|  - 核心入口：robot_demo.c                                         |
+|  - 核心入口：car_demo.c                                         |
 +------------------------------------------------------------------+
                        | 调用
 +------------------------------------------------------------------+
@@ -43,18 +43,18 @@
 +------------------------------------------------------------------+
 ```
 
-### 2. robot_demo 模块架构
+### 2. car_demo 模块架构
 
-`robot_demo` 是智能小车的核心应用，采用状态机模式管理多种运行模式：
+`car_demo` 是智能小车的核心应用，采用状态机模式管理多种运行模式：
 
 ```text
-apps/robot_demo/
-├── robot_demo.c           # 主入口：任务创建、按键中断处理
-├── robot_common.h         # 公共定义：CarStatus 枚举、RobotState 结构体
+apps/car_demo/
+├── car_demo.c           # 主入口：任务创建、按键中断处理
+├── car_common.h         # 公共定义：CarStatus 枚举、CarState 结构体
 │
 ├── core/                  # 【硬件管理层】
-│   ├── robot_mgr.c/h      # 状态机管理器：模式切换、生命周期管理
-│   ├── robot_config.h     # 配置常量：时间参数、网络配置、缓冲区大小
+│   ├── car_mgr.c/h      # 状态机管理器：模式切换、生命周期管理
+│   ├── car_config.h     # 配置常量：时间参数、网络配置、缓冲区大小
 │   ├── mode_trace.c/h     # 循迹模式：PID 控制算法
 │   ├── mode_obstacle.c/h  # 避障模式：超声波测距与转向决策
 │   └── mode_remote.c/h    # 遥控模式：UDP 命令解析与超时保护
@@ -69,14 +69,14 @@ apps/robot_demo/
 
 ### 3. 模式接口设计
 
-每个运行模式实现统一的 `RobotModeOps` 接口：
+每个运行模式实现统一的 `CarModeOps` 接口：
 
 ```c
 typedef struct {
     void (*enter)(void);   // 模式进入时调用（初始化）
     void (*tick)(void);    // 周期性调用（主循环逻辑）
     void (*exit)(void);    // 模式退出时调用（清理）
-} RobotModeOps;
+} CarModeOps;
 ```
 
 | 模式          | 状态枚举                        | 功能描述                             |
@@ -103,7 +103,7 @@ application/samples/peripheral/smart_car/
 │   └── sle/                # SLE 星闪驱动（遥控服务）
 │
 └── apps/                   # 【应用业务层】
-    ├── robot_demo/         # [核心] 智能小车综合应用
+    ├── car_demo/         # [核心] 智能小车综合应用
     │   ├── core/           # 核心管理层
     │   └── services/       # 功能服务层
     │
@@ -132,7 +132,7 @@ application/samples/peripheral/smart_car/
 
 本模块采用 **"单应用模式"**，请在 `menuconfig` 的 `Select Running Application` 中选择对应的任务。
 
-### 1. 综合应用 (Robot Demo)
+### 1. 综合应用 (Car Demo)
 
 **功能**：集成循迹、避障、WiFi 遥控的完整业务逻辑。
 
@@ -207,7 +207,7 @@ application/samples/peripheral/smart_car/
 
 - 智能模式：启动时先尝试连接预设 WiFi（15 秒超时），失败后自动切换 AP 模式
 - STA 模式：固定连接到指定路由器
-- AP 模式：作为热点（SSID: WS63_Robot, 密码: 12345678）
+- AP 模式：作为热点（SSID: WS63_Car, 密码: 12345678）
 
 ### 语音模块通信协议
 
@@ -277,7 +277,7 @@ application/samples/peripheral/smart_car/
 
 2. **选择应用**
    导航至 `Application` -> `Support Smart Car Sample` -> `Select Running Application`
-   - 选择 `Robot Demo` 运行综合应用
+   - 选择 `Car Demo` 运行综合应用
    - 或选择具体 `Test: ...` 模块进行硬件测试
 
 3. **编译并烧录**
@@ -286,7 +286,7 @@ application/samples/peripheral/smart_car/
 ### 如何添加新硬件模式
 
 1. **创建模式文件**
-   在 `apps/robot_demo/core/` 下创建 `mode_xxx.c` 和 `mode_xxx.h`
+   在 `apps/car_demo/core/` 下创建 `mode_xxx.c` 和 `mode_xxx.h`
 
 2. **实现模式接口**
 
@@ -297,25 +297,25 @@ application/samples/peripheral/smart_car/
    ```
 
 3. **注册到状态机**
-   在 `robot_mgr.c` 的 `g_mode_ops` 数组中添加：
+   在 `car_mgr.c` 的 `g_mode_ops` 数组中添加：
 
    ```c
    {mode_xxx_enter, mode_xxx_tick, mode_xxx_exit}
    ```
 
 4. **添加状态枚举**
-   在 `robot_common.h` 的 `CarStatus` 枚举中添加新状态
+   在 `car_common.h` 的 `CarStatus` 枚举中添加新状态
 
 ### 如何添加新软件服务
 
 1. **创建服务文件**
-   在 `apps/robot_demo/services/` 下创建服务头文件和源文件
+   在 `apps/car_demo/services/` 下创建服务头文件和源文件
 
 2. **实现服务接口**
    提供 `xxx_service_init()` 和必要的业务接口
 
-3. **在 robot_mgr 中初始化**
-   在 `robot_mgr_init()` 中调用服务的初始化函数
+3. **在 car_mgr 中初始化**
+   在 `car_mgr_init()` 中调用服务的初始化函数
 
 ## 故障排查
 
@@ -337,6 +337,6 @@ A:
 | :------------- | :------------------------------------------------------------------------------------------------------ |
 | **2025-02-06** | 添加 SLE 星闪遥控功能支持；添加 UART 语音控制服务（定时转向）；优化引脚定义注释                         |
 | **2025-01-26** | 简化代码：删除 HTTP 和 TCP 服务；简化 NV 存储为 PID 参数和 WiFi 配置；删除遥测功能；添加 PID 参数持久化 |
-| **2025-01-18** | 重构 robot_demo 架构，分离 core 和 services；添加 PID 循迹算法；添加 NV 存储服务                        |
+| **2025-01-18** | 重构 car_demo 架构，分离 core 和 services；添加 PID 循迹算法；添加 NV 存储服务                        |
 | **2025-01-14** | 升级通信协议为 4字节 HEX 格式，支持差速控制                                                             |
 | **2025-01-12** | 初始版本，预留基础循迹、避障、遥控功能框架                                                              |

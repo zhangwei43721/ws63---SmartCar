@@ -41,7 +41,7 @@ python build.py menuconfig
 
 - 配置文件保存至 `build/config/target_config/ws63/menuconfig/acore/ws63_liteos_app.config`
 - 智能小车模块通过 `CONFIG_SAMPLE_SUPPORT_SMART_CAR=y` 启用
-- 当前运行的应用通过 `CONFIG_SMART_CAR_RUN_ROBOT_DEMO`（或其他 `CONFIG_SMART_CAR_RUN_*` 选项）选择
+- 当前运行的应用通过 `CONFIG_SMART_CAR_RUN_car_demo`（或其他 `CONFIG_SMART_CAR_RUN_*` 选项）选择
 
 ### 构建产物
 
@@ -96,11 +96,11 @@ application/samples/peripheral/smart_car/
 │   ├── sle/                         # 星闪（SLE）设备驱动
 │   └── uart/                        # UART 命令接口
 └── apps/
-    ├── robot_demo/                  # 主集成应用（循迹/避障/遥控）
-    │   ├── robot_main.c             # 入口：任务创建、模式切换按键中断
+    ├── car_demo/                  # 主集成应用（循迹/避障/遥控）
+    │   ├── car_main.c             # 入口：任务创建、模式切换按键中断
     │   ├── core/
-    │   │   ├── robot_mgr.c/h        # 状态机 & 模式生命周期管理器
-    │   │   ├── robot_config.h       # 任务栈大小、优先级、时序常量
+    │   │   ├── car_mgr.c/h        # 状态机 & 模式生命周期管理器
+    │   │   ├── car_config.h       # 任务栈大小、优先级、时序常量
     │   │   ├── mode_trace.c/h       # 循迹模式
     │   │   ├── mode_obstacle.c/h    # 避障模式
     │   │   └── mode_remote.c/h      # WiFi/SLE 遥控模式
@@ -125,10 +125,10 @@ application/samples/peripheral/smart_car/
 
 智能小车遵循 SDK 的 Kconfig + CMake 约定：
 
-1. **Kconfig**（`smart_car/Kconfig`）定义运行模式的 `choice` 和各驱动的 `config` 开关。`robot_demo` 选项通过 `select` 自动启用所需驱动。
+1. **Kconfig**（`smart_car/Kconfig`）定义运行模式的 `choice` 和各驱动的 `config` 开关。`car_demo` 选项通过 `select` 自动启用所需驱动。
 2. **顶层 CMake**（`smart_car/CMakeLists.txt`）使用 `add_subdirectory(drivers)`，然后通过 `if(CONFIG_SMART_CAR_RUN_*)` 分发到选中的应用。
 3. **驱动 CMake**（`drivers/CMakeLists.txt`）对每个启用的 `CONFIG_SMART_CAR_DRIVER_*` 标志使用 `file(GLOB_RECURSE ...)` 和 `include_directories()`。
-4. **应用 CMake**（`apps/robot_demo/CMakeLists.txt`）从 `core/` 和 `services/` GLOB 所有 `.c` 文件，添加本地 include 路径，并通过 `PARENT_SCOPE` 追加到全局 `SOURCES` 变量。
+4. **应用 CMake**（`apps/car_demo/CMakeLists.txt`）从 `core/` 和 `services/` GLOB 所有 `.c` 文件，添加本地 include 路径，并通过 `PARENT_SCOPE` 追加到全局 `SOURCES` 变量。
 
 ### 状态机
 
@@ -138,7 +138,7 @@ application/samples/peripheral/smart_car/
 - `CAR_OBSTACLE_AVOIDANCE_STATUS`（2）— 避障模式，通过 HC-SR04 自动避障
 - `CAR_WIFI_CONTROL_STATUS`（3）— WiFi/SLE 遥控模式
 
-`robot_mgr.c` 负责模式切换：对旧模式调用 `exit()`，对新模式调用 `enter()`，并在每 20ms 的主循环中调用 `tick()`。
+`car_mgr.c` 负责模式切换：对旧模式调用 `exit()`，对新模式调用 `enter()`，并在每 20ms 的主循环中调用 `tick()`。
 
 ### 通信协议
 
@@ -197,7 +197,7 @@ ELF 文件路径：`output/ws63/acore/ws63-liteos-app/ws63-liteos-app.elf`。
 - SDK 使用 **Huawei LiteOS**，并提供 OSAL 抽象层（`soc_osal.h`）。任务创建使用 `osal_kthread_create` / `osal_kthread_set_priority`，外层需包裹 `osal_kthread_lock/unlock`。
 - 任务创建后**不要**立即释放任务句柄（LiteOS 中的常见错误模式）。
 - `drivers/` 的 CMake 使用 `file(GLOB_RECURSE ...)`；在驱动目录中新增 `.c` 文件会自动被收录，无需修改 CMake。
-- `robot_common.h` 定义了跨 core 和 services 共享的结构体（`RobotState`、`CarStatus`、`WifiConnectStatus`）。
+- `car_common.h` 定义了跨 core 和 services 共享的结构体（`CarState`、`CarStatus`、`WifiConnectStatus`）。
 
 
 所有代码先想一下能不能用RTOS的方式来实现，而不是用裸机的方式实现

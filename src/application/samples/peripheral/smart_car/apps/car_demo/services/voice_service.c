@@ -15,7 +15,7 @@
 
 #include "../../../drivers/uart/bsp_uart.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
-#include "../robot_common.h"
+#include "../car_common.h"
 #include "soc_osal.h"
 
 #define VOICE_CMD_TIMEOUT_MS 1000 // 语音命令超时时间(ms)
@@ -23,8 +23,6 @@
 #define MOTOR_SPEED_TURN 50       // 转弯电机速度
 #define TURN_DURATION_MS 400      // 转弯持续时间(ms)
 
-#define VOICE_TASK_STACK_SIZE 2048 // 语音任务栈大小
-#define VOICE_TASK_PRIO 29         // 语音任务优先级
 
 #define VOICE_RX_QUEUE_DEPTH 32 // UART 接收队列深度
 
@@ -94,7 +92,7 @@ static void process_command(uint8_t cmd)
         unsigned idx = cmd - VOICE_MODE_CMD_BASE;
         if (idx < VOICE_MODE_CMD_COUNT) {
             voice_set_motion(0, 0, 0);
-            robot_mgr_post_mode(g_mode_table[idx], MODE_SRC_VOICE);
+            car_mgr_post_mode(g_mode_table[idx], MODE_SRC_VOICE);
         }
         return;
     }
@@ -164,8 +162,8 @@ void voice_service_init(void)
         return;
     }
 
-    g_voice_task = robot_task_create_locked("voice_task", (osal_kthread_handler)voice_main_task, NULL,
-                                            VOICE_TASK_STACK_SIZE, VOICE_TASK_PRIO);
+    g_voice_task = car_task_create_locked("voice_task", (osal_kthread_handler)voice_main_task, NULL,
+                                            2048, 29);
 
     printf("[语音] 服务已启动\r\n");
 }

@@ -8,7 +8,7 @@
 #include <stdio.h>
 
 // AP 配置
-#define BSP_WIFI_AP_SSID "WS63_Robot" // 热点名称
+#define BSP_WIFI_AP_SSID "WS63_Car" // 热点名称
 #define BSP_WIFI_AP_PASSWORD ""       // 热点密码(空=开放)
 #define BSP_WIFI_AP_CHANNEL 13        // WiFi 信道
 #include <string.h>

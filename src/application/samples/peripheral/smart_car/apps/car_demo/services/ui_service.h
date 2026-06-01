@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "../robot_common.h"
+#include "../car_common.h"
 
 void ui_service_init(void); /* 初始化 UI 服务（创建 OLED 刷新任务） */
 

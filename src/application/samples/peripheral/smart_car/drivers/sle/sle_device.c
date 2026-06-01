@@ -352,7 +352,7 @@ static uint16_t sle_set_scan_response_data(uint8_t *scan_rsp_data)
 /* 设置 SLE 广播参数和广播/扫描响应数据 */
 static errcode_t sle_set_announce_param_and_data(void)
 {
-    uint8_t mac[SLE_ADDR_LEN] = ROBOT_LOCAL_MAC;
+    uint8_t mac[SLE_ADDR_LEN] = CAR_LOCAL_MAC;
 
     // 设置广播参数
     sle_announce_param_t param = {0};
@@ -492,7 +492,7 @@ static errcode_t sle_add_service_and_property(void)
 
     // 设置本地地址
     sle_addr_t addr = {0};
-    uint8_t local_mac[SLE_ADDR_LEN] = ROBOT_LOCAL_MAC;
+    uint8_t local_mac[SLE_ADDR_LEN] = CAR_LOCAL_MAC;
     addr.type = 0;
     if (memcpy_s(addr.addr, SLE_ADDR_LEN, local_mac, SLE_ADDR_LEN) == EOK) {
         sle_set_local_addr(&addr);

@@ -3,9 +3,9 @@
 # 全局 include：所有子目录都能直接用模块名 include
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")                          # board_config.h
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/platform")                  # storage_service.h
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/robot_demo")           # robot_common.h
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/robot_demo/core")      # mode_*.h
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/robot_demo/services")  # *_service.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/car_demo")           # car_common.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/car_demo/core")      # mode_*.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/car_demo/services")  # *_service.h
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/drivers/motor_control")     # bsp_motor.h
 
 # 1. 编译平台层（NV 存储等共享基础设施）
@@ -15,8 +15,8 @@ add_subdirectory(platform)
 add_subdirectory(drivers)
 
 # 3. 根据 Kconfig 选择编译哪个应用
-if(CONFIG_SMART_CAR_RUN_ROBOT_DEMO)
-    add_subdirectory(apps/robot_demo)
+if(CONFIG_SMART_CAR_RUN_CAR_DEMO)
+    add_subdirectory(apps/car_demo)
 elseif(CONFIG_SMART_CAR_RUN_L9110S_TEST)
     add_subdirectory(apps/test_l9110s)
 elseif(CONFIG_SMART_CAR_RUN_HCSR04_TEST)

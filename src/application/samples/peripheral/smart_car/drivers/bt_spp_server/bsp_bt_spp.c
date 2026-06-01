@@ -99,7 +99,7 @@ static uint8_t g_device_name[NAME_MAX_LENGTH] = {'W', 'S', '6', '3', '_', 'U', '
 // 蓝牙设备地址
 static bd_addr_t g_bt_spp_addr = {
     .type = 0,
-    .addr = ROBOT_LOCAL_MAC,
+    .addr = CAR_LOCAL_MAC,
 };
 
 // 连接的远程设备地址

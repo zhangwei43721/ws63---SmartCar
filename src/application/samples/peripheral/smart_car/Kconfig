@@ -5,12 +5,12 @@
 # --- 1. 运行模式选择 (互斥：一次只能跑一个程序) ---
 choice SMART_CAR_RUN_MODE
     prompt "Select Running Application"
-    default SMART_CAR_RUN_ROBOT_DEMO
+    default SMART_CAR_RUN_CAR_DEMO
     help
         选择要编译和运行的主应用程序
 
-    config SMART_CAR_RUN_ROBOT_DEMO
-        bool "Robot Demo (Tracking & Obstacle Avoidance)"
+    config SMART_CAR_RUN_CAR_DEMO
+        bool "Car Demo (Tracking & Obstacle Avoidance)"
         select SMART_CAR_DRIVER_L9110S
         select SMART_CAR_DRIVER_HCSR04
         select SMART_CAR_DRIVER_TCRT5000

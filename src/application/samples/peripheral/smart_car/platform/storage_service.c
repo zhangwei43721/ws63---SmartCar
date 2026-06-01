@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../apps/robot_demo/robot_common.h"
+#include "../apps/car_demo/car_common.h"
 
 #include "nv.h"
 #include "securec.h"
@@ -37,17 +37,17 @@ typedef struct {
     char wifi_password[64]; // WiFi 密码
 
     uint8_t reserved[8]; // 保留字段，用于未来扩展
-} robot_nv_config_t;
+} car_nv_config_t;
 
-#define ROBOT_NV_CONFIG_KEY ((uint16_t)0x2000)       // NV 存储键值
-#define ROBOT_NV_CONFIG_MAGIC ((uint32_t)0x524F4254) // "ROBT"
-#define ROBOT_NV_CONFIG_VERSION ((uint16_t)2)        // NV 配置结构体版本号
+#define CAR_NV_CONFIG_KEY ((uint16_t)0x2000)       // NV 存储键值
+#define CAR_NV_CONFIG_MAGIC ((uint32_t)0x524F4254) // "ROBT"
+#define CAR_NV_CONFIG_VERSION ((uint16_t)2)        // NV 配置结构体版本号
 
-static robot_nv_config_t g_nv_cfg = {0};    // NV 存储的配置数据
+static car_nv_config_t g_nv_cfg = {0};    // NV 存储的配置数据
 static osal_mutex g_storage_mutex;          // 保护 NV 存储访问的互斥锁
 static bool g_storage_mutex_inited = false; // 互斥锁是否已初始化
 
-// 使用 robot_config.h 中的通用锁宏
+// 使用 car_common.h 中的通用锁宏
 #define STORAGE_LOCK() MUTEX_LOCK(g_storage_mutex, g_storage_mutex_inited)
 #define STORAGE_UNLOCK() MUTEX_UNLOCK(g_storage_mutex, g_storage_mutex_inited)
 
@@ -70,11 +70,11 @@ static uint16_t nv_checksum16_add(const uint8_t *data, size_t len)
  * @brief 生成默认 NV 配置并计算校验
  * @param cfg 配置结构体指针
  */
-static void nv_set_defaults(robot_nv_config_t *cfg)
+static void nv_set_defaults(car_nv_config_t *cfg)
 {
     (void)memset_s(cfg, sizeof(*cfg), 0, sizeof(*cfg));
-    cfg->magic = ROBOT_NV_CONFIG_MAGIC;
-    cfg->version = ROBOT_NV_CONFIG_VERSION;
+    cfg->magic = CAR_NV_CONFIG_MAGIC;
+    cfg->version = CAR_NV_CONFIG_VERSION;
 
     // PID 默认值
     cfg->pid_kp_x1000 = 24000; // Kp = 16.0
@@ -95,9 +95,9 @@ static void nv_set_defaults(robot_nv_config_t *cfg)
  * @param cfg 配置结构体指针
  * @return true 配置有效，false 配置无效
  */
-static bool nv_validate(robot_nv_config_t *cfg)
+static bool nv_validate(car_nv_config_t *cfg)
 {
-    if (cfg->magic != ROBOT_NV_CONFIG_MAGIC || cfg->version != ROBOT_NV_CONFIG_VERSION) {
+    if (cfg->magic != CAR_NV_CONFIG_MAGIC || cfg->version != CAR_NV_CONFIG_VERSION) {
         return false;
     }
     uint16_t saved = cfg->checksum;
@@ -130,7 +130,7 @@ void storage_service_init(void)
 
     STORAGE_LOCK();
     uint16_t out_len = 0;
-    errcode_t ret = uapi_nv_read(ROBOT_NV_CONFIG_KEY, (uint16_t)sizeof(g_nv_cfg), &out_len, (uint8_t *)&g_nv_cfg);
+    errcode_t ret = uapi_nv_read(CAR_NV_CONFIG_KEY, (uint16_t)sizeof(g_nv_cfg), &out_len, (uint8_t *)&g_nv_cfg);
 
     // 输出详细诊断日志
     printf("[存储] NV 读取: 返回值=%d, 长度=%d/%zu\r\n", ret, out_len, sizeof(g_nv_cfg));
@@ -143,7 +143,7 @@ void storage_service_init(void)
     if (ret != ERRCODE_SUCC || out_len != sizeof(g_nv_cfg) || !nv_validate(&g_nv_cfg)) {
         printf("[存储] NV 数据无效或不存在，使用默认值并写入\r\n");
         nv_set_defaults(&g_nv_cfg);
-        ret = uapi_nv_write(ROBOT_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
+        ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
         printf("[存储] NV 写入默认值: 返回值=%d\r\n", ret);
     } else {
         printf("[存储] 加载 NV 配置成功\r\n");
@@ -184,7 +184,7 @@ errcode_t storage_service_save_pid_params(float kp, float ki, float kd, int16_t 
 
     printf("[存储] 保存 PID: Kp=%d/1000, Ki=%d/10000, Kd=%d/500, 基础速度=%d\r\n", (int)(kp * 1000), (int)(ki * 10000),
            (int)(kd * 500), speed);
-    errcode_t ret = uapi_nv_write(ROBOT_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
+    errcode_t ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
     printf("[存储] NV 写入: 返回值=%d\r\n", ret);
     STORAGE_UNLOCK();
 
@@ -223,7 +223,7 @@ errcode_t storage_service_save_wifi_config(const char *ssid, const char *passwor
     g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
 
     printf("[存储] 保存 WiFi: SSID='%s', 密码长度=%zu\r\n", ssid, strlen(password));
-    errcode_t ret = uapi_nv_write(ROBOT_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
+    errcode_t ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
     printf("[存储] NV 写入: 返回值=%d (成功值=%d)\r\n", ret, ERRCODE_SUCC);
     STORAGE_UNLOCK();
     return ret;

@@ -13,12 +13,12 @@
 #include "udp_service.h"
 
 // I2C 总线配置（用于 OLED 显示屏通信）
-#define ROBOT_I2C_BUS_ID 1        // I2C 总线 ID
-#define ROBOT_I2C_BAUDRATE 400000 // I2C 波特率
-#define ROBOT_I2C_HS_CODE 0x0     // I2C 高速模式地址码
-#define ROBOT_I2C_SCL_PIN 15      // I2C SCL 引脚号
-#define ROBOT_I2C_SDA_PIN 16      // I2C SDA 引脚号
-#define ROBOT_I2C_PIN_MODE 2      // I2C 引脚复用模式
+#define CAR_I2C_BUS_ID 1        // I2C 总线 ID
+#define CAR_I2C_BAUDRATE 400000 // I2C 波特率
+#define CAR_I2C_HS_CODE 0x0     // I2C 高速模式地址码
+#define CAR_I2C_SCL_PIN 15      // I2C SCL 引脚号
+#define CAR_I2C_SDA_PIN 16      // I2C SDA 引脚号
+#define CAR_I2C_PIN_MODE 2      // I2C 引脚复用模式
 
 /* ============================================================
  * 消息驱动 UI 任务：
@@ -27,8 +27,6 @@
  *     从而避免在主循环里轮询 OLED 导致的 I2C 占用与闪烁。
  * ============================================================ */
 
-#define UI_TASK_STACK_SIZE 4096 // UI 任务栈大小
-#define UI_TASK_PRIO 28         // UI 任务优先级
 #define UI_MSG_QUEUE_DEPTH 4    // UI 消息队列深度
 
 typedef enum {
@@ -196,10 +194,10 @@ void ui_service_init(void)
         return;
     init_attempted = true;
 
-    uapi_pin_set_mode(ROBOT_I2C_SCL_PIN, ROBOT_I2C_PIN_MODE);
-    uapi_pin_set_mode(ROBOT_I2C_SDA_PIN, ROBOT_I2C_PIN_MODE);
+    uapi_pin_set_mode(CAR_I2C_SCL_PIN, CAR_I2C_PIN_MODE);
+    uapi_pin_set_mode(CAR_I2C_SDA_PIN, CAR_I2C_PIN_MODE);
 
-    errcode_t ret = uapi_i2c_master_init(ROBOT_I2C_BUS_ID, ROBOT_I2C_BAUDRATE, ROBOT_I2C_HS_CODE);
+    errcode_t ret = uapi_i2c_master_init(CAR_I2C_BUS_ID, CAR_I2C_BAUDRATE, CAR_I2C_HS_CODE);
     if (ret != ERRCODE_SUCC) {
         printf("[OLED] I2C 初始化失败，跳过显示屏功能\r\n");
         return;
@@ -222,8 +220,8 @@ void ui_service_init(void)
     }
 
     if (g_ui_task == NULL) {
-        g_ui_task = robot_task_create_locked("ui_task", (osal_kthread_handler)ui_task_entry, NULL, UI_TASK_STACK_SIZE,
-                                             UI_TASK_PRIO);
+        g_ui_task = car_task_create_locked("ui_task", (osal_kthread_handler)ui_task_entry, NULL, 4096,
+                                             28);
     }
 
     ui_show_mode_page(CAR_STOP_STATUS);

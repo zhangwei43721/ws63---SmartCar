@@ -12,8 +12,6 @@
 #include "errcode.h"
 
 #define OTA_TCP_PORT 8890
-#define OTA_TCP_STACK_SIZE (1024 * 16) // 16KB 栈，TCP+UPG 操作需要较大空间
-#define OTA_TCP_TASK_PRIORITY 23
 
 #define OTA_RECV_CHUNK_SIZE 32768 // 每次 recv 缓冲大小
 

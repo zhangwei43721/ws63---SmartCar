@@ -13,7 +13,7 @@
 #include "wifi_mgr_service.h"
 #include "../core/mode_trace.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
-#include "../robot_common.h"
+#include "../car_common.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 #include "ota_service.h"
@@ -93,8 +93,7 @@ void udp_service_init(void)
     }
 
     // 创建线程
-    g_udp_task = robot_task_create_locked("udp_task", (osal_kthread_handler)udp_service_task, NULL, UDP_STACK_SIZE,
-                                          UDP_TASK_PRIORITY);
+    g_udp_task = car_task_create_locked("udp_task", (osal_kthread_handler)udp_service_task, NULL, 8192, 24);
 }
 
 /* 获取当前WiFi连接状态（STA/AP模式映射） */
@@ -115,7 +114,7 @@ WifiConnectStatus udp_service_get_wifi_status(void)
 /* 获取当前WiFi的IP地址字符串 */
 const char *udp_service_get_ip(void)
 {
-    static char ip_buf[BUF_IP] = "0.0.0.0";
+    static char ip_buf[32] = "0.0.0.0";
     bsp_wifi_get_ip(ip_buf, sizeof(ip_buf));
     return ip_buf;
 }
@@ -131,12 +130,12 @@ static void build_discovery_packet(void)
         return;
 
     memset_s(&g_discovery_pkt, sizeof(g_discovery_pkt), 0, sizeof(g_discovery_pkt));
-    g_discovery_pkt.type = ROBOT_PKT_DISCOVERY;
+    g_discovery_pkt.type = CAR_PKT_DISCOVERY;
 
     // 尝试获取MAC地址
     if (udp_net_get_mac_address(g_discovery_pkt.mac) == 0) {
         // MAC获取成功，生成设备名
-        snprintf(g_discovery_pkt.name, sizeof(g_discovery_pkt.name), "Robot_%02X%02X", g_discovery_pkt.mac[4],
+        snprintf(g_discovery_pkt.name, sizeof(g_discovery_pkt.name), "Car_%02X%02X", g_discovery_pkt.mac[4],
                  g_discovery_pkt.mac[5]);
 
         g_discovery_ready = true;
@@ -236,38 +235,35 @@ static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender
     }
 
     // 标准5字节协议包 → 先走统一处理
-    if (len == sizeof(robot_packet_t)) {
-        robot_packet_t *pkt = (robot_packet_t *)data;
+    if (len == sizeof(car_packet_t)) {
+        car_packet_t *pkt = (car_packet_t *)data;
 
-        if (robot_proto_handle_packet(pkt, MODE_SRC_UDP))
+        if (car_proto_handle_packet(pkt, MODE_SRC_UDP))
             return; // CONTROL / MODE / HEARTBEAT 已由统一处理器消费
 
-        // PID 设参（仅 UDP 支持）
-        if (pkt->type == ROBOT_PKT_PID) {
-            if (pkt->cmd == PID_PARAM_SAVE) {
+        // PID 调参
+        if (pkt->type == CAR_PKT_PID) {
+            if (pkt->cmd == PID_PARAM_SAVE)
                 mode_trace_save_pid();
-            } else {
+            else
                 mode_trace_set_pid(pkt->cmd, (int16_t)((pkt->motor1 << 8) | (uint8_t)pkt->motor2));
-            }
             return;
         }
 
         // OTA 触发
-        if (pkt->type == ROBOT_PKT_OTA) {
-            robot_packet_t ack = {0};
-            ack.type = ROBOT_PKT_OTA;
+        if (pkt->type == CAR_PKT_OTA) {
+            car_packet_t ack = {0};
+            ack.type = CAR_PKT_OTA;
             if (pkt->cmd == OTA_SUBCMD_START) {
-                if (ota_service_start(0)) {
+                if (ota_service_start(0))
                     ack.cmd = 0x00;
-                } else {
+                else
                     ack.cmd = 0x01;
-                }
             } else if (pkt->cmd == 0x02) {
                 ota_service_cancel();
                 ack.cmd = 0x00;
-            } else {
+            } else
                 ack.cmd = 0x02;
-            }
             udp_net_common_send_to_addr(g_sockfd, &ack, sizeof(ack), &g_server_addr);
             return;
         }
@@ -307,14 +303,14 @@ static void handle_udp_receive(void)
 /* 发送机器人状态心跳包到已连接的控制器 */
 static void send_heartbeat(void)
 {
-    RobotState curr;
-    robot_mgr_get_state_copy(&curr);
-    robot_packet_t pkt = {0};
+    CarState st;
+    car_mgr_get_state_copy(&st);
+    car_packet_t pkt = {0};
     pkt.type = 0x02;
-    pkt.cmd = curr.mode;
-    pkt.motor1 = (int8_t)(curr.distance / 2);
+    pkt.cmd = st.mode;
+    pkt.motor1 = (int8_t)(st.distance / 2);
     pkt.motor2 = 0;
-    pkt.ir_data = (curr.ir_left & 1) | ((curr.ir_middle & 1) << 1) | ((curr.ir_right & 1) << 2);
+    pkt.ir_data = (st.ir_left & 1) | ((st.ir_middle & 1) << 1) | ((st.ir_right & 1) << 2);
     udp_net_common_send_to_addr(g_sockfd, &pkt, sizeof(pkt), &g_server_addr);
 }
 
@@ -334,7 +330,7 @@ static int udp_service_task(void *arg)
     uint64_t t_keepalive_decay = 0;
     bool wifi_was_ready = false;
     static bsp_wifi_mode_t last_mode = BSP_WIFI_MODE_STA;
-    static char last_ip[BUF_IP] = {0};
+    static char last_ip[32] = {0};
 
     while (!g_udp_should_exit) {
         if (g_sockfd < 0) {
@@ -357,7 +353,7 @@ static int udp_service_task(void *arg)
             wifi_connected = (wifi_status == BSP_WIFI_STATUS_GOT_IP || wifi_status == BSP_WIFI_STATUS_CONNECTED);
             wifi_has_ip = (wifi_status == BSP_WIFI_STATUS_GOT_IP);
         }
-        char curr_ip[BUF_IP] = "0.0.0.0";
+        char curr_ip[32] = "0.0.0.0";
         if (wifi_has_ip) {
             bsp_wifi_get_ip(curr_ip, sizeof(curr_ip));
         }

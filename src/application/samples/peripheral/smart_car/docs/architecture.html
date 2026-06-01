@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SmartCar robot_demo 架构图 (HarmonyOS Style)</title>
+  <title>SmartCar car_demo 架构图 (HarmonyOS Style)</title>
   <style>
     :root {
       /* 鸿蒙系统 (HarmonyOS) 经典色谱 */
@@ -569,7 +569,7 @@
   <div class="wrap">
 
     <header>
-      <h1>SmartCar · robot_demo 架构图</h1>
+      <h1>SmartCar · car_demo 架构图</h1>
       <p>HiSpark WS63 SDK / Huawei LiteOS · 高并发、优先级调度与消息环路</p>
     </header>
 
@@ -595,31 +595,31 @@
         <div class="layer-label" style="color: var(--svc-text)">应用任务层 (Tasks & Services)</div>
         <h3 style="color: var(--core-text)">核心控制 (Core Tasks)</h3>
         <div class="row" style="margin-bottom: 8px;">
-          <div class="chip core" data-file="apps/robot_demo/robot_main.c" data-name="robot_main_task">主任务<span
-              class="sub">robot_main · Prio 25</span></div>
-          <div class="chip core" data-file="apps/robot_demo/core/mode_trace.c" data-name="trace_task">循迹任务<span
+          <div class="chip core" data-file="apps/car_demo/car_main.c" data-name="car_main_task">主任务<span
+              class="sub">car_main · Prio 25</span></div>
+          <div class="chip core" data-file="apps/car_demo/core/mode_trace.c" data-name="trace_task">循迹任务<span
               class="sub">mode_trace · Prio 22</span></div>
-          <div class="chip core" data-file="apps/robot_demo/core/mode_obstacle.c" data-name="obst_task">避障任务<span
+          <div class="chip core" data-file="apps/car_demo/core/mode_obstacle.c" data-name="obst_task">避障任务<span
               class="sub">mode_obstacle · Prio 22</span></div>
         </div>
         <h3 style="color: var(--svc-text)">网络控制</h3>
         <div class="row" style="margin-bottom: 8px;">
-          <div class="chip svc" data-file="apps/robot_demo/services/wifi_mgr_service.c" data-name="wifi_mgr">WiFi
+          <div class="chip svc" data-file="apps/car_demo/services/wifi_mgr_service.c" data-name="wifi_mgr">WiFi
             管理器<span class="sub">wifi_mgr · Prio 20</span></div>
-          <div class="chip svc" data-file="apps/robot_demo/services/udp_service.c" data-name="udp_task">UDP 遥控<span
+          <div class="chip svc" data-file="apps/car_demo/services/udp_service.c" data-name="udp_task">UDP 遥控<span
               class="sub">udp_task · Prio 24</span></div>
-          <div class="chip svc" data-file="apps/robot_demo/services/captive_portal_service.c" data-name="portal_task">
+          <div class="chip svc" data-file="apps/car_demo/services/captive_portal_service.c" data-name="portal_task">
             配网服务<span class="sub">portal_task · Prio 23</span></div>
-          <div class="chip svc" data-file="apps/robot_demo/services/ota_service.c" data-name="ota_tcp_task">OTA 升级<span
+          <div class="chip svc" data-file="apps/car_demo/services/ota_service.c" data-name="ota_tcp_task">OTA 升级<span
               class="sub">ota_tcp_task · Prio 23</span></div>
         </div>
         <h3 style="color: var(--svc-text)">外设服务</h3>
         <div class="row">
-          <div class="chip svc" data-file="apps/robot_demo/services/voice_service.c" data-name="voice_task">语音命令<span
+          <div class="chip svc" data-file="apps/car_demo/services/voice_service.c" data-name="voice_task">语音命令<span
               class="sub">voice_task · Prio 29</span></div>
-          <div class="chip svc" data-file="apps/robot_demo/services/ui_service.c" data-name="ui_task">OLED 显示<span
+          <div class="chip svc" data-file="apps/car_demo/services/ui_service.c" data-name="ui_task">OLED 显示<span
               class="sub">ui_task · Prio 28</span></div>
-          <div class="chip svc" data-file="apps/robot_demo/services/sle_service.c" data-name="sle_service">星闪遥控<span
+          <div class="chip svc" data-file="apps/car_demo/services/sle_service.c" data-name="sle_service">星闪遥控<span
               class="sub">sle_service · 回调</span></div>
         </div>
       </div>
@@ -702,8 +702,8 @@
           </thead>
           <tbody>
             <tr>
-              <td><code>robot_main_task</code></td>
-              <td data-file="apps/robot_demo/robot_main.c"><code>robot_main.c</code></td>
+              <td><code>car_main_task</code></td>
+              <td data-file="apps/car_demo/car_main.c"><code>car_main.c</code></td>
               <td><span class="prio-badge prio-mid">25 (中低)</span></td>
               <td><code>4 KB</code></td>
               <td>自启动创建 · 事件驱动</td>
@@ -711,7 +711,7 @@
             </tr>
             <tr>
               <td><code>trace_task</code></td>
-              <td data-file="apps/robot_demo/core/mode_trace.c"><code>core/mode_trace.c</code></td>
+              <td data-file="apps/car_demo/core/mode_trace.c"><code>core/mode_trace.c</code></td>
               <td><span class="prio-badge prio-high">22 (高)</span></td>
               <td><code>2 KB</code></td>
               <td>模式激活创建 · 20ms 周期</td>
@@ -719,7 +719,7 @@
             </tr>
             <tr>
               <td><code>obst_task</code></td>
-              <td data-file="apps/robot_demo/core/mode_obstacle.c"><code>core/mode_obstacle.c</code></td>
+              <td data-file="apps/car_demo/core/mode_obstacle.c"><code>core/mode_obstacle.c</code></td>
               <td><span class="prio-badge prio-high">22 (高)</span></td>
               <td><code>2 KB</code></td>
               <td>模式激活创建 · 20ms 周期</td>
@@ -727,7 +727,7 @@
             </tr>
             <tr>
               <td><code>udp_task</code></td>
-              <td data-file="apps/robot_demo/services/udp_service.c"><code>services/udp_service.c</code></td>
+              <td data-file="apps/car_demo/services/udp_service.c"><code>services/udp_service.c</code></td>
               <td><span class="prio-badge prio-mid">24 (中)</span></td>
               <td><code>8 KB</code></td>
               <td>网卡接收阻塞 (recv)</td>
@@ -735,7 +735,7 @@
             </tr>
             <tr>
               <td><code>wifi_mgr</code></td>
-              <td data-file="apps/robot_demo/services/wifi_mgr_service.c"><code>services/wifi_mgr_service.c</code></td>
+              <td data-file="apps/car_demo/services/wifi_mgr_service.c"><code>services/wifi_mgr_service.c</code></td>
               <td><span class="prio-badge prio-high">20 (高)</span></td>
               <td><code>2 KB</code></td>
               <td>消息队列驱动</td>
@@ -743,7 +743,7 @@
             </tr>
             <tr>
               <td><code>ota_tcp_task</code></td>
-              <td data-file="apps/robot_demo/services/ota_service.c"><code>services/ota_service.c</code></td>
+              <td data-file="apps/car_demo/services/ota_service.c"><code>services/ota_service.c</code></td>
               <td><span class="prio-badge prio-mid">23 (中高)</span></td>
               <td><code>16 KB</code></td>
               <td>UDP 触发后按需建立</td>
@@ -751,7 +751,7 @@
             </tr>
             <tr>
               <td><code>portal_task</code></td>
-              <td data-file="apps/robot_demo/services/captive_portal_service.c">
+              <td data-file="apps/car_demo/services/captive_portal_service.c">
                 <code>services/captive_portal_service.c</code>
               </td>
               <td><span class="prio-badge prio-mid">23 (中高)</span></td>
@@ -761,7 +761,7 @@
             </tr>
             <tr>
               <td><code>voice_task</code></td>
-              <td data-file="apps/robot_demo/services/voice_service.c"><code>services/voice_service.c</code></td>
+              <td data-file="apps/car_demo/services/voice_service.c"><code>services/voice_service.c</code></td>
               <td><span class="prio-badge prio-low">29 (低)</span></td>
               <td><code>2 KB</code></td>
               <td>阻塞读取 voice_rx 队列</td>
@@ -769,7 +769,7 @@
             </tr>
             <tr>
               <td><code>ui_task</code></td>
-              <td data-file="apps/robot_demo/services/ui_service.c"><code>services/ui_service.c</code></td>
+              <td data-file="apps/car_demo/services/ui_service.c"><code>services/ui_service.c</code></td>
               <td><span class="prio-badge prio-low">28 (低)</span></td>
               <td><code>4 KB</code></td>
               <td>阻塞读取 <code>ui_msgq</code></td>
@@ -777,15 +777,15 @@
             </tr>
             <tr>
               <td>SLE 回调</td>
-              <td data-file="apps/robot_demo/services/sle_service.c"><code>services/sle_service.c</code></td>
+              <td data-file="apps/car_demo/services/sle_service.c"><code>services/sle_service.c</code></td>
               <td><span class="prio-badge prio-low">—</span></td>
               <td>—</td>
               <td>星闪协议栈回调</td>
-              <td>接收 5 字节数据包，通过 robot_proto_handle_packet 注入控制链</td>
+              <td>接收 5 字节数据包，通过 car_proto_handle_packet 注入控制链</td>
             </tr>
             <tr>
               <td>按键 ISR</td>
-              <td data-file="apps/robot_demo/robot_main.c"><code>robot_main.c</code></td>
+              <td data-file="apps/car_demo/car_main.c"><code>car_main.c</code></td>
               <td><span class="prio-badge prio-high">中断</span></td>
               <td>—</td>
               <td>GPIO3 下降沿 · 200ms 消抖</td>
@@ -803,7 +803,7 @@
         系统有两条核心数据通路：<strong>电机控制</strong>（各模式直接调用 <code>bsp_motor_push_cmd()</code>，无中间队列，见
         <code>bsp_motor.c:L78</code>）与
         <strong>模式切换</strong>（通过 <code>mode_q</code> 队列投递 <code>ModeCmdMsg</code>，由状态机消费并执行切换，见
-        <code>robot_main.c:L210</code>）。
+        <code>car_main.c:L210</code>）。
       </p>
 
       <div class="flow-wrap">
@@ -898,7 +898,7 @@
             <rect x="850" y="180" width="200" height="60" rx="6" fill="var(--core)" stroke="var(--core-b)"
               stroke-width="1" />
             <text x="950" y="202" text-anchor="middle" font-size="12.5" font-weight="700"
-              fill="var(--core-text)">robot_mgr 异常干预</text>
+              fill="var(--core-text)">car_mgr 异常干预</text>
             <text x="950" y="218" text-anchor="middle" font-size="10" fill="var(--core-text)">强制刹车停泊 (0, 0)</text>
             <path d="M850,210 Q740,210 650,290" fill="none" stroke="var(--core-b)" stroke-width="1.2"
               marker-end="url(#arr)" />
@@ -909,7 +909,7 @@
             <rect x="850" y="260" width="200" height="60" rx="6" fill="var(--queue)" stroke="var(--queue-b)"
               stroke-width="1" />
             <text x="950" y="292" text-anchor="middle" font-size="12.5" font-weight="700"
-              fill="var(--queue-text)">RobotState (安全锁保护)</text>
+              fill="var(--queue-text)">CarState (安全锁保护)</text>
             <text x="950" y="308" text-anchor="middle" font-size="10" fill="var(--queue-text)">状态共享: 测距/红外/运行模式</text>
           </g>
           <path d="M850,290 Q780,340 650,360" fill="none" stroke="#556272" stroke-width="1" stroke-dasharray="3 2"
@@ -963,13 +963,13 @@
               <td>直接函数调用</td>
               <td>控制源: UDP / SLE / Portal / 语音 / 自动业务线程</td>
               <td>L9110S 电机物理驱动</td>
-              <td>各执行模式独占式直接操控。切换时由 <code>robot_main_task</code> 强行清空输出防暴冲。</td>
+              <td>各执行模式独占式直接操控。切换时由 <code>car_main_task</code> 强行清空输出防暴冲。</td>
             </tr>
             <tr>
               <td><code>mode_q</code></td>
               <td><code>LiteOS 消息队列 (Depth=4)</code></td>
               <td>GPIO 按键 ISR / UDP 遥控 / SLE / Web Portal</td>
-              <td><code>robot_main_task</code> 主循环</td>
+              <td><code>car_main_task</code> 主循环</td>
               <td>模式指令的防抖与串行化入口。主任务依据事件周期分发切换流程。</td>
             </tr>
             <tr>
@@ -1002,7 +1002,7 @@
     <section>
       <h2>物理运行模式状态机 (Finite State Machine)</h2>
       <p style="color:var(--muted);font-size:11.5px;margin-bottom:8px">
-        <code>robot_mgr</code> 阻塞监听模式切换队列 <code>mode_q</code>，收到指令后执行退出/进入切换，保障平滑控制。
+        <code>car_mgr</code> 阻塞监听模式切换队列 <code>mode_q</code>，收到指令后执行退出/进入切换，保障平滑控制。
       </p>
 
       <div class="sm-container">
@@ -1075,7 +1075,7 @@
           </defs>
 
           <!-- 启动 -->
-          <g data-file="apps/robot_demo/robot_main.c">
+          <g data-file="apps/car_demo/car_main.c">
             <rect x="30" y="30" width="160" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="110" y="52" text-anchor="middle" font-size="12.5" font-weight="700"
@@ -1084,7 +1084,7 @@
           </g>
 
           <!-- wifi_mgr -->
-          <g data-file="apps/robot_demo/services/wifi_mgr_service.c">
+          <g data-file="apps/car_demo/services/wifi_mgr_service.c">
             <rect x="30" y="120" width="160" height="70" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="110" y="145" text-anchor="middle" font-size="12.5" font-weight="700"
@@ -1134,14 +1134,14 @@
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="610" y="205" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--hw-text)">SoftAP
               热点构建</text>
-            <text x="610" y="222" text-anchor="middle" font-size="10" fill="var(--hw-text)">SSID: WS63_Robot ·
+            <text x="610" y="222" text-anchor="middle" font-size="10" fill="var(--hw-text)">SSID: WS63_Car ·
               192.168.1.1</text>
             <text x="610" y="238" text-anchor="middle" font-size="10" fill="var(--hw-text)">开启 DNS & HTTP 强制劫持门户</text>
           </g>
           <line x1="350" y1="255" x2="508" y2="215" stroke="var(--hw-b)" stroke-width="1.2" marker-end="url(#warr)" />
 
           <!-- 成功/失败回调 -->
-          <g data-file="apps/robot_demo/services/wifi_mgr_service.c">
+          <g data-file="apps/car_demo/services/wifi_mgr_service.c">
             <rect x="780" y="30" width="160" height="50" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="860" y="52" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--svc-text)">连接成功 ➔
@@ -1150,7 +1150,7 @@
           </g>
           <line x1="710" y1="55" x2="778" y2="55" stroke="var(--svc-b)" stroke-width="1.2" marker-end="url(#warr)" />
 
-          <g data-file="apps/robot_demo/services/wifi_mgr_service.c">
+          <g data-file="apps/car_demo/services/wifi_mgr_service.c">
             <rect x="780" y="110" width="160" height="60" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="860" y="132" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--motor-text)">连接失败
@@ -1161,7 +1161,7 @@
           <line x1="710" y1="70" x2="778" y2="125" stroke="var(--motor-b)" stroke-width="1.2" marker-end="url(#warr)" />
 
           <!-- UDP 配网入口 -->
-          <g data-file="apps/robot_demo/services/udp_service.c">
+          <g data-file="apps/car_demo/services/udp_service.c">
             <rect x="510" y="290" width="200" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="610" y="312" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--core-text)">UDP
@@ -1208,13 +1208,13 @@
               filter="url(#shadow)" />
             <text x="350" y="52" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--hw-text)">物理 SoftAP
               (热点开启)</text>
-            <text x="350" y="70" text-anchor="middle" font-size="9.5" fill="var(--hw-text)">WS63_Robot ·
+            <text x="350" y="70" text-anchor="middle" font-size="9.5" fill="var(--hw-text)">WS63_Car ·
               192.168.1.1</text>
           </g>
           <line x1="190" y1="90" x2="258" y2="60" stroke="#556272" stroke-width="1.2" marker-end="url(#parr)" />
 
           <!-- DNS 劫持 -->
-          <g data-file="apps/robot_demo/services/captive_portal_service.c:L623-L680">
+          <g data-file="apps/car_demo/services/captive_portal_service.c:L623-L680">
             <rect x="260" y="110" width="180" height="50" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="350" y="132" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--motor-text)">DNS
@@ -1225,7 +1225,7 @@
             marker-end="url(#parr)" />
 
           <!-- HTTP Server -->
-          <g data-file="apps/robot_demo/services/captive_portal_service.c:L435-L620">
+          <g data-file="apps/car_demo/services/captive_portal_service.c:L435-L620">
             <rect x="510" y="30" width="200" height="110" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="610" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--svc-text)">HTTP
@@ -1240,7 +1240,7 @@
           <line x1="350" y1="60" x2="508" y2="60" stroke="var(--svc-b)" stroke-width="1.2" marker-end="url(#parr)" />
 
           <!-- 配网成功 -->
-          <g data-file="apps/robot_demo/services/wifi_mgr_service.c:L138-L143">
+          <g data-file="apps/car_demo/services/wifi_mgr_service.c:L138-L143">
             <rect x="510" y="170" width="200" height="55" rx="6" fill="var(--core)" stroke="var(--core-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="610" y="192" text-anchor="middle" font-size="11.5" font-weight="700"
@@ -1251,7 +1251,7 @@
           <line x1="610" y1="140" x2="610" y2="168" stroke="var(--core-b)" stroke-width="1.2" marker-end="url(#parr)" />
 
           <!-- 结果反馈 -->
-          <g data-file="apps/robot_demo/services/wifi_mgr_service.c:L78-L94">
+          <g data-file="apps/car_demo/services/wifi_mgr_service.c:L78-L94">
             <rect x="780" y="170" width="160" height="55" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="860" y="192" text-anchor="middle" font-size="11.5" font-weight="700"
@@ -1289,7 +1289,7 @@
           <text x="45" y="40" font-size="12" font-weight="700" fill="var(--core-text)">阶段 1: APP 运行时（固件下载与就位）</text>
 
           <!-- UDP 触发 -->
-          <g data-file="apps/robot_demo/services/udp_service.c:L264-L280">
+          <g data-file="apps/car_demo/services/udp_service.c:L264-L280">
             <rect x="50" y="60" width="160" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="130" y="82" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--core-text)">UDP
@@ -1299,7 +1299,7 @@
           </g>
 
           <!-- TCP Server -->
-          <g data-file="apps/robot_demo/services/ota_service.c:L474-L490">
+          <g data-file="apps/car_demo/services/ota_service.c:L474-L490">
             <rect x="270" y="60" width="180" height="50" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="360" y="82" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--svc-text)">TCP
@@ -1309,7 +1309,7 @@
           <line x1="210" y1="85" x2="268" y2="85" stroke="var(--svc-b)" stroke-width="1.2" marker-end="url(#oarr)" />
 
           <!-- 接收固件 -->
-          <g data-file="apps/robot_demo/services/ota_service.c:L328-L405">
+          <g data-file="apps/car_demo/services/ota_service.c:L328-L405">
             <rect x="50" y="130" width="180" height="70" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="140" y="152" text-anchor="middle" font-size="11.5" font-weight="700"
@@ -1322,7 +1322,7 @@
           <line x1="360" y1="110" x2="228" y2="145" stroke="var(--svc-b)" stroke-width="1" marker-end="url(#oarr)" />
 
           <!-- 写入暂存区 -->
-          <g data-file="apps/robot_demo/services/ota_service.c:L385-L395">
+          <g data-file="apps/car_demo/services/ota_service.c:L385-L395">
             <rect x="290" y="130" width="180" height="70" rx="6" fill="var(--hw)" stroke="var(--hw-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="380" y="152" text-anchor="middle" font-size="11.5" font-weight="700"
@@ -1335,7 +1335,7 @@
           <line x1="230" y1="165" x2="288" y2="165" stroke="var(--hw-b)" stroke-width="1.2" marker-end="url(#oarr)" />
 
           <!-- 设置标志 + 重启 -->
-          <g data-file="apps/robot_demo/services/ota_service.c:L425-L430">
+          <g data-file="apps/car_demo/services/ota_service.c:L425-L430">
             <rect x="490" y="130" width="100" height="70" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="540" y="155" text-anchor="middle" font-size="11" font-weight="700"
@@ -1420,15 +1420,15 @@
           </defs>
 
           <!-- 生产者 -->
-          <g data-file="robot_main.c:L106-L110">
+          <g data-file="car_main.c:L106-L110">
             <rect x="30" y="30" width="160" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="110" y="52" text-anchor="middle" font-size="11.5" font-weight="700"
-              fill="var(--core-text)">robot_main_task</text>
+              fill="var(--core-text)">car_main_task</text>
             <text x="110" y="68" text-anchor="middle" font-size="9.5" fill="var(--core-text)">ui_show_mode_page()</text>
           </g>
 
-          <g data-file="apps/robot_demo/services/ota_service.c:L119-L146">
+          <g data-file="apps/car_demo/services/ota_service.c:L119-L146">
             <rect x="30" y="100" width="160" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="110" y="122" text-anchor="middle" font-size="11.5" font-weight="700"
@@ -1437,7 +1437,7 @@
               fill="var(--core-text)">ui_show_ota_progress()</text>
           </g>
 
-          <g data-file="apps/robot_demo/services/ui_service.c:L231-L237">
+          <g data-file="apps/car_demo/services/ui_service.c:L231-L237">
             <rect x="30" y="170" width="160" height="50" rx="6" fill="var(--core)" stroke="var(--core-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="110" y="192" text-anchor="middle" font-size="11.5" font-weight="700"
@@ -1446,7 +1446,7 @@
           </g>
 
           <!-- ui_msgq -->
-          <g data-file="apps/robot_demo/services/ui_service.c:L200-L210">
+          <g data-file="apps/car_demo/services/ui_service.c:L200-L210">
             <rect x="260" y="70" width="180" height="100" rx="8" fill="var(--queue)" stroke="var(--queue-b)"
               stroke-width="1.5" filter="url(#shadow)" />
             <text x="350" y="100" text-anchor="middle" font-size="13" font-weight="800" fill="var(--queue-text)">ui_msgq
@@ -1456,7 +1456,7 @@
           </g>
 
           <!-- ui_task -->
-          <g data-file="apps/robot_demo/services/ui_service.c:L145-L175">
+          <g data-file="apps/car_demo/services/ui_service.c:L145-L175">
             <rect x="510" y="60" width="200" height="120" rx="6" fill="var(--svc)" stroke="var(--svc-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="610" y="85" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--svc-text)">ui_task
@@ -1482,7 +1482,7 @@
           </g>
 
           <!-- OTA 独占机制 -->
-          <g data-file="apps/robot_demo/services/ota_service.c:L155-L168">
+          <g data-file="apps/car_demo/services/ota_service.c:L155-L168">
             <rect x="510" y="200" width="200" height="55" rx="6" fill="var(--motor)" stroke="var(--motor-b)"
               stroke-width="1.2" filter="url(#shadow)" />
             <text x="610" y="220" text-anchor="middle" font-size="11" font-weight="700" fill="var(--motor-text)">FOTA
@@ -1512,7 +1512,7 @@
     <section>
       <h2>开机引导启动序列 (Power-on Sequence)</h2>
       <ol style="padding-left:14px; font-size:12px; color:var(--muted); line-height:1.8">
-        <li>内核系统入口 <code>app_run(robot_demo_entry)</code> 注册调用，分配核心栈空间并建立 <code>robot_main_task</code> 守护线程。</li>
+        <li>内核系统入口 <code>app_run(car_demo_entry)</code> 注册调用，分配核心栈空间并建立 <code>car_main_task</code> 守护线程。</li>
         <li>底层外设 BSP 链初始化：
           <span style="color:var(--ink)">配置信息闪存入库 ➔ 物理 H 桥 PWM 定时器挂载 ➔ HC-SR04 定时器捕获开启 ➔ 循迹 ADC 多通道映射 ➔ OLED
             物理驱动挂载</span>。
@@ -1526,7 +1526,7 @@
     </section>
 
     <footer>
-      SmartCar/src/application/samples/peripheral/smart_car/apps/robot_demo · 系统级交互逻辑与任务调度大底版
+      SmartCar/src/application/samples/peripheral/smart_car/apps/car_demo · 系统级交互逻辑与任务调度大底版
     </footer>
 
   </div>

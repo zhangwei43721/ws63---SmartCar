@@ -14,7 +14,7 @@ iOS、Android、Windows 都有各自的检测 URL（如 `captive.apple.com`、`c
 
 ## 2. 整体架构
 
-小车启动时**强制进入 AP 模式**（跳过 STA 尝试），SSID 为 `WS63_Robot`，固定 IP 为 `192.168.1.1`。
+小车启动时**强制进入 AP 模式**（跳过 STA 尝试），SSID 为 `WS63_Car`，固定 IP 为 `192.168.1.1`。
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -25,7 +25,7 @@ iOS、Android、Windows 都有各自的检测 URL（如 `captive.apple.com`、`c
 │  │ (SoftAP)     │  │  (UDP 53)    │  │   (TCP 80)         │ │
 │  │              │  │              │  │                    │ │
 │  │ SSID:        │  │ 拦截所有     │  │  ┌──────────────┐  │ │
-│  │ WS63_Robot   │──▶│ A记录查询    │──▶│  │ GET /        │  │ │
+│  │ WS63_Car   │──▶│ A记录查询    │──▶│  │ GET /        │  │ │
 │  │              │  │ 返回1.1      │  │  │ → 配网页面   │  │ │
 │  │ IP:          │  │              │  │  ├──────────────┤  │ │
 │  │ 192.168.1.1  │  │              │  │  │ POST /config │  │ │
@@ -58,7 +58,7 @@ int bsp_wifi_smart_init(void) {
 AP 配置参数定义在 `bsp_wifi.h`：
 
 ```c
-#define BSP_WIFI_AP_SSID     "WS63_Robot"
+#define BSP_WIFI_AP_SSID     "WS63_Car"
 #define BSP_WIFI_AP_PASSWORD ""          // 开放网络，无密码
 #define BSP_WIFI_AP_CHANNEL  13
 ```
@@ -84,7 +84,7 @@ if (netif_p) {
 
 ### 3.3 Captive Portal 服务初始化
 
-在 `robot_mgr.c` 的初始化流程中调用：
+在 `car_mgr.c` 的初始化流程中调用：
 
 ```c
 captive_portal_service_init();
@@ -300,7 +300,7 @@ lwIP 的 DHCP 服务器默认**不下发网关**（`LWIP_DHCPS_GW` 默认为 0�
 
 | 配置项 | 值 | 说明 |
 |--------|-----|------|
-| `BSP_WIFI_AP_SSID` | `"WS63_Robot"` | 热点名称 |
+| `BSP_WIFI_AP_SSID` | `"WS63_Car"` | 热点名称 |
 | `BSP_WIFI_AP_PASSWORD` | `""` | 开放网络（无密码） |
 | `BSP_WIFI_AP_CHANNEL` | `13` | WiFi 频道 |
 | AP 静态 IP | `192.168.1.1` | 固定网关地址 |
@@ -315,7 +315,7 @@ lwIP 的 DHCP 服务器默认**不下发网关**（`LWIP_DHCPS_GW` 默认为 0�
 
 ### 查看手机是否拿到网关
 
-手机连接 `WS63_Robot` 后，在 WiFi 详情中查看：
+手机连接 `WS63_Car` 后，在 WiFi 详情中查看：
 - **路由器/网关**：必须是 `192.168.1.1`
 - **DNS**：必须是 `192.168.1.1`
 
@@ -324,7 +324,7 @@ lwIP 的 DHCP 服务器默认**不下发网关**（`LWIP_DHCPS_GW` 默认为 0�
 ### 串口日志观察点
 
 ```
-[WiFi] AP 热点已启用: SSID=WS63_Robot, 开放网络(无密码), 频道=13
+[WiFi] AP 热点已启用: SSID=WS63_Car, 开放网络(无密码), 频道=13
 [WiFi] AP 热点 IP: 192.168.1.1
 [Portal] DNS 查询: connectivitycheck.gstatic.com -> 192.168.1.1
 [Portal] 客户端连接: 192.168.1.2

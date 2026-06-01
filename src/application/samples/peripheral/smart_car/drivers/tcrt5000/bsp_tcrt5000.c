@@ -1,112 +1,69 @@
 /**
  ****************************************************************************************************
  * @file        bsp_tcrt5000.c
- * @brief       TCRT5000 红外循迹（ADC 自动扫描 + 共享数据加保护）
- * @license     Copyright (c) 2024-2034
+ * @brief       TCRT5000 红外循迹（优化重构版）
  ****************************************************************************************************
  */
 
 #include "bsp_tcrt5000.h"
-
 #include <stdio.h>
-
 #include "adc.h"
 #include "gpio.h"
 #include "pinctrl.h"
 #include "soc_osal.h"
 
-// TCRT5000 引脚定义
-#define TCRT5000_LEFT_GPIO 12   // 左传感器 GPIO
-#define TCRT5000_MIDDLE_GPIO 10 // 中间传感器 GPIO
-#define TCRT5000_RIGHT_GPIO 9   // 右传感器 GPIO
+// 对应索引：0 - 左，1 - 中，2 - 右
+static const uint8_t  TCRT_GPIOS[3]        = {12, 10, 9};
+static const uint8_t  TCRT_ADC_CHANNELS[3] = {5, 3, 2};
 
-// ADC通道定义
-#define TCRT5000_LEFT_ADC_CHANNEL 5   // 左传感器 ADC 通道
-#define TCRT5000_MIDDLE_ADC_CHANNEL 3 // 中间传感器 ADC 通道
-#define TCRT5000_RIGHT_ADC_CHANNEL 2  // 右传感器 ADC 通道
-
-// ADC阈值定义（mV）
-#define TCRT5000_LEFT_THRESHOLD 2000   // 左传感器阈值(mV)
-#define TCRT5000_MIDDLE_THRESHOLD 1900 // 中间传感器阈值(mV)
-#define TCRT5000_RIGHT_THRESHOLD 1900  // 右传感器阈值(mV)
-
-// 三路 ADC 采样值。ADC 回调写入、消费者读取；32-bit 单值原子，
-// 但读三个时需要"快照"接口保证组合一致性。
+// 三路 ADC 采样共享数据
 static volatile uint32_t s_adc_data[3] = {0};
 
-/* ADC 采样完成回调：根据通道号将采样值存入对应位置 */
+/* ADC 采样完成回调 */
 static void tcrt5000_adc_callback(uint8_t channel, uint32_t *buffer, uint32_t length, bool *next)
 {
+    *next = false; // 显式置 false
     if (length > 0 && buffer != NULL) {
-        if (channel == TCRT5000_LEFT_ADC_CHANNEL) {
-            s_adc_data[0] = buffer[0];
-        } else if (channel == TCRT5000_MIDDLE_ADC_CHANNEL) {
-            s_adc_data[1] = buffer[0];
-        } else if (channel == TCRT5000_RIGHT_ADC_CHANNEL) {
-            s_adc_data[2] = buffer[0];
+        for (int i = 0; i < 3; i++) {
+            if (channel == TCRT_ADC_CHANNELS[i]) {
+                s_adc_data[i] = buffer[0];
+                break;
+            }
         }
     }
-    // WS63 HAL 不读取 *next，单次/持续语义由上层 enable/disable 决定
-    *next = false;
 }
 
-/* 初始化 TCRT5000 ADC：使能 ADC 时钟和电源，配置三路引脚为模拟输入 */
+/* 初始化 TCRT5000 */
 void tcrt5000_adc_init(void)
 {
     uapi_adc_init(ADC_CLOCK_500KHZ);
     uapi_adc_power_en(AFE_SCAN_MODE_MAX_NUM, true);
 
-    uapi_pin_set_mode(TCRT5000_LEFT_GPIO, PIN_MODE_0);
-    uapi_pin_set_pull(TCRT5000_LEFT_GPIO, PIN_PULL_TYPE_DISABLE);
-    uapi_pin_set_mode(TCRT5000_MIDDLE_GPIO, PIN_MODE_0);
-    uapi_pin_set_pull(TCRT5000_MIDDLE_GPIO, PIN_PULL_TYPE_DISABLE);
-    uapi_pin_set_mode(TCRT5000_RIGHT_GPIO, PIN_MODE_0);
-    uapi_pin_set_pull(TCRT5000_RIGHT_GPIO, PIN_PULL_TYPE_DISABLE);
+    // 循环配置 3 路引脚
+    for (int i = 0; i < 3; i++) {
+        uapi_pin_set_mode(TCRT_GPIOS[i], PIN_MODE_0);
+        uapi_pin_set_pull(TCRT_GPIOS[i], PIN_PULL_TYPE_DISABLE);
+    }
 }
 
-// WS63 ADC v154 实现：只有 ch_disable 才会触发回调把 FIFO 转成电压
-// 必须 enable→disable 一来一回，由 sensor_task 周期性触发采样
+/* 周期性触发采样（由 sensor_task 调用） */
 void tcrt5000_sample(void)
 {
     adc_scan_config_t cfg = {.type = 0, .freq = 1};
-    (void)uapi_adc_auto_scan_ch_enable(TCRT5000_LEFT_ADC_CHANNEL, cfg, tcrt5000_adc_callback);
-    (void)uapi_adc_auto_scan_ch_disable(TCRT5000_LEFT_ADC_CHANNEL);
-
-    (void)uapi_adc_auto_scan_ch_enable(TCRT5000_MIDDLE_ADC_CHANNEL, cfg, tcrt5000_adc_callback);
-    (void)uapi_adc_auto_scan_ch_disable(TCRT5000_MIDDLE_ADC_CHANNEL);
-
-    (void)uapi_adc_auto_scan_ch_enable(TCRT5000_RIGHT_ADC_CHANNEL, cfg, tcrt5000_adc_callback);
-    (void)uapi_adc_auto_scan_ch_disable(TCRT5000_RIGHT_ADC_CHANNEL);
+    
+    // 循环顺序使能与关闭各通道，触发 WS63 的电压转换
+    for (int i = 0; i < 3; i++) {
+        (void)uapi_adc_auto_scan_ch_enable(TCRT_ADC_CHANNELS[i], cfg, tcrt5000_adc_callback);
+        (void)uapi_adc_auto_scan_ch_disable(TCRT_ADC_CHANNELS[i]);
+    }
 }
 
-/* 在关中断快照下一次性读取三路 ADC 值，保证数据一致性 */
+/* 一次性读取三路 ADC 值*/
 void tcrt5000_snapshot(uint32_t *l, uint32_t *m, uint32_t *r)
 {
-    uint32_t irq = osal_irq_lock();
-    uint32_t a = s_adc_data[0];
-    uint32_t b = s_adc_data[1];
-    uint32_t c = s_adc_data[2];
-    osal_irq_restore(irq);
-    if (l)
-        *l = a;
-    if (m)
-        *m = b;
-    if (r)
-        *r = c;
-}
-
-/* 获取左侧传感器 ADC 原始值 */
-uint32_t tcrt5000_get_left_adc(void)
-{
-    return s_adc_data[0];
-}
-/* 获取中间传感器 ADC 原始值 */
-uint32_t tcrt5000_get_middle_adc(void)
-{
-    return s_adc_data[1];
-}
-/* 获取右侧传感器 ADC 原始值 */
-uint32_t tcrt5000_get_right_adc(void)
-{
-    return s_adc_data[2];
+    // uint32_t irq = osal_irq_lock();
+    if (l) *l = s_adc_data[0];
+    if (m) *m = s_adc_data[1];
+    if (r) *r = s_adc_data[2];
+    // osal_irq_restore(irq);
 }
