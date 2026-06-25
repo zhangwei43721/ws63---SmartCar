@@ -13,6 +13,7 @@
 #include "../core/mode_trace.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
 #include "../car_common.h"
+#include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
 #include "lwip/inet.h"
 #include "lwip/netifapi.h"
 #include "lwip/sockets.h"
@@ -182,6 +183,24 @@ static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender
             udp_net_common_send_to_addr(g_sockfd, &ack, sizeof(ack), &g_server_addr);
             break;
         }
+
+        case CAR_PKT_TRACE_CALIB: { // 0x0C 阈值配置包
+            if (len != 7)
+                return;
+            uint16_t l = (uint16_t)((data[1] << 8) | data[2]);
+            uint16_t m = (uint16_t)((data[3] << 8) | data[4]);
+            uint16_t r = (uint16_t)((data[5] << 8) | data[6]);
+            mode_trace_update_thresholds(l, m, r);
+            break;
+        }
+
+        case CAR_PKT_TRACE_SUBMODE: { // 0x0D 循迹子模式切换包
+            if (len != sizeof(car_packet_t))
+                return;
+            car_packet_t *pkt = (car_packet_t *)data;
+            mode_trace_set_submode(pkt->cmd);
+            break;
+        }
     }
 }
 
@@ -312,10 +331,13 @@ static int udp_service_task(void *arg)
                     t_send_loop = now;
                     send_heartbeat();
                 }
+
                 break;
         }
 
         handle_udp_receive();
+        // 主动休眠以防在特殊网络状态下 CPU 100% 空转
+        osal_msleep(5);
     }
 
     if (g_sockfd >= 0) {
@@ -351,8 +373,50 @@ void udp_service_init(void)
     while (osal_sem_trydown(&g_udp_exit_sem) == OSAL_SUCCESS) {
     }
 
-    // 把 on_wifi_state_change 函数地址注册到 wifi_mgr_service 的 s_state_cb 指针
+    // 把 on_wifi_state_change 函数地址注册 to wifi_mgr_service 的 s_state_cb 指针
     // 之后 wifi_mgr 每次 WiFi 状态变化都会通过 s_state_cb(event, ip) 回调到这里
     bsp_wifi_mgr_register_cb(on_wifi_state_change);
     g_udp_task = car_task_create_locked("udp_task", (osal_kthread_handler)udp_service_task, NULL, 8192, 24);
+}
+
+/* 向绑定的主机发送 UDP 数据包 */
+void udp_service_send_data(const uint8_t *data, size_t len)
+{
+    if (g_sockfd >= 0 && g_udp_state == UDP_STATE_CONNECTED) {
+        (void)udp_net_common_send_to_addr(g_sockfd, data, len, &g_server_addr);
+    }
+}
+
+/* 获取并向主机发送红外传感器原始电压和阈值 */
+void udp_service_send_trace_info(void)
+{
+    if (g_sockfd < 0 || g_udp_state != UDP_STATE_CONNECTED) {
+        return;
+    }
+
+    tcrt5000_sample();
+    uint32_t adc_l, adc_m, adc_r;
+    tcrt5000_snapshot(&adc_l, &adc_m, &adc_r);
+
+    uint16_t th_l = 1750, th_m = 1150, th_r = 1600;
+    storage_service_get_trace_thresholds(&th_l, &th_m, &th_r);
+
+    // 格式: [0x0A, RawL_Hi, RawL_Lo, RawM_Hi, RawM_Lo, RawR_Hi, RawR_Lo, ThL_Hi, ThL_Lo, ThM_Hi, ThM_Lo, ThR_Hi, ThR_Lo]
+    uint8_t pkt[13];
+    pkt[0] = CAR_PKT_TRACE_INFO;
+    pkt[1] = (uint8_t)((adc_l >> 8) & 0xFF);
+    pkt[2] = (uint8_t)(adc_l & 0xFF);
+    pkt[3] = (uint8_t)((adc_m >> 8) & 0xFF);
+    pkt[4] = (uint8_t)(adc_m & 0xFF);
+    pkt[5] = (uint8_t)((adc_r >> 8) & 0xFF);
+    pkt[6] = (uint8_t)(adc_r & 0xFF);
+
+    pkt[7] = (uint8_t)((th_l >> 8) & 0xFF);
+    pkt[8] = (uint8_t)(th_l & 0xFF);
+    pkt[9] = (uint8_t)((th_m >> 8) & 0xFF);
+    pkt[10] = (uint8_t)(th_m & 0xFF);
+    pkt[11] = (uint8_t)((th_r >> 8) & 0xFF);
+    pkt[12] = (uint8_t)(th_r & 0xFF);
+
+    (void)udp_net_common_send_to_addr(g_sockfd, pkt, sizeof(pkt), &g_server_addr);
 }

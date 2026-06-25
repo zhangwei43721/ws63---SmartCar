@@ -81,13 +81,13 @@ function bindHoldButton(el, onPress) {
       showConfigConnect();
       return;
     }
-    if (appState.mode !== "remote") return;
+    if (appState.mode !== "remote" && appState.mode !== "tracking") return;
     onPress();
   };
 
   const release = (evt) => {
     evt.preventDefault();
-    if (appState.mode !== "remote") return;
+    if (appState.mode !== "remote" && appState.mode !== "tracking") return;
     setDrive(0, 0);
   };
 
@@ -188,7 +188,7 @@ function startCommsLoop() {
 
     // 只有在遥控模式下才持续发送控制命令
     // 其他模式下，车会自动跑，不需要前端一直发指令干扰
-    if (appState.mode === "remote") {
+    if (appState.mode === "remote" || appState.mode === "tracking") {
       sendUDPControl();
     }
   }, 50); // 建议改为 50ms 左右，100ms 略有延迟感
@@ -451,6 +451,59 @@ function handleProxyMessage(msg) {
 
       renderVisuals();
     }
+  } else if (msg.type === "traceInfo") {
+    if (msg.mac === appState.selectedMAC || !appState.selectedMAC) {
+      document.getElementById("valL").textContent = msg.adc[0];
+      document.getElementById("valM").textContent = msg.adc[1];
+      document.getElementById("valR").textContent = msg.adc[2];
+
+      const stL = document.getElementById("stL");
+      const stM = document.getElementById("stM");
+      const stR = document.getElementById("stR");
+
+      if (stL) {
+        stL.textContent = msg.adc[0] >= msg.th[0] ? "黑" : "白";
+        stL.className = msg.adc[0] >= msg.th[0] ? "status-badge black-line" : "status-badge white-bg";
+      }
+      if (stM) {
+        stM.textContent = msg.adc[1] >= msg.th[1] ? "黑" : "白";
+        stM.className = msg.adc[1] >= msg.th[1] ? "status-badge black-line" : "status-badge white-bg";
+      }
+      if (stR) {
+        stR.textContent = msg.adc[2] >= msg.th[2] ? "黑" : "白";
+        stR.className = msg.adc[2] >= msg.th[2] ? "status-badge black-line" : "status-badge white-bg";
+      }
+
+      if (!window.thInited) {
+        const rangeL = document.getElementById("rangeL");
+        const rangeM = document.getElementById("rangeM");
+        const rangeR = document.getElementById("rangeR");
+        if (rangeL) rangeL.value = msg.th[0];
+        if (rangeM) rangeM.value = msg.th[1];
+        if (rangeR) rangeR.value = msg.th[2];
+
+        const txtL = document.getElementById("txtL");
+        const txtM = document.getElementById("txtM");
+        const txtR = document.getElementById("txtR");
+        if (txtL) txtL.textContent = msg.th[0];
+        if (txtM) txtM.textContent = msg.th[1];
+        if (txtR) txtR.textContent = msg.th[2];
+
+        window.thInited = true;
+      }
+    }
+  } else if (msg.type === "carLog") {
+    const consoleEl = document.getElementById("logConsole");
+    if (consoleEl) {
+      if (consoleEl.textContent === "等待接收日志...") {
+        consoleEl.textContent = "";
+      }
+      consoleEl.textContent += msg.log;
+      if (consoleEl.textContent.length > 20000) {
+        consoleEl.textContent = consoleEl.textContent.substring(consoleEl.textContent.length - 10000);
+      }
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
   } else if (msg.type === "otaStatus") {
     handleOtaStatus(msg);
   } else if (msg.type === "wifiConfigResponse") {
@@ -499,17 +552,30 @@ function updateModeButtons(mode) {
   if (pidPanel) {
     if (mode === "tracking") {
       pidPanel.style.display = "block";
+      // 默认高亮“传感器校准”子模式按钮 (2)
+      const pidBtn = document.getElementById("submodePidBtn");
+      const hardBtn = document.getElementById("submodeHardedBtn");
+      const calibBtn = document.getElementById("submodeCalibBtn");
+      if (pidBtn) pidBtn.classList.remove("active");
+      if (hardBtn) hardBtn.classList.remove("active");
+      if (calibBtn) calibBtn.classList.add("active");
+      
+      // 默认显示传感器校准面板 (2)
+      updateTraceSubmodeUI(2);
     } else {
       pidPanel.style.display = "none";
+      // 非循迹大模式下，隐藏校准面板
+      const calibPanel = document.getElementById("calibPanel");
+      if (calibPanel) calibPanel.style.display = "none";
     }
   }
 
   const dpad = document.getElementById("dpad");
-  if (mode === "remote") {
+  if (mode === "remote" || mode === "tracking") {
     dpad?.classList.remove("disabled");
   } else {
     dpad?.classList.add("disabled");
-    // 非遥控模式，停止发送电机指令
+    // 非遥控和循迹模式，停止发送电机指令
     setDrive(0, 0);
   }
 }
@@ -869,3 +935,139 @@ window.onbeforeunload = function () {
   if (sendLoopTimer) clearInterval(sendLoopTimer);
   if (socket) socket.close();
 };
+
+// --- TCRT5000 调试与校准辅助函数 ---
+
+function updateRangeText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function sendTraceThresholds() {
+  const deviceIP = getSelectedDeviceIP();
+  if (!deviceIP) {
+    alert("请先选择并连接小车设备！");
+    return;
+  }
+
+  const l = parseInt(document.getElementById("rangeL").value);
+  const m = parseInt(document.getElementById("rangeM").value);
+  const r = parseInt(document.getElementById("rangeR").value);
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(
+      JSON.stringify({
+        type: "setTraceThresholds",
+        deviceIP: deviceIP,
+        left: l,
+        middle: m,
+        right: r,
+      })
+    );
+    console.log(`[前端] 发送阈值设置: L=${l} M=${m} R=${r}`);
+  }
+}
+
+let calibBlackValues = null;
+let calibWhiteValues = null;
+
+function autoCalibrateTrace(type) {
+  const valL = parseInt(document.getElementById("valL").textContent);
+  const valM = parseInt(document.getElementById("valM").textContent);
+  const valR = parseInt(document.getElementById("valR").textContent);
+
+  if (isNaN(valL) || isNaN(valM) || isNaN(valR)) {
+    alert("未获取到实时传感器数据，请等待连接或尝试推动探头！");
+    return;
+  }
+
+  if (type === "black") {
+    calibBlackValues = [valL, valM, valR];
+    alert(`已记录黑线原始读数:\nL=${valL} mV\nM=${valM} mV\nR=${valR} mV\n\n请将所有三个探头移到“白色背景”上，然后点击“记录背景”`);
+  } else if (type === "white") {
+    calibWhiteValues = [valL, valM, valR];
+    if (!calibBlackValues) {
+      alert("请先将小车放在黑线上点击“记录黑线”！");
+      return;
+    }
+
+    // 计算黑线与白背景的中间值
+    const thL = Math.round((calibBlackValues[0] + calibWhiteValues[0]) / 2);
+    const thM = Math.round((calibBlackValues[1] + calibWhiteValues[1]) / 2);
+    const thR = Math.round((calibBlackValues[2] + calibWhiteValues[2]) / 2);
+
+    document.getElementById("rangeL").value = thL;
+    document.getElementById("rangeM").value = thM;
+    document.getElementById("rangeR").value = thR;
+    
+    document.getElementById("txtL").textContent = thL;
+    document.getElementById("txtM").textContent = thM;
+    document.getElementById("txtR").textContent = thR;
+
+    sendTraceThresholds();
+    alert(`自动计算出校准阈值并同步:\nL=${thL} mV\nM=${thM} mV\nR=${thR} mV\n\n(已保存至 NV 闪存)`);
+  }
+}
+
+function clearConsoleLog() {
+  const consoleEl = document.getElementById("logConsole");
+  if (consoleEl) {
+    consoleEl.textContent = "";
+  }
+}
+
+function updateTraceSubmodeUI(submode) {
+  const debugSection = document.getElementById("pidDebugSection");
+  const calibPanel = document.getElementById("calibPanel");
+
+  if (submode === 0) { // PID 巡线
+    if (debugSection) debugSection.style.display = "block";
+    if (calibPanel) calibPanel.style.display = "none";
+  } else if (submode === 1) { // 硬编码巡线
+    if (debugSection) debugSection.style.display = "none";
+    if (calibPanel) calibPanel.style.display = "none";
+  } else if (submode === 2) { // 传感器校准
+    if (debugSection) debugSection.style.display = "none";
+    if (calibPanel) calibPanel.style.display = "block";
+  }
+}
+
+function changeTraceSubmode(submode) {
+  const deviceIP = getSelectedDeviceIP();
+  if (!deviceIP) {
+    alert("请先选择并连接小车设备！");
+    return;
+  }
+
+  // 更新UI按钮的高亮
+  const buttons = {
+    0: document.getElementById("submodePidBtn"),
+    1: document.getElementById("submodeHardedBtn"),
+    2: document.getElementById("submodeCalibBtn")
+  };
+  
+  Object.keys(buttons).forEach(key => {
+    const btn = buttons[key];
+    if (btn) {
+      if (parseInt(key) === submode) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    }
+  });
+
+  // 更新子模式界面显示 (PID参数调试 / 传感器在线校准)
+  updateTraceSubmodeUI(submode);
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(
+      JSON.stringify({
+        type: "setTraceSubmode",
+        deviceIP: deviceIP,
+        submode: submode,
+      })
+    );
+    console.log(`[前端] 发送切换循迹子模式指令: ${submode}`);
+  }
+}

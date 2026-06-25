@@ -700,6 +700,9 @@ static int captive_portal_task(void *arg)
                     server_running = true;
                     portal_set_status(PORTAL_STATUS_RUNNING, "等待配网");
                     refresh_scan_cache();
+                } else {
+                    // 启动失败时延迟重试，避免死循环打爆 CPU
+                    osal_msleep(500);
                 }
             }
 

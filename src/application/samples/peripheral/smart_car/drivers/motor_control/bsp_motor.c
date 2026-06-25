@@ -15,7 +15,6 @@ static void motor_timeout_callback(unsigned long arg)
 {
     (void)arg;
     l9110s_set_differential(0, 0);
-    osal_timer_stop(&g_motor_timer);
 }
 
 static int motor_executor_task(void *arg)
@@ -39,8 +38,12 @@ static int motor_executor_task(void *arg)
             last_l = speed[0];
             last_r = speed[1];
 
-            osal_timer_stop(&g_motor_timer);
-            osal_timer_start(&g_motor_timer);
+            if (speed[0] == 0 && speed[1] == 0) {
+                osal_timer_stop(&g_motor_timer);
+            } else {
+                // 使用 osal_timer_mod 重置定时器为单次 (NO_SELFDELETE) 模式，避开在 callback 中 stop 自身的系统级死锁
+                osal_timer_mod(&g_motor_timer, 400);
+            }
         }
     }
     return 0;
@@ -77,8 +80,21 @@ bool bsp_motor_push_cmd(int8_t left, int8_t right)
         return false;
 
     // 限幅
-    int8_t speed[2] = {CLAMP(left, -100, 100), CLAMP(right, -100, 100)};
+    int8_t cmd_l = CLAMP(left, -100, 100);
+    int8_t cmd_r = CLAMP(right, -100, 100);
 
+    // 线性死区补偿：将非零的 [1, 100] 线性映射到电机实际可克服阻力转动的 [50, 100]
+    if (cmd_l > 0)
+        cmd_l = 50 + (cmd_l * 50) / 100;
+    else if (cmd_l < 0)
+        cmd_l = -50 + (cmd_l * 50) / 100;
+
+    if (cmd_r > 0)
+        cmd_r = 50 + (cmd_r * 50) / 100;
+    else if (cmd_r < 0)
+        cmd_r = -50 + (cmd_r * 50) / 100;
+
+    int8_t speed[2] = {cmd_l, cmd_r};
     int ret = osal_msgq_overwrite(g_motor_queue, 1, &speed, sizeof(speed));
     return (ret == OSAL_SUCCESS);
 }

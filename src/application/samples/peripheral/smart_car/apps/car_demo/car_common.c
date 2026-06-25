@@ -14,9 +14,14 @@ bool car_proto_handle_packet(const car_packet_t *pkt, uint32_t mode_source)
         return false;
 
     switch (pkt->type) {
-        case CAR_PKT_CONTROL:
-            bsp_motor_push_cmd(pkt->motor1, pkt->motor2);
+        case CAR_PKT_CONTROL: {
+            CarState st;
+            car_mgr_get_state_copy(&st);
+            if (st.mode == CAR_WIFI_CONTROL_STATUS || st.mode == CAR_TRACE_STATUS) {
+                bsp_motor_push_cmd(pkt->motor1, pkt->motor2);
+            }
             return true;
+        }
 
         case CAR_PKT_MODE:
             if (pkt->cmd <= CAR_WIFI_CONTROL_STATUS)

@@ -247,6 +247,12 @@ static void sta_netif_status_cb(struct netif *netif)
 static int sta_task_main(void *arg)
 {
     (void)arg;
+
+    // 等待 WiFi 协议栈初始化完成，防止刚开机时配置报错
+    while (wifi_is_wifi_inited() == 0) {
+        osal_msleep(100);
+    }
+
     osal_sem_binary_sem_init(&s_conn_sem, 0);
 
     static wifi_event_stru evt = {

@@ -6,6 +6,21 @@
 #include "../../../drivers/motor_control/bsp_motor.h"
 #include "../car_common.h"
 #include "soc_osal.h"
+#include "../services/debug_log_service.h"
+#include "../services/udp_service.h"
+
+// 循迹判定阈值（动态更新，初始使用默认宏值）
+static uint16_t g_trace_l_threshold = TCRT5000_LEFT_THRESHOLD;
+static uint16_t g_trace_m_threshold = TCRT5000_MIDDLE_THRESHOLD;
+static uint16_t g_trace_r_threshold = TCRT5000_RIGHT_THRESHOLD;
+
+typedef enum {
+    TRACE_SUBMODE_PID = 0,          // PID巡线
+    TRACE_SUBMODE_HARDCODED = 1,    // 机械式寻线
+    TRACE_SUBMODE_CALIBRATION = 2   // 传感器校准
+} trace_submode_t;
+
+static trace_submode_t g_trace_submode = TRACE_SUBMODE_PID;
 
 #define TRACE_LOST_TIMEOUT_MS 300
 #define TRACE_SEARCH_SPEED 30
@@ -85,57 +100,128 @@ static void trace_tick_once(void)
     uint32_t adc_l, adc_m, adc_r;
     tcrt5000_snapshot(&adc_l, &adc_m, &adc_r);
 
-    uint8_t l = (adc_l >= TCRT5000_LEFT_THRESHOLD);
-    uint8_t m = (adc_m >= TCRT5000_MIDDLE_THRESHOLD);
-    uint8_t r = (adc_r >= TCRT5000_RIGHT_THRESHOLD);
+    // 使用动态变量进行黑白线判定
+    uint8_t l = (adc_l >= g_trace_l_threshold);
+    uint8_t m = (adc_m >= g_trace_m_threshold);
+    uint8_t r = (adc_r >= g_trace_r_threshold);
 
     car_mgr_update_ir_status(l ? TCRT5000_BLACK : TCRT5000_WHITE, 
                              m ? TCRT5000_BLACK : TCRT5000_WHITE,
                              r ? TCRT5000_BLACK : TCRT5000_WHITE);
 
-    static int debug_cnt = 0;
-    if (++debug_cnt >= 20) {
-        debug_cnt = 0;
-        printf("[循迹] 传感器: L=%d M=%d R=%d | ADC: %u %u %u mV\n", l, m, r, (unsigned)adc_l, (unsigned)adc_m, (unsigned)adc_r);
-    }
+    // 将原始采集电压和当前阈值同步给全局 CarState，供前端拉取/展示
+    car_mgr_update_adc_values(adc_l, adc_m, adc_r);
 
-    trace_state_t state = (trace_state_t)((l << 2) | (m << 1) | r);
-    unsigned long long now = osal_get_jiffies();
-
-    if (state != STATE_000) { // 在线上
-        g_pid.last_seen_tick = now;
-        g_pid.last_valid_error = g_action_map[state].error;
-
-        float pid_out = calculate_pid(g_action_map[state].error);
-        int base = (int)(g_pid.base_speed * g_action_map[state].speed_ratio);
-        int pid_int = (int)roundf(pid_out);
-        int left_target  = base + pid_int;
-        int right_target = base - pid_int;
-
-        if (left_target > 127)   left_target = 127;
-        if (left_target < -128)  left_target = -128;
-        if (right_target > 127)  right_target = 127;
-        if (right_target < -128) right_target = -128;
-
-        bsp_motor_push_cmd((int8_t)left_target, (int8_t)right_target);
-
-    } else if (now - g_pid.last_seen_tick < osal_msecs_to_jiffies(TRACE_LOST_TIMEOUT_MS)) { // 短暂丢线寻线
-        int speed = TRACE_SEARCH_SPEED;
-        if (g_pid.last_valid_error < -0.5f) {
-            // 偏右（左边踩线），需要向左急转弯 -> 右轮前进而左轮后退
-            bsp_motor_push_cmd(-speed / 2, speed); 
-        }
-        else if (g_pid.last_valid_error > 0.5f) {
-            // 偏左（右边踩线），需要向右急转弯 -> 左轮前进而右轮后退
-            bsp_motor_push_cmd(speed, -speed / 2);
-        }
-        else {
-            // 居中丢线，笔直前搜
-            bsp_motor_push_cmd(speed, speed);
+    switch (g_trace_submode) {
+        case TRACE_SUBMODE_CALIBRATION: {
+            static int send_cnt = 0;
+            if (++send_cnt >= 5) { // 100ms 周期
+                send_cnt = 0;
+                udp_service_send_trace_info();
+            }
+            break;
         }
 
-    } else { // 彻底丢线停机
-        bsp_motor_push_cmd(0, 0);
+        case TRACE_SUBMODE_PID: {
+            // PID 巡线逻辑
+            float error_to_use = 0.0f;
+            bool should_run = false;
+            trace_state_t state = (trace_state_t)((l << 2) | (m << 1) | r);
+            unsigned long long now = osal_get_jiffies();
+
+            if (state != STATE_000) { // 在线上
+                g_pid.last_seen_tick = now;
+                g_pid.last_valid_error = g_action_map[state].error;
+                error_to_use = g_action_map[state].error;
+                should_run = true;
+            } else if (now - g_pid.last_seen_tick < osal_msecs_to_jiffies(TRACE_LOST_TIMEOUT_MS)) { // 短暂丢线
+                error_to_use = g_pid.last_valid_error;
+                should_run = true;
+            }
+
+            int8_t cmd_l = 0, cmd_r = 0;
+            if (should_run) {
+                float pid_out = calculate_pid(error_to_use);
+                int base = (state != STATE_000) ? (int)(g_pid.base_speed * g_action_map[state].speed_ratio) : g_pid.base_speed;
+                int pid_int = (int)roundf(pid_out);
+                int left_target  = base + pid_int;
+                int right_target = base - pid_int;
+
+                if (left_target > 127)   left_target = 127;
+                if (left_target < -128)  left_target = -128;
+                if (right_target > 127)  right_target = 127;
+                if (right_target < -128) right_target = -128;
+
+                cmd_l = (int8_t)left_target;
+                cmd_r = (int8_t)right_target;
+                bsp_motor_push_cmd(cmd_l, cmd_r);
+            } else { // 彻底丢线停机
+                cmd_l = 0;
+                cmd_r = 0;
+                bsp_motor_push_cmd(cmd_l, cmd_r);
+            }
+
+            static int debug_cnt = 0;
+            if (++debug_cnt >= 20) {
+                debug_cnt = 0;
+                car_log("[循迹-PID] 传感器: L=%d M=%d R=%d | ADC: %u %u %u mV | 速度: L=%d R=%d\r\n", 
+                        l, m, r, (unsigned)adc_l, (unsigned)adc_m, (unsigned)adc_r, cmd_l, cmd_r);
+            }
+            break;
+        }
+
+        case TRACE_SUBMODE_HARDCODED: {
+            // 硬编码（原有开关式寻线）逻辑
+            trace_state_t state = (trace_state_t)((l << 2) | (m << 1) | r);
+            unsigned long long now = osal_get_jiffies();
+            int8_t cmd_l = 0, cmd_r = 0;
+
+            if (state != STATE_000) { // 在线上
+                g_pid.last_seen_tick = now;
+                g_pid.last_valid_error = g_action_map[state].error;
+
+                (void)calculate_pid(g_action_map[state].error); // 虽然计算但不应用纠偏
+                int base = (int)(g_pid.base_speed * g_action_map[state].speed_ratio);
+                cmd_l = (int8_t)base;
+                cmd_r = (int8_t)base;
+                bsp_motor_push_cmd(cmd_l, cmd_r);
+
+            } else if (now - g_pid.last_seen_tick < osal_msecs_to_jiffies(TRACE_LOST_TIMEOUT_MS)) { // 短暂丢线寻线
+                int speed = TRACE_SEARCH_SPEED;
+                if (g_pid.last_valid_error < -0.5f) {
+                    // 偏右，需要向左急转弯 -> 右轮前进而左轮后退
+                    cmd_l = (int8_t)(-speed / 2);
+                    cmd_r = (int8_t)speed;
+                }
+                else if (g_pid.last_valid_error > 0.5f) {
+                    // 偏左，需要向右急转弯 -> 左轮前进而右轮后退
+                    cmd_l = (int8_t)speed;
+                    cmd_r = (int8_t)(-speed / 2);
+                }
+                else { 
+                     // 居中丢线，笔直前搜
+                    cmd_l = (int8_t)speed;
+                    cmd_r = (int8_t)speed;
+                }
+                bsp_motor_push_cmd(cmd_l, cmd_r);
+
+            } else { // 彻底丢线停机
+                cmd_l = 0;
+                cmd_r = 0;
+                bsp_motor_push_cmd(cmd_l, cmd_r);
+            }
+
+            static int debug_cnt = 0;
+            if (++debug_cnt >= 20) {
+                debug_cnt = 0;
+                car_log("[循迹-硬编码] 传感器: L=%d M=%d R=%d | ADC: %u %u %u mV | 速度: L=%d R=%d\r\n", 
+                        l, m, r, (unsigned)adc_l, (unsigned)adc_m, (unsigned)adc_r, cmd_l, cmd_r);
+            }
+            break;
+        }
+
+        default:
+            break;
     }
 }
 
@@ -145,8 +231,11 @@ static int trace_task_entry(void *arg)
     (void)arg;
     printf("[循迹] 循迹任务启动\r\n");
 
-    // 只要不收到退出事件 (0x01)，就以 20ms 为周期死循环执行
-    while (osal_event_read(&g_os.event, 0x01, 20, OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR) <= 0) {
+    while (1) {
+        int ret = osal_event_read(&g_os.event, 0x01, 20, OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
+        if (ret > 0 && ((unsigned int)ret & 0x01)) {
+            break;
+        }
         trace_tick_once();
     }
 
@@ -156,18 +245,18 @@ static int trace_task_entry(void *arg)
     return 0;
 }
 
-// 外部接口：设置 PID 参数（直接赋值，剔除臃肿的消息队列）
+// 外部接口：设置 PID 参数
 void mode_trace_set_pid(int type, int value)
 {
     switch (type) {
         case 1:
-            g_pid.kp = value / 1000.0f;
+            g_pid.kp = value / 100.0f;
             break;
         case 2:
-            g_pid.ki = value / 10000.0f;
+            g_pid.ki = value / 100.0f;
             break;
         case 3:
-            g_pid.kd = value / 500.0f;
+            g_pid.kd = value / 100.0f;
             break;
         case 4:
             g_pid.base_speed = value;
@@ -176,7 +265,7 @@ void mode_trace_set_pid(int type, int value)
     // 设参后直接清空运行态
     g_pid.integral = 0.0f;
     g_pid.last_error = 0.0f;
-    printf("[循迹] 临时参数加载: Kp=%.3f, Ki=%.4f, Kd=%.3f, 速度=%d\r\n", g_pid.kp, g_pid.ki, g_pid.kd,
+    car_log("[循迹] 临时参数加载: Kp=%.3f, Ki=%.4f, Kd=%.3f, 速度=%d\r\n", g_pid.kp, g_pid.ki, g_pid.kd,
            g_pid.base_speed);
 }
 
@@ -186,7 +275,8 @@ void mode_trace_enter(void)
     if (g_os.task != NULL)
         return; // 已经在跑了
 
-    printf("进入循迹模式...\r\n");
+    car_log("进入循迹模式...\r\n");
+    g_trace_submode = TRACE_SUBMODE_CALIBRATION; // 默认是传感器校准模式
 
     // 重置状态
     g_pid.last_seen_tick = osal_get_jiffies();
@@ -206,8 +296,12 @@ void mode_trace_enter(void)
     storage_service_get_pid_params(&g_pid.kp, &g_pid.ki, &g_pid.kd, &speed);
     g_pid.base_speed = speed;
 
+    // 读取循迹传感器校准阈值并同步至 CarState 与本地变量
+    storage_service_get_trace_thresholds(&g_trace_l_threshold, &g_trace_m_threshold, &g_trace_r_threshold);
+    car_mgr_update_thresholds(g_trace_l_threshold, g_trace_m_threshold, g_trace_r_threshold);
+
     (void)osal_sem_trydown(&g_os.exit_sem); // 抽空旧信号
-    g_os.task = car_task_create_locked("trace_task", (osal_kthread_handler)trace_task_entry, NULL, 2048, 22);
+    g_os.task = car_task_create_locked("trace_task", (osal_kthread_handler)trace_task_entry, NULL, 4096, 22);
 }
 
 // 外部接口：退出循迹模式
@@ -226,9 +320,41 @@ void mode_trace_exit(void)
 
     if (g_pid.kp != s_kp || g_pid.ki != s_ki || g_pid.kd != s_kd || g_pid.base_speed != s_speed) {
         errcode_t ret = storage_service_save_pid_params(g_pid.kp, g_pid.ki, g_pid.kd, (int16_t)g_pid.base_speed);
-        printf("[循迹] 保存配置到NV: Kp=%.3f Ki=%.4f Kd=%.3f SPD=%d (Ret=%d)\r\n", g_pid.kp, g_pid.ki, g_pid.kd,
+        car_log("[循迹] 保存配置到NV: Kp=%.3f Ki=%.4f Kd=%.3f SPD=%d (Ret=%d)\r\n", g_pid.kp, g_pid.ki, g_pid.kd,
                g_pid.base_speed, ret);
     }
 
     bsp_motor_push_cmd(0, 0);
+}
+
+/* 获取当前活跃的校准阈值 */
+void mode_trace_get_thresholds(uint16_t *l, uint16_t *m, uint16_t *r)
+{
+    if (l) *l = g_trace_l_threshold;
+    if (m) *m = g_trace_m_threshold;
+    if (r) *r = g_trace_r_threshold;
+}
+
+/* 更新循迹阈值，并保存到 NV */
+void mode_trace_update_thresholds(uint16_t l, uint16_t m, uint16_t r)
+{
+    g_trace_l_threshold = l;
+    g_trace_m_threshold = m;
+    g_trace_r_threshold = r;
+
+    // 同步到存储服务
+    (void)storage_service_save_trace_thresholds(l, m, r);
+    // 同步更新全局 CarState
+    car_mgr_update_thresholds(l, m, r);
+}
+
+/* 设置循迹子模式 (0: PID巡线, 1: 硬编码巡线, 2: 传感器校准) */
+void mode_trace_set_submode(uint8_t submode)
+{
+    if (submode <= TRACE_SUBMODE_CALIBRATION) {
+        g_trace_submode = (trace_submode_t)submode;
+        car_log("[循迹] 切换子模式: %s\r\n", 
+                submode == TRACE_SUBMODE_PID ? "PID巡线" : 
+                (submode == TRACE_SUBMODE_HARDCODED ? "硬编码巡线" : "传感器校准"));
+    }
 }

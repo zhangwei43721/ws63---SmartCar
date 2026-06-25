@@ -88,6 +88,14 @@ typedef struct {
     unsigned int ir_left;   // 左红外状态 (0:黑线, 1:白色)
     unsigned int ir_middle; // 中红外状态 (0:黑线, 1:白色)
     unsigned int ir_right;  // 右红外状态 (0:黑线, 1:白色)
+    
+    // 循迹探头原始电压与阈值（用于上位机网页校准）
+    uint32_t adc_left;
+    uint32_t adc_middle;
+    uint32_t adc_right;
+    uint16_t th_left;
+    uint16_t th_middle;
+    uint16_t th_right;
 } CarState;
 
 // ---------- 模式命令来源 ----------
@@ -110,6 +118,10 @@ typedef enum {
     CAR_PKT_MODE = 0x03,          // 模式切换：[type, mode, 0, 0, 0]
     CAR_PKT_PID = 0x04,           // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
     CAR_PKT_OTA = 0x05,           // OTA 触发：[type, sub_cmd, ...]
+    CAR_PKT_TRACE_INFO = 0x0A,    // 循迹 Raw/Th 遥测：[type, rawL_hi, rawL_lo, rawM_hi, rawM_lo, rawR_hi, rawR_lo, thL_hi, thL_lo, thM_hi, thM_lo, thR_hi, thR_lo]
+    CAR_PKT_LOG_DATA = 0x0B,      // 虚拟串口日志包：[type, text...]
+    CAR_PKT_TRACE_CALIB = 0x0C,   // 循迹探头校准包：[type, thL_hi, thL_lo, thM_hi, thM_lo, thR_hi, thR_lo]
+    CAR_PKT_TRACE_SUBMODE = 0x0D, // 循迹子模式：[type, submode, 0, 0, 0]
     CAR_PKT_WIFI_SET = 0xE0,      // WiFi 配置保存（不立即连接）
     CAR_PKT_WIFI_CONNECT = 0xE1,  // WiFi 配置并立即连接
     CAR_PKT_HEARTBEAT = 0xFE,     // 心跳
@@ -150,6 +162,8 @@ void car_mgr_get_state_copy(CarState *out);                // 线程安全地获
 void car_mgr_update_distance(float distance);              // 更新超声波距离值（避障模式写入）
 void car_mgr_update_ir_status(unsigned int left, unsigned int middle,
                               unsigned int right); // 更新三路红外传感器状态
+void car_mgr_update_adc_values(uint32_t left, uint32_t middle, uint32_t right); // 更新原始采样 ADC
+void car_mgr_update_thresholds(uint16_t left, uint16_t middle, uint16_t right); // 更新当前活跃阈值
 
 // ---------- 模式名字符串 ----------
 const char *car_mode_name(CarStatus status); // 将模式枚举转为可读字符串

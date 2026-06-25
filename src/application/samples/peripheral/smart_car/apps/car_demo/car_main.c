@@ -28,6 +28,7 @@
 #include "services/voice_service.h"
 #include "soc_osal.h"
 #include "watchdog.h"
+#include "services/debug_log_service.h"
 
 #include "../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../drivers/l9110s/bsp_l9110s.h"
@@ -156,6 +157,26 @@ void car_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned i
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 
+/* 更新原始采样 ADC */
+void car_mgr_update_adc_values(uint32_t left, uint32_t middle, uint32_t right)
+{
+    MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
+    g_car_state.adc_left = left;
+    g_car_state.adc_middle = middle;
+    g_car_state.adc_right = right;
+    MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
+}
+
+/* 更新当前活跃阈值 */
+void car_mgr_update_thresholds(uint16_t left, uint16_t middle, uint16_t right)
+{
+    MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
+    g_car_state.th_left = left;
+    g_car_state.th_middle = middle;
+    g_car_state.th_right = right;
+    MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
+}
+
 /* ============================================================
  * 统一初始化与任务入口
  * ============================================================ */
@@ -163,7 +184,14 @@ void car_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned i
 /* 统一初始化：驱动、互斥锁、WiFi、各服务、按键、模式队列 */
 static void car_system_init(void)
 {
+    car_mgr_state_mutex_init();
     storage_service_init();
+    debug_log_init();
+
+    // 载入 NV 中的校准阈值并同步到 CarState
+    uint16_t th_l, th_m, th_r;
+    storage_service_get_trace_thresholds(&th_l, &th_m, &th_r);
+    car_mgr_update_thresholds(th_l, th_m, th_r);
 
     // 驱动初始化（先于一切任务创建）
     l9110s_init();
@@ -171,7 +199,6 @@ static void car_system_init(void)
     tcrt5000_adc_init();
 
     // 关键控制任务先创建，确保任务池不会因后续网络服务耗尽而抢占
-    car_mgr_state_mutex_init();
     bsp_motor_init();
 
     // WiFi 管理任务

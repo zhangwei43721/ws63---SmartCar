@@ -36,7 +36,11 @@ typedef struct {
     char wifi_ssid[32];     // WiFi SSID
     char wifi_password[64]; // WiFi 密码
 
-    uint8_t reserved[8]; // 保留字段，用于未来扩展
+    // TCRT5000 阈值（复用原本 8 字节保留字段）
+    uint16_t trace_l_threshold;
+    uint16_t trace_m_threshold;
+    uint16_t trace_r_threshold;
+    uint8_t reserved[2]; // 剩余的保留字段
 } car_nv_config_t;
 
 #define CAR_NV_CONFIG_KEY ((uint16_t)0x2000)       // NV 存储键值
@@ -77,7 +81,7 @@ static void nv_set_defaults(car_nv_config_t *cfg)
     cfg->version = CAR_NV_CONFIG_VERSION;
 
     // PID 默认值
-    cfg->pid_kp_x1000 = 24000; // Kp = 16.0
+    cfg->pid_kp_x1000 = 21000; // Kp = 21.0
     cfg->pid_ki_x10000 = 0;    // Ki = 0.0
     cfg->pid_kd_x500 = 0;      // Kd = 0.0
     cfg->pid_base_speed = 80;
@@ -85,6 +89,11 @@ static void nv_set_defaults(car_nv_config_t *cfg)
     // WiFi 默认值
     strncpy(cfg->wifi_ssid, "BSHZ-2.4G", 31);
     strncpy(cfg->wifi_password, "BS6668888", 63);
+
+    // 循迹阈值默认值
+    cfg->trace_l_threshold = 1750;
+    cfg->trace_m_threshold = 1150;
+    cfg->trace_r_threshold = 1600;
 
     cfg->checksum = 0;
     cfg->checksum = nv_checksum16_add((const uint8_t *)cfg, sizeof(*cfg));
@@ -146,6 +155,26 @@ void storage_service_init(void)
         ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
         printf("[存储] NV 写入默认值: 返回值=%d\r\n", ret);
     } else {
+        // 如果数据有效，但阈值是 0 或 0xFFFF (即升级前的未定义数据)，进行平滑升级赋初值
+        bool updated = false;
+        if (g_nv_cfg.trace_l_threshold == 0 || g_nv_cfg.trace_l_threshold == 0xFFFF) {
+            g_nv_cfg.trace_l_threshold = 1750;
+            updated = true;
+        }
+        if (g_nv_cfg.trace_m_threshold == 0 || g_nv_cfg.trace_m_threshold == 0xFFFF) {
+            g_nv_cfg.trace_m_threshold = 1150;
+            updated = true;
+        }
+        if (g_nv_cfg.trace_r_threshold == 0 || g_nv_cfg.trace_r_threshold == 0xFFFF) {
+            g_nv_cfg.trace_r_threshold = 1600;
+            updated = true;
+        }
+        if (updated) {
+            g_nv_cfg.checksum = 0;
+            g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
+            ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
+            printf("[存储] 检测到旧版本 NV 配置，已升级循迹阈值默认值并写入，Ret=%d\r\n", ret);
+        }
         printf("[存储] 加载 NV 配置成功\r\n");
     }
     STORAGE_UNLOCK();
@@ -244,5 +273,49 @@ errcode_t storage_service_save_wifi_config(const char *ssid, const char *passwor
     errcode_t ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
     printf("[存储] NV 写入: 返回值=%d (成功值=%d)\r\n", ret, ERRCODE_SUCC);
     STORAGE_UNLOCK();
+    return ret;
+}
+
+/**
+ * @brief 获取循迹传感器阈值
+ */
+void storage_service_get_trace_thresholds(uint16_t *l, uint16_t *m, uint16_t *r)
+{
+    if (l == NULL || m == NULL || r == NULL) {
+        return;
+    }
+
+    STORAGE_LOCK();
+    *l = g_nv_cfg.trace_l_threshold;
+    *m = g_nv_cfg.trace_m_threshold;
+    *r = g_nv_cfg.trace_r_threshold;
+    STORAGE_UNLOCK();
+}
+
+/**
+ * @brief 保存循迹传感器阈值
+ */
+errcode_t storage_service_save_trace_thresholds(uint16_t l, uint16_t m, uint16_t r)
+{
+    STORAGE_LOCK();
+    if (g_nv_cfg.trace_l_threshold == l && g_nv_cfg.trace_m_threshold == m &&
+        g_nv_cfg.trace_r_threshold == r) {
+        STORAGE_UNLOCK();
+        return ERRCODE_SUCC;
+    }
+
+    g_nv_cfg.trace_l_threshold = l;
+    g_nv_cfg.trace_m_threshold = m;
+    g_nv_cfg.trace_r_threshold = r;
+
+    // 重新计算校验和
+    g_nv_cfg.checksum = 0;
+    g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
+
+    printf("[存储] 保存循迹阈值: L=%d, M=%d, R=%d\r\n", l, m, r);
+    errcode_t ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
+    printf("[存储] NV 写入: 返回值=%d\r\n", ret);
+    STORAGE_UNLOCK();
+
     return ret;
 }

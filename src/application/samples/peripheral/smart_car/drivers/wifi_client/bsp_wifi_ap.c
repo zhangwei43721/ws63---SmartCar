@@ -6,6 +6,7 @@
 #include "bsp_wifi_ap.h"
 #include "bsp_wifi_sta.h"
 #include <stdio.h>
+#include "wifi_device.h"
 
 // AP 配置
 #define BSP_WIFI_AP_SSID "WS63_Car" // 热点名称
@@ -69,6 +70,12 @@ void ap_task_stop(void)
 static int ap_task_main(void *arg)
 {
     (void)arg;
+
+    // 等待 WiFi 协议栈初始化完成，防止刚开机时配置报错
+    while (wifi_is_wifi_inited() == 0) {
+        osal_msleep(100);
+    }
+
     wifi_softap_disable();
     struct netif *ap = netifapi_netif_find("ap0");
     if (ap)

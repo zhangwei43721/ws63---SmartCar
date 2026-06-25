@@ -272,6 +272,37 @@ udpSocket.on("message", (msg, rinfo) => {
     return;
   }
 
+  // 处理循迹传感器原始信息 (0x0A)
+  if (type === 0x0a && msg.length >= 13) {
+    const adc_l = msg.readUInt16BE(1);
+    const adc_m = msg.readUInt16BE(3);
+    const adc_r = msg.readUInt16BE(5);
+    const th_l = msg.readUInt16BE(7);
+    const th_m = msg.readUInt16BE(9);
+    const th_r = msg.readUInt16BE(11);
+    
+    broadcastToFrontend({
+      type: "traceInfo",
+      ip,
+      mac: dev ? dev.mac : "",
+      adc: [adc_l, adc_m, adc_r],
+      th: [th_l, th_m, th_r],
+    });
+    return;
+  }
+
+  // 处理虚拟串口日志信息 (0x0B)
+  if (type === 0x0b) {
+    const logStr = msg.subarray(1).toString("utf8");
+    broadcastToFrontend({
+      type: "carLog",
+      ip,
+      mac: dev ? dev.mac : "",
+      log: logStr,
+    });
+    return;
+  }
+
   // 3. 处理普通业务包 (心跳0xFE 或 状态0x02)
   if (dev) {
     dev.lastSeen = now; // 刷新保活时间
@@ -397,6 +428,26 @@ wss.on("connection", (ws) => {
         }
         case "otaCancel": { // OTA 取消
           handleOtaCancel(ip);
+          break;
+        }
+        case "setTraceThresholds": { // 设置循迹传感器校准阈值 (0x0C)
+          const l = parseInt(data.left);
+          const m = parseInt(data.middle);
+          const r = parseInt(data.right);
+          const buf = Buffer.alloc(7);
+          buf[0] = 0x0C;
+          buf.writeUInt16BE(l, 1);
+          buf.writeUInt16BE(m, 3);
+          buf.writeUInt16BE(r, 5);
+          sendToCar(buf, ip);
+          break;
+        }
+        case "setTraceSubmode": { // 切换循迹子模式 (0x0D)
+          const submode = parseInt(data.submode);
+          const buf = Buffer.alloc(5);
+          buf[0] = 0x0D;
+          buf[1] = submode;
+          sendToCar(buf, ip);
           break;
         }
       }

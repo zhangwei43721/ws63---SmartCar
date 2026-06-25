@@ -44,4 +44,21 @@ void storage_service_get_wifi_config(char *ssid, char *password);
  */
 errcode_t storage_service_save_wifi_config(const char *ssid, const char *password);
 
+/**
+ * @brief 获取循迹传感器阈值
+ * @param l 输出左传感器阈值 (mV)
+ * @param m 输出中传感器阈值 (mV)
+ * @param r 输出右传感器阈值 (mV)
+ */
+void storage_service_get_trace_thresholds(uint16_t *l, uint16_t *m, uint16_t *r);
+
+/**
+ * @brief 保存循迹传感器阈值
+ * @param l 左传感器阈值 (mV)
+ * @param m 中传感器阈值 (mV)
+ * @param r 右传感器阈值 (mV)
+ * @return 错误码
+ */
+errcode_t storage_service_save_trace_thresholds(uint16_t l, uint16_t m, uint16_t r);
+
 #endif
