@@ -1,310 +1,234 @@
 #include "mode_trace.h"
-
 #include <stdio.h>
-
+#include <math.h> // 提供 roundf
 #include "../../../drivers/tcrt5000/bsp_tcrt5000.h"
 #include "../../../platform/storage_service.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
 #include "../car_common.h"
 #include "soc_osal.h"
 
-#define TRACE_SPEED_FORWARD 40    // 循迹基础前进速度
-#define TRACE_LOST_TIMEOUT_MS 300 // 丢线后搜索超时(ms)
-#define TRACE_SEARCH_SPEED 30     // 丢线搜索速度
-#define TRACE_DETECT_BLACK 0 // 红外传感器检测到黑线的值
+#define TRACE_LOST_TIMEOUT_MS 300
+#define TRACE_SEARCH_SPEED 30
 
-#define TRACE_PID_MSG_DEPTH 8 // PID 设参消息队列深度
+// 传感器物理状态枚举（1代表黑线）
+typedef enum {
+    STATE_000 = 0,
+    STATE_001 = 1,
+    STATE_010 = 2,
+    STATE_011 = 3,
+    STATE_100 = 4,
+    STATE_101 = 5,
+    STATE_110 = 6,
+    STATE_111 = 7
+} trace_state_t;
 
-// PID 参数 + 运行态打包：所有字段只能被 trace_task 写入（单写者）
+// 状态映射表：枚举 -> [PID数学误差, 速度缩放比例]
 typedef struct {
-    float kp;
-    float ki;
-    float kd;
-    int base_speed;
-    // 运行态
-    float last_error;
-    float integral;
-    float last_valid_error;
-    unsigned long long last_seen_tick;
-} pid_ctx_t;
-
-// 设参命令（UDP 任务 -> trace_task）
-typedef struct {
-    uint8_t op;   // 1=set, 2=save
-    uint8_t type; // PID_PARAM_*
-    int32_t value;
-} pid_msg_t;
-
-#define PID_OP_SET 1  // PID 参数设置操作
-#define PID_OP_SAVE 2 // PID 参数保存到 NV 操作
-
-static pid_ctx_t g_pid = {
-    .kp = 16.0f,
-    .ki = 0.0f,
-    .kd = 0.0f,
-    .base_speed = TRACE_SPEED_FORWARD,
-    .last_error = 0,
-    .integral = 0,
-    .last_valid_error = 0,
-    .last_seen_tick = 0,
-};
-
-static osal_task *g_trace_task = NULL;
-static osal_event g_trace_event;    // 循迹任务事件组（STOP等信号）
-static bool g_event_inited = false; // 事件组是否已初始化
-
-// 退出同步信号量
-static osal_semaphore g_trace_exit_sem;
-static bool g_exit_sem_inited = false; // 退出信号量是否已初始化
-
-// PID 设参消息队列：UDP 任务 -> trace_task，单写者消费
-static unsigned long g_pid_msgq = 0;
-static bool g_pid_msgq_inited = false; // PID消息队列是否已初始化
-
-typedef struct {
-    uint8_t left;
-    uint8_t middle;
-    uint8_t right;
     float error;
-} TraceErrorMap;
+    float speed_ratio;
+} trace_action_t;
 
-static const TraceErrorMap g_trace_error_table[] = {
-    {1, 1, 0, -1.0f}, {0, 1, 1, 1.0f}, {1, 0, 0, -2.0f}, {0, 0, 1, 2.0f}, {0, 1, 0, 0.0f}, {1, 1, 1, 0.0f},
+static const trace_action_t g_action_map[8] = {
+    [STATE_000] = {0.0f, 1.0f},  // 丢线（外层单独处理）
+    [STATE_001] = {2.0f, 0.6f},  // 严重偏左
+    [STATE_010] = {0.0f, 1.0f},  // 完美居中
+    [STATE_011] = {1.0f, 0.9f},  // 轻微偏左
+    [STATE_100] = {-2.0f, 0.6f}, // 严重偏右
+    [STATE_101] = {0.0f, 1.0f},  // 异常状态（当居中处理）
+    [STATE_110] = {-1.0f, 0.9f}, // 轻微偏右
+    [STATE_111] = {0.0f, 1.0f}   // 十字路口（直走）
 };
 
-/* 根据三路红外传感器状态查表计算循迹偏差值 */
-static float calculate_trace_error(unsigned int left, unsigned int middle, unsigned int right)
-{
-    int table_size = sizeof(g_trace_error_table) / sizeof(g_trace_error_table[0]);
-    for (int i = 0; i < table_size; i++) {
-        if (g_trace_error_table[i].left == left && g_trace_error_table[i].middle == middle &&
-            g_trace_error_table[i].right == right) {
-            return g_trace_error_table[i].error;
-        }
-    }
-    return 0.0f;
-}
+// PID 参数与运行上下文
+static struct {
+    float kp, ki, kd;
+    int base_speed;
+    float last_error, integral, last_valid_error;
+    unsigned long long last_seen_tick;
+} g_pid = {.kp = 16.0f, .base_speed = 40};
 
-/* 根据偏差值计算PID输出（含积分限幅和大偏差清零） */
+// 统一管理 OS 资源
+static struct {
+    osal_task *task;
+    osal_event event;
+    osal_semaphore exit_sem;
+    bool inited;
+} g_os = {0};
+
+// 根据偏差计算 PID 输出
 static float calculate_pid(float error)
 {
     g_pid.integral += error;
-    if (g_pid.integral > 50)
-        g_pid.integral = 50;
-    if (g_pid.integral < -50)
-        g_pid.integral = -50;
-    if (error > 1 || error < -1)
-        g_pid.integral = 0;
 
-    float p_term = g_pid.kp * error;
-    float i_term = g_pid.ki * g_pid.integral;
-    float d_term = g_pid.kd * (error - g_pid.last_error);
+    // 积分限幅
+    if (g_pid.integral > 50.0f)
+        g_pid.integral = 50.0f;
+    else if (g_pid.integral < -50.0f)
+        g_pid.integral = -50.0f;
+
+    // 偏离严重时主动清除积分，避免摆尾震荡
+    if (fabs(error) > 1.0f)
+        g_pid.integral = 0.0f;
+
+    float p = g_pid.kp * error;
+    float i = g_pid.ki * g_pid.integral;
+    float d = g_pid.kd * (error - g_pid.last_error);
     g_pid.last_error = error;
-    return p_term + i_term + d_term;
+
+    return p + i + d;
 }
 
-// 在 trace_task 上下文内消费设参消息（单写者）
-static void drain_pid_messages(void)
-{
-    if (!g_pid_msgq_inited)
-        return;
-    pid_msg_t msg;
-    unsigned int sz = sizeof(msg);
-    while (osal_msg_queue_read_copy(g_pid_msgq, &msg, &sz, OSAL_MSGQ_NO_WAIT) == OSAL_SUCCESS) {
-        if (msg.op == PID_OP_SET) {
-            switch (msg.type) {
-                case 1:
-                    g_pid.kp = (float)msg.value / 1000.0f;
-                    break;
-                case 2:
-                    g_pid.ki = (float)msg.value / 10000.0f;
-                    break;
-                case 3:
-                    g_pid.kd = (float)msg.value / 500.0f;
-                    break;
-                case 4:
-                    g_pid.base_speed = msg.value;
-                    break;
-                default:
-                    break;
-            }
-            g_pid.integral = 0;
-            g_pid.last_error = 0;
-            printf("PID Set: Kp=%d/1000 Ki=%d/10000 Kd=%d/500 Speed=%d\r\n", (int)(g_pid.kp * 1000),
-                   (int)(g_pid.ki * 10000), (int)(g_pid.kd * 500), g_pid.base_speed);
-        } else if (msg.op == PID_OP_SAVE) {
-            errcode_t ret = storage_service_save_pid_params(g_pid.kp, g_pid.ki, g_pid.kd, (int16_t)g_pid.base_speed);
-            printf("PID Save: Kp=%d/1000 Ki=%d/10000 Kd=%d/500 Speed=%d 结果=%d\r\n", (int)(g_pid.kp * 1000),
-                   (int)(g_pid.ki * 10000), (int)(g_pid.kd * 500), g_pid.base_speed, ret);
-        }
-        sz = sizeof(msg);
-    }
-}
-
-/* 循迹主循环：采样红外传感器、计算PID、驱动电机 */
+// 循迹轮询：单次 tick 逻辑
 static void trace_tick_once(void)
 {
     tcrt5000_sample();
-    drain_pid_messages();
-
     uint32_t adc_l, adc_m, adc_r;
     tcrt5000_snapshot(&adc_l, &adc_m, &adc_r);
 
-    unsigned int left = (adc_l >= TCRT5000_LEFT_THRESHOLD) ? TCRT5000_ON_BLACK : TCRT5000_ON_WHITE;
-    unsigned int middle = (adc_m >= TCRT5000_MIDDLE_THRESHOLD) ? TCRT5000_ON_BLACK : TCRT5000_ON_WHITE;
-    unsigned int right = (adc_r >= TCRT5000_RIGHT_THRESHOLD) ? TCRT5000_ON_BLACK : TCRT5000_ON_WHITE;
-    unsigned long long now = osal_get_jiffies();
+    uint8_t l = (adc_l >= TCRT5000_LEFT_THRESHOLD);
+    uint8_t m = (adc_m >= TCRT5000_MIDDLE_THRESHOLD);
+    uint8_t r = (adc_r >= TCRT5000_RIGHT_THRESHOLD);
+
+    car_mgr_update_ir_status(l ? TCRT5000_BLACK : TCRT5000_WHITE, 
+                             m ? TCRT5000_BLACK : TCRT5000_WHITE,
+                             r ? TCRT5000_BLACK : TCRT5000_WHITE);
 
     static int debug_cnt = 0;
     if (++debug_cnt >= 20) {
         debug_cnt = 0;
-        printf("TRACE: L=%d M=%d R=%d, ADC: L=%u M=%u R=%u mV\n", left, middle, right, (unsigned)adc_l, (unsigned)adc_m,
-               (unsigned)adc_r);
+        printf("[循迹] 传感器: L=%d M=%d R=%d | ADC: %u %u %u mV\n", l, m, r, (unsigned)adc_l, (unsigned)adc_m, (unsigned)adc_r);
     }
 
-    car_mgr_update_ir_status(left, middle, right);
-    float error = calculate_trace_error(left, middle, right);
+    trace_state_t state = (trace_state_t)((l << 2) | (m << 1) | r);
+    unsigned long long now = osal_get_jiffies();
 
-    if (left == TRACE_DETECT_BLACK || middle == TRACE_DETECT_BLACK || right == TRACE_DETECT_BLACK) {
+    if (state != STATE_000) { // 在线上
         g_pid.last_seen_tick = now;
-        g_pid.last_valid_error = error;
+        g_pid.last_valid_error = g_action_map[state].error;
 
-        float pid_output = calculate_pid(error);
-        int current_base_speed = g_pid.base_speed;
-        if (error >= 2 || error <= -2)
-            current_base_speed = (int)(g_pid.base_speed * 0.6f);
-        else if (error >= 1 || error <= -1)
-            current_base_speed = (int)(g_pid.base_speed * 0.9f);
+        float pid_out = calculate_pid(g_action_map[state].error);
+        int base = (int)(g_pid.base_speed * g_action_map[state].speed_ratio);
+        int pid_int = (int)roundf(pid_out);
+        int left_target  = base + pid_int;
+        int right_target = base - pid_int;
 
-        int pid_out_int = (int)(pid_output > 0 ? (pid_output + 0.5f) : (pid_output - 0.5f));
+        if (left_target > 127)   left_target = 127;
+        if (left_target < -128)  left_target = -128;
+        if (right_target > 127)  right_target = 127;
+        if (right_target < -128) right_target = -128;
 
-        int left_speed = current_base_speed + pid_out_int;
-        int right_speed = current_base_speed - pid_out_int;
-        if (left_speed > 100)
-            left_speed = 100;
-        if (left_speed < -100)
-            left_speed = -100;
-        if (right_speed > 100)
-            right_speed = 100;
-        if (right_speed < -100)
-            right_speed = -100;
+        bsp_motor_push_cmd((int8_t)left_target, (int8_t)right_target);
 
-        bsp_motor_push_cmd((int8_t)left_speed, (int8_t)right_speed);
-    } else {
-        if (now - g_pid.last_seen_tick < osal_msecs_to_jiffies(TRACE_LOST_TIMEOUT_MS)) {
-            int search_speed = TRACE_SEARCH_SPEED;
-            if (g_pid.last_valid_error < -0.5f) {
-                bsp_motor_push_cmd(search_speed, -search_speed / 2);
-            } else if (g_pid.last_valid_error > 0.5f) {
-                bsp_motor_push_cmd(-search_speed / 2, search_speed);
-            } else {
-                bsp_motor_push_cmd(search_speed, search_speed);
-            }
-        } else {
-            bsp_motor_push_cmd(0, 0);
+    } else if (now - g_pid.last_seen_tick < osal_msecs_to_jiffies(TRACE_LOST_TIMEOUT_MS)) { // 短暂丢线寻线
+        int speed = TRACE_SEARCH_SPEED;
+        if (g_pid.last_valid_error < -0.5f) {
+            // 偏右（左边踩线），需要向左急转弯 -> 右轮前进而左轮后退
+            bsp_motor_push_cmd(-speed / 2, speed); 
         }
+        else if (g_pid.last_valid_error > 0.5f) {
+            // 偏左（右边踩线），需要向右急转弯 -> 左轮前进而右轮后退
+            bsp_motor_push_cmd(speed, -speed / 2);
+        }
+        else {
+            // 居中丢线，笔直前搜
+            bsp_motor_push_cmd(speed, speed);
+        }
+
+    } else { // 彻底丢线停机
+        bsp_motor_push_cmd(0, 0);
     }
 }
 
-/* 循迹任务入口：20ms周期轮询，收到停止事件后退出 */
+// 循迹任务入口线程
 static int trace_task_entry(void *arg)
 {
     (void)arg;
-    printf("[Trace] 循迹任务启动\r\n");
+    printf("[循迹] 循迹任务启动\r\n");
 
-    while (1) {
-        int ret =
-            osal_event_read(&g_trace_event, 0x01, 20, OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
-        if (ret > 0 && ((unsigned int)ret & 0x01)) {
-            break;
-        }
+    // 只要不收到退出事件 (0x01)，就以 20ms 为周期死循环执行
+    while (osal_event_read(&g_os.event, 0x01, 20, OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR) <= 0) {
         trace_tick_once();
     }
 
     bsp_motor_push_cmd(0, 0);
-    printf("[Trace] 循迹任务退出\r\n");
-    if (g_exit_sem_inited) {
-        osal_sem_up(&g_trace_exit_sem);
-    }
+    printf("[循迹] 循迹任务退出\r\n");
+    osal_sem_up(&g_os.exit_sem);
     return 0;
 }
 
-// 从外部任务（UDP）调用：只 enqueue，不直接改 PID
+// 外部接口：设置 PID 参数（直接赋值，剔除臃肿的消息队列）
 void mode_trace_set_pid(int type, int value)
 {
-    if (!g_pid_msgq_inited)
-        return;
-    pid_msg_t msg = {.op = PID_OP_SET, .type = (uint8_t)type, .value = value};
-    (void)osal_msgq_overwrite(g_pid_msgq, TRACE_PID_MSG_DEPTH, &msg, sizeof(msg));
+    switch (type) {
+        case 1:
+            g_pid.kp = value / 1000.0f;
+            break;
+        case 2:
+            g_pid.ki = value / 10000.0f;
+            break;
+        case 3:
+            g_pid.kd = value / 500.0f;
+            break;
+        case 4:
+            g_pid.base_speed = value;
+            break;
+    }
+    // 设参后直接清空运行态
+    g_pid.integral = 0.0f;
+    g_pid.last_error = 0.0f;
+    printf("[循迹] 临时参数加载: Kp=%.3f, Ki=%.4f, Kd=%.3f, 速度=%d\r\n", g_pid.kp, g_pid.ki, g_pid.kd,
+           g_pid.base_speed);
 }
 
-/* 向循迹任务投递保存PID参数到NV的请求 */
-void mode_trace_save_pid(void)
-{
-    if (!g_pid_msgq_inited)
-        return;
-    pid_msg_t msg = {.op = PID_OP_SAVE, .type = 0, .value = 0};
-    (void)osal_msgq_overwrite(g_pid_msgq, TRACE_PID_MSG_DEPTH, &msg, sizeof(msg));
-}
-
-/* 进入循迹模式：加载PID参数、创建任务和事件 */
+// 外部接口：进入循迹模式
 void mode_trace_enter(void)
 {
+    if (g_os.task != NULL)
+        return; // 已经在跑了
+
     printf("进入循迹模式...\r\n");
 
+    // 重置状态
     g_pid.last_seen_tick = osal_get_jiffies();
-    g_pid.last_error = 0;
-    g_pid.integral = 0;
-    g_pid.last_valid_error = 0;
+    g_pid.last_error = 0.0f;
+    g_pid.integral = 0.0f;
+    g_pid.last_valid_error = 0.0f;
 
-    float kp, ki, kd;
+    // 懒加载 OS 资源（仅初始化一次）
+    if (!g_os.inited) {
+        osal_event_init(&g_os.event);
+        osal_sem_binary_sem_init(&g_os.exit_sem, 0);
+        g_os.inited = true;
+    }
+
+    // 读Flash参数并强转设入
     int16_t speed;
-    storage_service_get_pid_params(&kp, &ki, &kd, &speed);
-    g_pid.kp = kp;
-    g_pid.ki = ki;
-    g_pid.kd = kd;
+    storage_service_get_pid_params(&g_pid.kp, &g_pid.ki, &g_pid.kd, &speed);
     g_pid.base_speed = speed;
 
-    if (!g_pid_msgq_inited) {
-        if (osal_msg_queue_create("trace_pid_q", TRACE_PID_MSG_DEPTH, &g_pid_msgq, 0, sizeof(pid_msg_t)) ==
-            OSAL_SUCCESS) {
-            g_pid_msgq_inited = true;
-        }
-    }
-
-    if (!g_event_inited) {
-        if (osal_event_init(&g_trace_event) == OSAL_SUCCESS) {
-            g_event_inited = true;
-        } else {
-            printf("[Trace] 事件初始化失败\r\n");
-            return;
-        }
-    }
-    if (!g_exit_sem_inited) {
-        osal_sem_binary_sem_init(&g_trace_exit_sem, 0);
-        g_exit_sem_inited = true;
-    }
-    while (osal_sem_trydown(&g_trace_exit_sem) == OSAL_SUCCESS) {
-    }
-
-    if (g_trace_task != NULL)
-        return;
-
-    g_trace_task = car_task_create_locked("trace_task", (osal_kthread_handler)trace_task_entry, NULL,
-                                            2048, 22);
+    (void)osal_sem_trydown(&g_os.exit_sem); // 抽空旧信号
+    g_os.task = car_task_create_locked("trace_task", (osal_kthread_handler)trace_task_entry, NULL, 2048, 22);
 }
 
-/* 退出循迹模式：发送停止事件并等待任务退出 */
+// 外部接口：退出循迹模式
 void mode_trace_exit(void)
 {
-    if (g_trace_task != NULL) {
-        if (g_event_inited) {
-            osal_event_write(&g_trace_event, 0x01);
-        }
-        if (g_exit_sem_inited) {
-            (void)osal_sem_down_timeout(&g_trace_exit_sem, 500);
-        }
-        g_trace_task = NULL;
+    if (g_os.task != NULL) {
+        osal_event_write(&g_os.event, 0x01);              // 发送退出事件
+        (void)osal_sem_down_timeout(&g_os.exit_sem, 500); // 等待任务死透
+        g_os.task = NULL;
     }
+
+    // 参数比对固化逻辑
+    float s_kp, s_ki, s_kd;
+    int16_t s_speed;
+    storage_service_get_pid_params(&s_kp, &s_ki, &s_kd, &s_speed);
+
+    if (g_pid.kp != s_kp || g_pid.ki != s_ki || g_pid.kd != s_kd || g_pid.base_speed != s_speed) {
+        errcode_t ret = storage_service_save_pid_params(g_pid.kp, g_pid.ki, g_pid.kd, (int16_t)g_pid.base_speed);
+        printf("[循迹] 保存配置到NV: Kp=%.3f Ki=%.4f Kd=%.3f SPD=%d (Ret=%d)\r\n", g_pid.kp, g_pid.ki, g_pid.kd,
+               g_pid.base_speed, ret);
+    }
+
     bsp_motor_push_cmd(0, 0);
 }
