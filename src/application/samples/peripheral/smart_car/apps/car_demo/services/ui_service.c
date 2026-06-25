@@ -9,8 +9,7 @@
 #include "pinctrl.h"
 #include "securec.h"
 #include "soc_osal.h"
-#include "udp_net_common.h"
-#include "udp_service.h"
+#include "wifi_mgr_service.h"
 
 // I2C 总线配置（用于 OLED 显示屏通信）
 #define CAR_I2C_BUS_ID 1        // I2C 总线 ID
@@ -37,7 +36,7 @@ typedef enum {
 typedef struct {
     ui_msg_type_t type;
     CarStatus mode;
-    WifiConnectStatus wifi_state;
+    wifi_status_t wifi_state;
     uint8_t percent;
     char text[32];
 } ui_msg_t;
@@ -104,20 +103,19 @@ static void ui_render_mode(CarStatus status)
 }
 
 /* 渲染待机页面，显示WiFi状态和IP地址 */
-static void ui_render_standby_impl(WifiConnectStatus wifi_state, const char *ip_addr)
+static void ui_render_standby_impl(wifi_status_t wifi_state, const char *ip_addr)
 {
     if (!g_oled_ready)
         return;
     if (g_ui_busy)
         return;
 
-    static const char *wifi_state_str[] = {
-        "WiFi: 未连接",   // WIFI_STATUS_DISCONNECTED (0)
-        "WiFi: 连接中",   // WIFI_STATUS_CONNECTING (1)
-        "WiFi: 连接成功", // WIFI_STATUS_CONNECTED (2)
-        "热点模式"        // WIFI_STATUS_AP_MODE (3)
-    };
-    const char *state_str = (wifi_state >= 0 && wifi_state < 4) ? wifi_state_str[wifi_state] : "WiFi: 未知状态";
+    const char *state_str;
+    switch (wifi_state) {
+        case WIFI_MSG_STA_GOT_IP: state_str = "WiFi: 连接成功"; break;
+        case WIFI_MSG_AP_READY:   state_str = "热点模式";        break;
+        default:                  state_str = "WiFi: 未连接";    break;
+    }
 
     bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
     bsp_ssd1306_draw_string16(0, 0, "模式: 停止", BSP_SSD1306_COLOR_WHITE);
@@ -159,15 +157,15 @@ static int ui_task_entry(void *arg)
             case UI_MSG_MODE:
                 g_ui_current_mode = msg.mode;
                 if (msg.mode == CAR_STOP_STATUS) {
-                    // 待机模式：直接读取网络层缓存的 IP，无轮询
-                    WifiConnectStatus wifi_status = udp_service_get_wifi_status();
+                    // 待机模式：直接读取网络层缓存的 IP
+                    wifi_status_t wifi_status = g_wifi_status;
                     char ip_line[32] = {0};
-                    if (wifi_status == WIFI_STATUS_AP_MODE) {
+                    if (wifi_status == WIFI_MSG_AP_READY) {
                         const char *ap_ip = captive_portal_service_get_ap_ip();
-                        (void)snprintf(ip_line, sizeof(ip_line), "IP: %s", ap_ip ? ap_ip : "...");
+                        (void)snprintf(ip_line, sizeof(ip_line), "IP:%s", ap_ip ? ap_ip : "...");
                     } else {
-                        const char *ip = udp_service_get_ip();
-                        (void)snprintf(ip_line, sizeof(ip_line), "IP: %s", ip ? ip : "Pending");
+                        const char *ip = bsp_wifi_mgr_get_ip();
+                        (void)snprintf(ip_line, sizeof(ip_line), "IP:%s", ip ? ip : "Pending");
                     }
                     ui_render_standby_impl(wifi_status, ip_line);
                 } else {

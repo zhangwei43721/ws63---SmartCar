@@ -108,43 +108,39 @@
         <label style="color: #000000;">Kp</label>
         <div style="display: flex; gap: 10px; align-items: center;">
           <input type="range" id="pidKp" min="0" max="100" step="0.5" value="25"
-            oninput="updatePidVal('pidKpVal', this.value)" style="flex: 1;">
+            oninput="updatePidVal('pidKpVal', this.value)"
+            onchange="sendPid(1)" style="flex: 1;">
           <span id="pidKpVal" style="width: 30px; text-align: right; color: #000000;">25</span>
-          <button class="btn-sm" onclick="sendPid(1)">SET</button>
         </div>
       </div>
       <div class="form-group">
         <label style="color: #000000;">Ki</label>
         <div style="display: flex; gap: 10px; align-items: center;">
           <input type="range" id="pidKi" min="0" max="50" step="0.1" value="0"
-            oninput="updatePidVal('pidKiVal', this.value)" style="flex: 1;">
+            oninput="updatePidVal('pidKiVal', this.value)"
+            onchange="sendPid(2)" style="flex: 1;">
           <span id="pidKiVal" style="width: 30px; text-align: right; color: #000000;">0</span>
-          <button class="btn-sm" onclick="sendPid(2)">SET</button>
         </div>
       </div>
       <div class="form-group">
         <label style="color: #000000;">Kd</label>
         <div style="display: flex; gap: 10px; align-items: center;">
           <input type="range" id="pidKd" min="0" max="100" step="0.5" value="10"
-            oninput="updatePidVal('pidKdVal', this.value)" style="flex: 1;">
+            oninput="updatePidVal('pidKdVal', this.value)"
+            onchange="sendPid(3)" style="flex: 1;">
           <span id="pidKdVal" style="width: 30px; text-align: right; color: #000000;">10</span>
-          <button class="btn-sm" onclick="sendPid(3)">SET</button>
         </div>
       </div>
       <div class="form-group">
         <label style="color: #000000;">速度</label>
         <div style="display: flex; gap: 10px; align-items: center;">
           <input type="range" id="pidSpeed" min="10" max="80" step="5" value="40"
-            oninput="updatePidVal('pidSpeedVal', this.value)" style="flex: 1;">
+            oninput="updatePidVal('pidSpeedVal', this.value)"
+            onchange="sendPid(4)" style="flex: 1;">
           <span id="pidSpeedVal" style="width: 30px; text-align: right; color: #000000;">40</span>
-          <button class="btn-sm" onclick="sendPid(4)">SET</button>
         </div>
       </div>
-      <div class="form-group" style="margin-top: 10px;">
-        <button class="btn-sm" onclick="savePid()"
-          style="width: 100%; background: #34c759; color: #fff; border: none; padding: 8px; border-radius: 6px; cursor: pointer;">保存
-          PID 到小车</button>
-      </div>
+      <p style="margin: 8px 0 0; font-size: 11px; color: #888;">松开滑块自动同步 · 退出循迹时自动保存到小车</p>
     </div>
 
     <div class="dpad disabled" id="dpad">

@@ -12,7 +12,7 @@
  * 实验平台:WS63
  *
  ****************************************************************************************************
- * 实验现象：持续读取左右两侧红外传感器状态并打印到串口
+ * 实验现象：持续读取三路红外传感器状态并打印到串口
  *
  ****************************************************************************************************
  */
@@ -23,10 +23,8 @@
 #include "soc_osal.h"
 #include "app_init.h"
 #include "../../drivers/tcrt5000/bsp_tcrt5000.h"
+#include "std_def.h"
 
-#define TCRT5000_TASK_STACK_SIZE 0x1000 // 循迹传感器任务栈大小
-#define TCRT5000_TASK_PRIO 24           // 循迹传感器任务优先级
-#define TCRT5000_DELAY_MS 100           // 采样间隔(ms)
 
 /**
  * @brief TCRT5000红外循迹传感器任务
@@ -47,11 +45,11 @@ static int tcrt5000_task(void *arg)
     while (1) {
         tcrt5000_sample();
 
-        // 打印三路模拟量值（ADC电压值 0-3600mV）
-        printf("TCRT5000 ADC: L=%4d, M=%4d, R=%4d mV\n", tcrt5000_get_left_adc(), tcrt5000_get_middle_adc(),
-               tcrt5000_get_right_adc());
+        uint32_t l = 0, m = 0, r = 0;
+        tcrt5000_snapshot(&l, &m, &r);
+        printf("TCRT5000 ADC: L=%4u, M=%4u, R=%4u mV\n", l, m, r);
 
-        osal_msleep(TCRT5000_DELAY_MS);
+        osal_msleep(100);
     }
 
     return 0;
@@ -71,9 +69,9 @@ static void tcrt5000_entry(void)
     // 创建任务
     osal_kthread_lock();
     task_handle =
-        osal_kthread_create((osal_kthread_handler)tcrt5000_task, NULL, "tcrt5000_adc_task", TCRT5000_TASK_STACK_SIZE);
+        osal_kthread_create((osal_kthread_handler)tcrt5000_task, NULL, "tcrt5000_adc_task", 0x1000);
     if (task_handle != NULL) {
-        ret = osal_kthread_set_priority(task_handle, TCRT5000_TASK_PRIO);
+        ret = osal_kthread_set_priority(task_handle, 24);
         if (ret != OSAL_SUCCESS) {
             printf("TCRT5000: Failed to set task priority\n");
         }

@@ -21,7 +21,7 @@
                 "-device",
                 "RISC-V",
                 "-jlinkscriptfile",
-                "d:\\software_install\\HiSpark Studio\\resources\\app\\extensions\\huawei.hisparkprojectwizard-0.0.4\\resources\\connect\\CFBB\\ws63\\connectCore.JLinkScript"
+                "c:\\Users\\86155\\.vscode\\extensions\\hispark.hisparkstudio-25.12.1\\dist\\resources\\projectwizard\\resources\\connect\\CFBB\\ws63\\connectCore.JLinkScript"
             ],
             "name": "GDB Launch (Download and Reset Program)",
             "executable": "./output/ws63/acore/ws63-liteos-app/ws63-liteos-app.elf",
@@ -48,7 +48,7 @@
                 "-device",
                 "RISC-V",
                 "-jlinkscriptfile",
-                "d:\\software_install\\HiSpark Studio\\resources\\app\\extensions\\huawei.hisparkprojectwizard-0.0.4\\resources\\connect\\CFBB\\ws63\\connectCore.JLinkScript"
+                "c:\\Users\\86155\\.vscode\\extensions\\hispark.hisparkstudio-25.12.1\\dist\\resources\\projectwizard\\resources\\connect\\CFBB\\ws63\\connectCore.JLinkScript"
             ],
             "name": "GDB Attach (Attach to Running Program)",
             "executable": "./output/ws63/acore/ws63-liteos-app/ws63-liteos-app.elf"

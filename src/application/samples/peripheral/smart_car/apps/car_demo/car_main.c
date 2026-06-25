@@ -81,7 +81,6 @@ static bool car_mgr_apply_status(CarStatus status)
  * 按键中断
  * ============================================================ */
 
-#define CAR_MODE_SWITCH_GPIO 3 // 模式切换按键 GPIO 引脚号
 static unsigned long long button_time_tick = 0;
 
 /* 按键中断回调：200ms消抖后循环切换小车模式 */
@@ -103,11 +102,11 @@ static void mode_switch_isr(pin_t pin, uintptr_t param)
 /* 初始化模式切换按键GPIO及下降沿中断 */
 static void car_key_init(void)
 {
-    uapi_pin_set_mode(CAR_MODE_SWITCH_GPIO, HAL_PIO_FUNC_GPIO);
-    uapi_gpio_set_dir(CAR_MODE_SWITCH_GPIO, GPIO_DIRECTION_INPUT);
-    uapi_pin_set_pull(CAR_MODE_SWITCH_GPIO, PIN_PULL_TYPE_UP);
+    uapi_pin_set_mode(3, HAL_PIO_FUNC_GPIO);
+    uapi_gpio_set_dir(3, GPIO_DIRECTION_INPUT);
+    uapi_pin_set_pull(3, PIN_PULL_TYPE_UP);
 
-    uapi_gpio_register_isr_func(CAR_MODE_SWITCH_GPIO, GPIO_INTERRUPT_FALLING_EDGE, mode_switch_isr);
+    uapi_gpio_register_isr_func(3, GPIO_INTERRUPT_FALLING_EDGE, mode_switch_isr);
 }
 
 /* ============================================================

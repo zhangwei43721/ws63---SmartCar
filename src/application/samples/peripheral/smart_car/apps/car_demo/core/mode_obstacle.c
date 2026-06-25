@@ -24,16 +24,16 @@
 // 避障状态机：obstacle_step() 每 20ms 被调用，
 // 定时阶段由 osal_timer 单次触发 0x02 推进
 typedef enum {
-    OBST_STATE_FORWARD = 0,       // 向前行驶，主动测距
-    OBST_STATE_STOP_BEFORE_BACK,  // 刹车 100ms → 后退
-    OBST_STATE_BACKING,           // 后退 300ms → 刹车
-    OBST_STATE_STOP_BEFORE_TURN,  // 刹车 100ms → 转弯
-    OBST_STATE_TURNING,           // 原地左转 650ms → 等待稳定
-    OBST_STATE_STOP_BEFORE_CHECK, // 等 300ms 稳定 → 重新测距
-    OBST_STATE_CHECKING,          // 读取 HC-SR04，通畅→FORWARD，受阻→TURNING
+    OBST_FORWARD = 0,       // 向前行驶，主动测距
+    OBST_STOP_BEFORE_BACK,  // 刹车 100ms → 后退
+    OBST_BACKING,           // 后退 300ms → 刹车
+    OBST_STOP_BEFORE_TURN,  // 刹车 100ms → 转弯
+    OBST_TURNING,           // 原地左转 650ms → 等待稳定
+    OBST_STOP_BEFORE_CHECK, // 等 300ms 稳定 → 重新测距
+    OBST_CHECKING,          // 读取 HC-SR04，通畅→FORWARD，受阻→TURNING
 } obstacle_state_t;
 
-static obstacle_state_t g_obst_state = OBST_STATE_FORWARD;
+static obstacle_state_t g_obst_state = OBST_FORWARD;
 
 // 当前目标电机值，每个 tick 复推一次喂 motor_executor 400ms 看门狗
 // （避障 TURNING/BACKING 等长时段 > 400ms，不喂狗电机会被中途强制停）
@@ -50,7 +50,7 @@ static bool g_exit_sem_inited = false; // 退出信号量是否已初始化
 static osal_timer g_obst_timer;          // 避障状态机推进定时器
 static bool g_obst_timer_inited = false; // 避障定时器是否已初始化
 
-/* 设置并推送电机速度命令，同时缓存当前值用于看门狗喂狗 */
+// 设置并推送电机速度命令，同时缓存当前值用于看门狗喂狗
 static void obst_push(int8_t l, int8_t r)
 {
     g_cur_l = l;
@@ -58,22 +58,19 @@ static void obst_push(int8_t l, int8_t r)
     bsp_motor_push_cmd(l, r);
 }
 
-/* 避障定时器回调：触发TIMER事件推进状态机 */
+// 避障定时器回调：触发TIMER事件推进状态机
 static void obst_timer_cb(unsigned long arg)
 {
     (void)arg;
-    if (g_event_inited) {
+    if (g_event_inited)
         (void)osal_event_write(&g_obst_event, 0x02);
-    }
 }
 
-/* 重新配置并启动避障单次定时器 */
+// 重新配置并启动避障单次定时器
 static void obst_arm_timer(uint32_t ms)
 {
     if (!g_obst_timer_inited)
         return;
-    // osal_timer_init 用的是 LOS_SWTMR_MODE_PERIOD（周期模式），且 LOS_SwtmrStart 用 init 时的 interval；
-    // 单改 timer->interval 字段无效。用 osal_timer_mod 重建为 NO_SELFDELETE 单次模式并启动。
     osal_timer_mod(&g_obst_timer, ms);
 }
 
@@ -81,65 +78,65 @@ static void obst_arm_timer(uint32_t ms)
 static void obstacle_step(bool timer_fired)
 {
     switch (g_obst_state) {
-        case OBST_STATE_FORWARD: {
+        case OBST_FORWARD: { // 前进中，主动测距
             float d = hcsr04_get_distance();
             car_mgr_update_distance(d);
-            if (d > OBSTACLE_LIMIT) {
+            if (d > OBSTACLE_LIMIT)
                 obst_push(OBST_FWD_SPEED, OBST_FWD_SPEED);
-            } else {
+            else {
                 printf("前方受阻(%dcm)，开始尝试寻找出口...\r\n", (int)d);
                 obst_push(0, 0);
-                g_obst_state = OBST_STATE_STOP_BEFORE_BACK;
+                g_obst_state = OBST_STOP_BEFORE_BACK;
                 obst_arm_timer(TIME_BRAKE_MS);
             }
             break;
         }
-        case OBST_STATE_STOP_BEFORE_BACK:
+        case OBST_STOP_BEFORE_BACK: // 刹车停稳 → 准备后退
             if (timer_fired) {
                 obst_push(-OBST_BACK_SPEED, -OBST_BACK_SPEED);
-                g_obst_state = OBST_STATE_BACKING;
+                g_obst_state = OBST_BACKING;
                 obst_arm_timer(TIME_BACK_MS);
             }
             break;
-        case OBST_STATE_BACKING:
+        case OBST_BACKING: // 后退中，300ms 后停
             if (timer_fired) {
                 obst_push(0, 0);
-                g_obst_state = OBST_STATE_STOP_BEFORE_TURN;
+                g_obst_state = OBST_STOP_BEFORE_TURN;
                 obst_arm_timer(TIME_BRAKE_MS);
             }
             break;
-        case OBST_STATE_STOP_BEFORE_TURN:
+        case OBST_STOP_BEFORE_TURN: // 刹车停稳 → 准备转弯
             if (timer_fired) {
                 obst_push(-OBST_TURN_SPEED, OBST_TURN_SPEED);
-                g_obst_state = OBST_STATE_TURNING;
+                g_obst_state = OBST_TURNING;
                 obst_arm_timer(TIME_TURN_90_MS);
             }
             break;
-        case OBST_STATE_TURNING:
+        case OBST_TURNING: // 原地左转中，650ms 后停
             if (timer_fired) {
                 obst_push(0, 0);
-                g_obst_state = OBST_STATE_STOP_BEFORE_CHECK;
+                g_obst_state = OBST_STOP_BEFORE_CHECK;
                 obst_arm_timer(TIME_WAIT_STABLE);
             }
             break;
-        case OBST_STATE_STOP_BEFORE_CHECK:
+        case OBST_STOP_BEFORE_CHECK: // 停稳等传感器稳定 → 准备测距
             if (timer_fired) {
-                g_obst_state = OBST_STATE_CHECKING;
+                g_obst_state = OBST_CHECKING;
                 // 立刻进入 CHECKING 主动测距，无需再等 timer
             }
             break;
-        case OBST_STATE_CHECKING: {
+        case OBST_CHECKING: { // 测距判断：通畅→前进，受阻→继续转
             float d = hcsr04_get_distance();
             car_mgr_update_distance(d);
             printf("转向后距离: %dcm\r\n", (int)d);
             if (d > OBSTACLE_LIMIT) {
                 printf("找到出口！继续前进。\r\n");
                 obst_push(OBST_FWD_SPEED, OBST_FWD_SPEED);
-                g_obst_state = OBST_STATE_FORWARD;
+                g_obst_state = OBST_FORWARD;
             } else {
                 printf("仍受阻，继续转向...\r\n");
                 obst_push(-OBST_TURN_SPEED, OBST_TURN_SPEED);
-                g_obst_state = OBST_STATE_TURNING;
+                g_obst_state = OBST_TURNING;
                 obst_arm_timer(TIME_TURN_90_MS);
             }
             break;
@@ -164,19 +161,18 @@ static int obstacle_task_entry(void *arg)
         obstacle_step(timer_fired);
 
         // 复推当前目标速度，喂 motor_executor 看门狗
-        if (g_cur_l != 0 || g_cur_r != 0) {
+        if (g_cur_l != 0 || g_cur_r != 0)
             bsp_motor_push_cmd(g_cur_l, g_cur_r);
-        }
     }
 
-    if (g_obst_timer_inited) {
+    if (g_obst_timer_inited)
         osal_timer_stop(&g_obst_timer);
-    }
+
     bsp_motor_push_cmd(0, 0);
     printf("[Obstacle] 避障任务退出\r\n");
-    if (g_exit_sem_inited) {
+    if (g_exit_sem_inited)
         osal_sem_up(&g_obst_exit_sem);
-    }
+
     return 0;
 }
 
@@ -184,7 +180,7 @@ static int obstacle_task_entry(void *arg)
 void mode_obstacle_enter(void)
 {
     printf("进入智能避障模式\r\n");
-    g_obst_state = OBST_STATE_FORWARD;
+    g_obst_state = OBST_FORWARD;
     g_cur_l = 0;
     g_cur_r = 0;
     bsp_motor_push_cmd(0, 0);
@@ -234,5 +230,5 @@ void mode_obstacle_exit(void)
         osal_timer_stop(&g_obst_timer);
 
     bsp_motor_push_cmd(0, 0);
-    g_obst_state = OBST_STATE_FORWARD;
+    g_obst_state = OBST_FORWARD;
 }

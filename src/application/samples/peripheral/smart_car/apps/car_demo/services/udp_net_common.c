@@ -4,42 +4,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../../../drivers/wifi_client/bsp_wifi_sta.h"
 #include "lwip/inet.h"
-#include "lwip/netifapi.h"
 #include "securec.h"
-#include "soc_osal.h"
 
-/* 获取WiFi网络接口的MAC地址 */
-int udp_net_get_mac_address(uint8_t *mac_buf)
-{
-    if (!mac_buf)
-        return -1;
-
-    struct netif *netif_p = netifapi_netif_find("wlan0");
-    if (netif_p == NULL)
-        netif_p = netifapi_netif_find("ap0");
-
-    if (netif_p) {
-        memcpy_s(mac_buf, 6, netif_p->hwaddr, 6);
-        return 0;
-    }
-    return -1;
-}
-
-/* 通过UDP发送广播数据包到指定端口 */
-int udp_net_common_send_broadcast(int fd, const void *buf, size_t len, uint16_t port)
-{
-    if (fd < 0 || !buf || len == 0)
-        return -1;
-    struct sockaddr_in addr = {0};
-    addr.sin_family = AF_INET;
-    addr.sin_port = lwip_htons(port);
-    addr.sin_addr.s_addr = lwip_htonl(INADDR_BROADCAST);
-    return (int)lwip_sendto(fd, buf, len, 0, (struct sockaddr *)&addr, sizeof(addr));
-}
-
-/* 通过UDP发送数据到指定地址 */
+// 通过UDP发送数据到指定地址
 int udp_net_common_send_to_addr(int fd, const void *buf, size_t len, const struct sockaddr_in *addr)
 {
     if (fd < 0 || !buf || len == 0 || !addr)
@@ -47,7 +15,7 @@ int udp_net_common_send_to_addr(int fd, const void *buf, size_t len, const struc
     return (int)lwip_sendto(fd, buf, len, 0, (struct sockaddr *)addr, sizeof(*addr));
 }
 
-/* 发送HTTP响应并关闭连接 */
+// 发送HTTP响应并关闭连接
 void http_send_response_and_close(int client_fd, const char *response)
 {
     if (client_fd < 0 || response == NULL)
@@ -56,7 +24,7 @@ void http_send_response_and_close(int client_fd, const char *response)
     lwip_close(client_fd);
 }
 
-/* 创建UDP socket并绑定端口，设置接收超时和广播选项 */
+// 创建UDP socket并绑定端口，设置接收超时和广播选项
 int udp_net_common_open_and_bind(uint16_t port, unsigned int recv_timeout_ms, bool enable_broadcast)
 {
     int sockfd = lwip_socket(AF_INET, SOCK_DGRAM, 0);

@@ -79,16 +79,6 @@ typedef struct {
 } ModeCmdMsg;
 
 /**
- * @brief WiFi 连接状态枚举
- */
-typedef enum {
-    WIFI_STATUS_DISCONNECTED = 0, // 未连接
-    WIFI_STATUS_CONNECTING,       // 连接中
-    WIFI_STATUS_CONNECTED,        // 已连接
-    WIFI_STATUS_AP_MODE           // 热点模式（预留）
-} WifiConnectStatus;
-
-/**
  * @brief 机器人实时状态结构体
  * 用于向 Web 前端提供实时状态数据
  */
@@ -116,12 +106,14 @@ typedef enum {
  *        type 字段统一定义在此，禁止散落到各 .c 里魔数化。
  */
 typedef enum {
-    CAR_PKT_CONTROL = 0x01,   // 控制：[type, l_speed, r_speed, 0, 0]
-    CAR_PKT_MODE = 0x03,      // 模式切换：[type, mode, 0, 0, 0]
-    CAR_PKT_PID = 0x04,       // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
-    CAR_PKT_OTA = 0x05,       // OTA 触发：[type, sub_cmd, ...]
-    CAR_PKT_HEARTBEAT = 0xFE, // 心跳
-    CAR_PKT_DISCOVERY = 0xFF, // 设备发现广播
+    CAR_PKT_CONTROL = 0x01,       // 控制：[type, l_speed, r_speed, 0, 0]
+    CAR_PKT_MODE = 0x03,          // 模式切换：[type, mode, 0, 0, 0]
+    CAR_PKT_PID = 0x04,           // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
+    CAR_PKT_OTA = 0x05,           // OTA 触发：[type, sub_cmd, ...]
+    CAR_PKT_WIFI_SET = 0xE0,      // WiFi 配置保存（不立即连接）
+    CAR_PKT_WIFI_CONNECT = 0xE1,  // WiFi 配置并立即连接
+    CAR_PKT_HEARTBEAT = 0xFE,     // 心跳
+    CAR_PKT_DISCOVERY = 0xFF,     // 设备发现广播
 } CarPktType;
 
 /**
@@ -132,7 +124,6 @@ typedef enum {
     PID_PARAM_KI = 2,
     PID_PARAM_KD = 3,
     PID_PARAM_BASE_SPEED = 4,
-    PID_PARAM_SAVE = 0xFF, // cmd 子字段 == 0xFF 表示保存到flash
 } CarPidParam;
 
 // ---------- 统一协议包体（UDP / SLE / 强制门户共用 5 字节格式）----------

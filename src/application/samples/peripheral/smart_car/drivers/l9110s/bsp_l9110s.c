@@ -14,7 +14,7 @@
 #include "pinctrl.h"
 #include "pwm.h"
 
-#define PWM_PERIOD 50 // 20kHz (50us)
+#define PWM_PERIOD 500 // 20kHz (50us)
 
 // 驱动电机 PWM 通道
 static const uint8_t MOTOR_CH[] = {4, 5, 0, 2};
@@ -33,6 +33,8 @@ void l9110s_init(void)
 
     for (int i = 0; i < 4; i++) {
         uapi_pin_set_mode(MOTOR_CH[i], 1);
+        uapi_pin_set_ds(MOTOR_CH[i], PIN_DS_7);
+        uapi_pin_set_pull(MOTOR_CH[i], PIN_PULL_TYPE_DISABLE);
         pwm_update(MOTOR_CH[i], 0);
     }
 

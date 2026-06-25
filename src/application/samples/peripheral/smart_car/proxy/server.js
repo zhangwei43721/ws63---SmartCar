@@ -353,16 +353,12 @@ wss.on("connection", (ws) => {
           const modeMap = { standby: 0, tracking: 1, avoid: 2, remote: 3 };
           sendToCar(buildPacket(0x03, modeMap[data.mode] || 0), ip);
           break;
-        case "setPid": { // PID参数
+        case "setPid": { // PID参数（循迹退出时自动持久化到 NV）
           const val =
             data.paramType <= 3 ? Math.round(data.value * 100) : data.value;
           const high = (val >> 8) & 0xff;
           const low = val & 0xff;
           sendToCar(buildPacket(0x04, data.paramType, high, low), ip);
-          break;
-        }
-        case "savePid": { // 显式保存 PID 到 NV
-          sendToCar(buildPacket(0x04, 0xFF, 0, 0), ip);
           break;
         }
         case "wifiConfigSet": { // 保存 WiFi 配置 (0xE0)
@@ -389,14 +385,7 @@ wss.on("connection", (ws) => {
           sendToCar(buf, ip);
           break;
         }
-        case "wifiConfigGet": { // 获取 WiFi 配置 (0xE2)
-          const buf = Buffer.alloc(3);
-          buf[0] = 0xE2;
-          buf[1] = 0;
-          buf[2] = 0;
-          sendToCar(buf, ip);
-          break;
-        }
+
         case "otaTrigger": { // OTA 触发
           handleOtaTrigger(ip, data.totalSize);
           break;

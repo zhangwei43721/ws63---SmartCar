@@ -98,31 +98,21 @@ function bindHoldButton(el, onPress) {
 }
 
 // --- PID 调试功能 ---
+// 滑块 input 时实时更新显示值，松开滑块（onchange）时自动同步到小车
 function updatePidVal(id, val) {
   const el = document.getElementById(id);
   if (el) el.innerText = val;
 }
 
 function sendPid(type) {
-  console.log(`[Frontend] sendPid called with type: ${type}`);
   const deviceIP = getSelectedDeviceIP();
-  if (!deviceIP) {
-    console.warn("[Frontend] sendPid aborted: No device selected");
-    showConfigConnect();
-    return;
-  }
+  if (!deviceIP) return;
 
   let val = 0;
-  // float 类型需要 / 100 还原为实际 float (后端会除以100，这里前端直接发整数)
   if (type === 1) val = parseFloat(document.getElementById("pidKp").value);
   else if (type === 2) val = parseFloat(document.getElementById("pidKi").value);
   else if (type === 3) val = parseFloat(document.getElementById("pidKd").value);
-  else if (type === 4)
-    val = parseInt(document.getElementById("pidSpeed").value);
-
-  console.log(
-    `[Frontend] Sending PID: type=${type}, val=${val}, IP=${deviceIP}`,
-  );
+  else if (type === 4) val = parseInt(document.getElementById("pidSpeed").value);
 
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(
@@ -133,29 +123,6 @@ function sendPid(type) {
         value: val,
       }),
     );
-    console.log("[Frontend] PID command sent to proxy");
-  } else {
-    console.error("[Frontend] Socket not ready");
-  }
-}
-
-function savePid() {
-  const deviceIP = getSelectedDeviceIP();
-  if (!deviceIP) {
-    showConfigConnect();
-    return;
-  }
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(
-      JSON.stringify({
-        type: "savePid",
-        deviceIP: deviceIP,
-      }),
-    );
-    console.log("[Frontend] Save PID command sent to proxy");
-    alert("PID 保存命令已发送");
-  } else {
-    console.error("[Frontend] Socket not ready");
   }
 }
 
@@ -509,9 +476,6 @@ function handleProxyMessage(msg) {
         } else {
           alert("WiFi连接失败");
         }
-      } else if (result.cmd === 0xe2) {
-        document.getElementById("wifiSSID").value = result.ssid || "";
-        document.getElementById("wifiPassword").value = result.password || "";
       }
     }
   }

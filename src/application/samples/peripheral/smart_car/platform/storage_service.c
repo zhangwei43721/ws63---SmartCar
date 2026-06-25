@@ -172,10 +172,21 @@ void storage_service_get_pid_params(float *kp, float *ki, float *kd, int16_t *sp
  */
 errcode_t storage_service_save_pid_params(float kp, float ki, float kd, int16_t speed)
 {
+    int32_t kp_x1000 = (int32_t)(kp * 1000.0f);
+    int32_t ki_x10000 = (int32_t)(ki * 10000.0f);
+    int32_t kd_x500 = (int32_t)(kd * 500.0f);
+
+    // 防止重复保存
     STORAGE_LOCK();
-    g_nv_cfg.pid_kp_x1000 = (int32_t)(kp * 1000.0f);
-    g_nv_cfg.pid_ki_x10000 = (int32_t)(ki * 10000.0f);
-    g_nv_cfg.pid_kd_x500 = (int32_t)(kd * 500.0f);
+    if (g_nv_cfg.pid_kp_x1000 == kp_x1000 && g_nv_cfg.pid_ki_x10000 == ki_x10000 &&
+        g_nv_cfg.pid_kd_x500 == kd_x500 && g_nv_cfg.pid_base_speed == speed) {
+        STORAGE_UNLOCK();
+        return ERRCODE_SUCC;
+    }
+
+    g_nv_cfg.pid_kp_x1000 = kp_x1000;
+    g_nv_cfg.pid_ki_x10000 = ki_x10000;
+    g_nv_cfg.pid_kd_x500 = kd_x500;
     g_nv_cfg.pid_base_speed = speed;
 
     // 重新计算校验和
@@ -214,6 +225,13 @@ errcode_t storage_service_save_wifi_config(const char *ssid, const char *passwor
         return ERRCODE_INVALID_PARAM;
 
     STORAGE_LOCK();
+
+    // 防止重复保存
+    if (strcmp(g_nv_cfg.wifi_ssid, ssid) == 0 && strcmp(g_nv_cfg.wifi_password, password) == 0) {
+        STORAGE_UNLOCK();
+        return ERRCODE_SUCC;
+    }
+
     (void)strncpy_s(g_nv_cfg.wifi_ssid, sizeof(g_nv_cfg.wifi_ssid), ssid, sizeof(g_nv_cfg.wifi_ssid) - 1);
     (void)strncpy_s(g_nv_cfg.wifi_password, sizeof(g_nv_cfg.wifi_password), password,
                     sizeof(g_nv_cfg.wifi_password) - 1);

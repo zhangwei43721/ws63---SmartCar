@@ -9,12 +9,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../../../drivers/wifi_client/bsp_wifi_sta.h"
 #include "wifi_mgr_service.h"
 #include "../core/mode_trace.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
 #include "../car_common.h"
 #include "lwip/inet.h"
+#include "lwip/netifapi.h"
 #include "lwip/sockets.h"
 #include "ota_service.h"
 
@@ -39,7 +39,7 @@ typedef struct {
 
 // WiFi 配置扩展包（变长，最大 70 字节）
 typedef struct {
-    uint8_t type;     // 0xE0~0xE2
+    uint8_t type;     // 0xE0~0xE1
     uint8_t ssid_len; // SSID 长度（0~32）
     uint8_t pwd_len;  // 密码长度（0~63）
     char payload[64]; // SSID + 密码连续存放
@@ -58,7 +58,8 @@ typedef enum {
     UDP_STATE_DISCOVERING,   // WiFi 就绪，500ms 广播自身等待控制器
     UDP_STATE_CONNECTED,     // 已绑定控制器，2s 心跳 + keepalive 衰减
 } udp_state_t;
-static udp_state_t g_udp_state = UDP_STATE_WAIT_WIFI;
+
+static udp_state_t g_udp_state = UDP_STATE_WAIT_WIFI;  // 
 
 // 连接状态管理
 static struct sockaddr_in g_server_addr;                // 当前绑定的控制器地址
@@ -69,61 +70,7 @@ static uint8_t g_keepalive_count = KEEPALIVE_MAX_COUNT; // 容错计次（生命
 static discovery_packet_t g_discovery_pkt;
 static bool g_discovery_ready = false; // 发现包是否已构建(MAC是否获取)
 
-// --- 内部函数声明 ---
-static int udp_service_task(void *arg);
-static void handle_udp_receive(void);
-static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender);
-static void build_discovery_packet(void);
-
-// --------------------------------------------------------------------------
-// 外部接口实现
-// --------------------------------------------------------------------------
-
-/* 初始化UDP服务，创建退出信号量和UDP任务线程 */
-void udp_service_init(void)
-{
-    if (g_udp_task != NULL)
-        return;
-    g_udp_should_exit = false;
-    if (!g_udp_exit_sem_inited) {
-        osal_sem_binary_sem_init(&g_udp_exit_sem, 0);
-        g_udp_exit_sem_inited = true;
-    }
-    while (osal_sem_trydown(&g_udp_exit_sem) == OSAL_SUCCESS) {
-    }
-
-    // 创建线程
-    g_udp_task = car_task_create_locked("udp_task", (osal_kthread_handler)udp_service_task, NULL, 8192, 24);
-}
-
-/* 获取当前WiFi连接状态（STA/AP模式映射） */
-WifiConnectStatus udp_service_get_wifi_status(void)
-{
-    bsp_wifi_mode_t mode = bsp_wifi_get_mode();
-    bsp_wifi_status_t status = bsp_wifi_get_status();
-
-    if (mode == BSP_WIFI_MODE_AP)
-        return WIFI_STATUS_AP_MODE;
-    if (status == BSP_WIFI_STATUS_GOT_IP)
-        return WIFI_STATUS_CONNECTED;
-    if (status == BSP_WIFI_STATUS_CONNECTING || status == BSP_WIFI_STATUS_CONNECTED)
-        return WIFI_STATUS_CONNECTING;
-    return WIFI_STATUS_DISCONNECTED;
-}
-
-/* 获取当前WiFi的IP地址字符串 */
-const char *udp_service_get_ip(void)
-{
-    static char ip_buf[32] = "0.0.0.0";
-    bsp_wifi_get_ip(ip_buf, sizeof(ip_buf));
-    return ip_buf;
-}
-
-// --------------------------------------------------------------------------
-// 内部逻辑实现
-// --------------------------------------------------------------------------
-
-/* 延迟构建UDP广播发现包（等待MAC地址就绪） */
+// 延迟构建UDP广播发现包（等待MAC地址就绪）
 static void build_discovery_packet(void)
 {
     if (g_discovery_ready)
@@ -133,7 +80,11 @@ static void build_discovery_packet(void)
     g_discovery_pkt.type = CAR_PKT_DISCOVERY;
 
     // 尝试获取MAC地址
-    if (udp_net_get_mac_address(g_discovery_pkt.mac) == 0) {
+    struct netif *netif_p = netifapi_netif_find("wlan0"); // 找sta网卡
+    if (netif_p == NULL)
+        netif_p = netifapi_netif_find("ap0"); // 找ap网卡
+    if (netif_p) {
+        memcpy_s(g_discovery_pkt.mac, 6, netif_p->hwaddr, 6);
         // MAC获取成功，生成设备名
         snprintf(g_discovery_pkt.name, sizeof(g_discovery_pkt.name), "Car_%02X%02X", g_discovery_pkt.mac[4],
                  g_discovery_pkt.mac[5]);
@@ -143,14 +94,7 @@ static void build_discovery_packet(void)
     }
 }
 
-/* 发送WiFi配置操作的ACK应答包 */
-static void send_wifi_config_ack(uint8_t type, uint8_t status, struct sockaddr_in *sender)
-{
-    uint8_t ack[3] = {type, status, 0};
-    udp_net_common_send_to_addr(g_sockfd, ack, sizeof(ack), sender);
-}
-
-/* 从WiFi配置包中提取SSID和密码 */
+// 从WiFi配置包中提取SSID和密码
 static void wifi_config_extract_creds(const wifi_config_pkt_t *pkt,
                                       char *ssid,
                                       size_t ssid_sz,
@@ -167,110 +111,81 @@ static void wifi_config_extract_creds(const wifi_config_pkt_t *pkt,
     }
 }
 
-/* 处理WiFi配置命令（保存/连接/查询） */
-static void handle_wifi_config(uint8_t *data, size_t len, struct sockaddr_in *sender)
-{
-    if (len < 3)
-        return;
-    wifi_config_pkt_t *pkt = (wifi_config_pkt_t *)data;
-
-    switch (pkt->type) {
-        case UDP_CMD_WIFI_CONFIG_SET: {
-            char ssid[33] = {0};
-            char pwd[64] = {0};
-            wifi_config_extract_creds(pkt, ssid, sizeof(ssid), pwd, sizeof(pwd));
-            errcode_t ret = storage_service_save_wifi_config(ssid, pwd);
-            send_wifi_config_ack(pkt->type, (ret == ERRCODE_SUCC) ? 0x00 : 0x01, sender);
-            printf("[UDP] WiFi配置保存: SSID='%s' 结果=%d\r\n", ssid, ret);
-            break;
-        }
-
-        case UDP_CMD_WIFI_CONFIG_CONNECT: {
-            char ssid[33] = {0};
-            char pwd[64] = {0};
-            wifi_config_extract_creds(pkt, ssid, sizeof(ssid), pwd, sizeof(pwd));
-            bsp_wifi_connect_ap(ssid, pwd);
-            printf("[UDP] WiFi切换STA: SSID='%s'\r\n", ssid);
-            break;
-        }
-
-        case UDP_CMD_WIFI_CONFIG_GET: {
-            char ssid[32] = {0};
-            char pwd[64] = {0};
-            storage_service_get_wifi_config(ssid, pwd);
-            uint8_t ack[70] = {0};
-            ack[0] = pkt->type;
-            ack[1] = 0x00; // 成功
-            size_t ssid_len = strlen(ssid);
-            size_t pwd_len = strlen(pwd);
-            if (ssid_len > 32)
-                ssid_len = 32;
-            if (pwd_len > 63)
-                pwd_len = 63;
-            ack[2] = (uint8_t)ssid_len;
-            ack[3] = (uint8_t)pwd_len;
-            if (ssid_len > 0) {
-                (void)memcpy_s(ack + 4, sizeof(ack) - 4, ssid, ssid_len);
-            }
-            if (pwd_len > 0) {
-                (void)memcpy_s(ack + 4 + ssid_len, sizeof(ack) - 4 - ssid_len, pwd, pwd_len);
-            }
-            udp_net_common_send_to_addr(g_sockfd, ack, 4 + ssid_len + pwd_len, sender);
-            break;
-        }
-    }
-}
-
-/* 根据包类型分发处理：WiFi配置、统一协议、PID调参、OTA触发 */
+// 根据包类型分发处理：WiFi配置、统一协议、PID调参、OTA触发
 static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender)
 {
     if (len < 1)
         return;
-    uint8_t type = data[0];
 
-    // WiFi配置命令
-    if (type >= 0xE0 && type <= 0xE2) {
-        handle_wifi_config(data, len, sender);
-        return;
-    }
+    switch (data[0]) {
+        // --- WiFi 配置（变长包）---
+        case CAR_PKT_WIFI_CONNECT:
+        case CAR_PKT_WIFI_SET: {
+            // 公共校验 + 提取凭证
+            if (len < 3)
+                return;
+            wifi_config_pkt_t *pkt = (wifi_config_pkt_t *)data;
+            if (pkt->ssid_len > 32 || pkt->pwd_len > 63 || (pkt->ssid_len + pkt->pwd_len) > 64)
+                return;
+            if (len < (size_t)(3 + pkt->ssid_len + pkt->pwd_len))
+                return;
+            char ssid[33] = {0};
+            char pwd[64] = {0};
+            wifi_config_extract_creds(pkt, ssid, sizeof(ssid), pwd, sizeof(pwd));
 
-    // 标准5字节协议包 → 先走统一处理
-    if (len == sizeof(car_packet_t)) {
-        car_packet_t *pkt = (car_packet_t *)data;
-
-        if (car_proto_handle_packet(pkt, MODE_SRC_UDP))
-            return; // CONTROL / MODE / HEARTBEAT 已由统一处理器消费
-
-        // PID 调参
-        if (pkt->type == CAR_PKT_PID) {
-            if (pkt->cmd == PID_PARAM_SAVE)
-                mode_trace_save_pid();
-            else
-                mode_trace_set_pid(pkt->cmd, (int16_t)((pkt->motor1 << 8) | (uint8_t)pkt->motor2));
-            return;
+            switch (data[0]) {
+                case CAR_PKT_WIFI_CONNECT: // 0xE1 立即连接
+                    bsp_wifi_connect_ap(ssid, pwd);
+                    printf("[UDP] WiFi切换STA: SSID='%s'\r\n", ssid);
+                    break;
+                case CAR_PKT_WIFI_SET: { // 0xE0 保存到 NV 并回 ACK
+                    errcode_t ret = storage_service_save_wifi_config(ssid, pwd);
+                    uint8_t ack[3] = {CAR_PKT_WIFI_SET, (ret == ERRCODE_SUCC) ? 0x00 : 0x01, 0};
+                    udp_net_common_send_to_addr(g_sockfd, ack, sizeof(ack), sender);
+                    printf("[UDP] WiFi配置保存: SSID='%s' 结果=%d\r\n", ssid, ret);
+                    break;
+                }
+            }
+            break;
         }
 
-        // OTA 触发
-        if (pkt->type == CAR_PKT_OTA) {
+        // --- 标准 5 字节协议包 ---
+        case CAR_PKT_CONTROL:   // 0x01 电机控制
+        case CAR_PKT_MODE:      // 0x03 模式切换
+        case CAR_PKT_HEARTBEAT: // 0xFE 心跳
+            if (len == sizeof(car_packet_t))
+                car_proto_handle_packet((car_packet_t *)data, MODE_SRC_UDP);
+            break;
+
+        case CAR_PKT_PID: { // 0x04 PID 调参（退出循迹时自动持久化到 NV）
+            if (len != sizeof(car_packet_t))
+                return;
+            car_packet_t *pkt = (car_packet_t *)data;
+            mode_trace_set_pid(pkt->cmd, (int16_t)((pkt->motor1 << 8) | (uint8_t)pkt->motor2));
+            break;
+        }
+
+        case CAR_PKT_OTA: { // 0x05 OTA 触发/取消
+            if (len != sizeof(car_packet_t))
+                return;
+            car_packet_t *pkt = (car_packet_t *)data;
             car_packet_t ack = {0};
             ack.type = CAR_PKT_OTA;
             if (pkt->cmd == OTA_SUBCMD_START) {
-                if (ota_service_start(0))
-                    ack.cmd = 0x00;
-                else
-                    ack.cmd = 0x01;
+                ack.cmd = ota_service_start(0) ? 0x00 : 0x01;
             } else if (pkt->cmd == 0x02) {
                 ota_service_cancel();
                 ack.cmd = 0x00;
-            } else
+            } else {
                 ack.cmd = 0x02;
+            }
             udp_net_common_send_to_addr(g_sockfd, &ack, sizeof(ack), &g_server_addr);
-            return;
+            break;
         }
     }
 }
 
-/* 非阻塞接收UDP数据包，更新连接状态并分发处理 */
+// 非阻塞接收UDP数据包，更新连接状态并分发处理
 static void handle_udp_receive(void)
 {
     uint8_t buf[128];
@@ -300,7 +215,7 @@ static void handle_udp_receive(void)
     }
 }
 
-/* 发送机器人状态心跳包到已连接的控制器 */
+// 发送机器人状态心跳包到已连接的控制器
 static void send_heartbeat(void)
 {
     CarState st;
@@ -314,12 +229,12 @@ static void send_heartbeat(void)
     udp_net_common_send_to_addr(g_sockfd, &pkt, sizeof(pkt), &g_server_addr);
 }
 
-/* UDP服务主任务：状态机驱动广播发现、心跳维持与接收处理 */
+// UDP服务主任务：状态机驱动广播发现、心跳维持与接收处理
 static int udp_service_task(void *arg)
 {
     (void)arg;
 
-    // 打开Socket，设置接收超时为 10ms
+    // 初始 socket 创建
     g_sockfd = udp_net_common_open_and_bind(UDP_SERVER_PORT, UDP_RECV_TIMEOUT_MS, true);
     if (g_sockfd < 0) {
         printf("[UDP] Socket 创建失败\r\n");
@@ -328,91 +243,61 @@ static int udp_service_task(void *arg)
 
     uint64_t t_send_loop = 0;
     uint64_t t_keepalive_decay = 0;
-    bool wifi_was_ready = false;
-    static bsp_wifi_mode_t last_mode = BSP_WIFI_MODE_STA;
-    static char last_ip[32] = {0};
 
     while (!g_udp_should_exit) {
-        if (g_sockfd < 0) {
-            g_sockfd = udp_net_common_open_and_bind(UDP_SERVER_PORT, UDP_RECV_TIMEOUT_MS, true);
-            if (g_sockfd < 0)
-                continue;
-        }
-
-        uint64_t now = osal_get_jiffies();
-
-        // --- WiFi 状态 + 模式变化检测（状态机无关的前置处理） ---
-        bsp_wifi_mode_t curr_mode = bsp_wifi_get_mode();
-        bsp_wifi_status_t wifi_status = bsp_wifi_get_status();
-
-        bool wifi_connected, wifi_has_ip;
-        if (curr_mode == BSP_WIFI_MODE_AP) {
-            wifi_connected = (wifi_status == BSP_WIFI_STATUS_GOT_IP);
-            wifi_has_ip = wifi_connected;
-        } else {
-            wifi_connected = (wifi_status == BSP_WIFI_STATUS_GOT_IP || wifi_status == BSP_WIFI_STATUS_CONNECTED);
-            wifi_has_ip = (wifi_status == BSP_WIFI_STATUS_GOT_IP);
-        }
-        char curr_ip[32] = "0.0.0.0";
-        if (wifi_has_ip) {
-            bsp_wifi_get_ip(curr_ip, sizeof(curr_ip));
-        }
-        bool wifi_ready = wifi_connected && wifi_has_ip;
-
-        if (curr_mode != last_mode) {
-            wifi_was_ready = false;
-            last_ip[0] = '\0';
-            g_discovery_ready = false;
+        // WiFi 未就绪时阻塞等待，清理旧 Socket 并切到 WAIT_WIFI
+        if (g_wifi_status == WIFI_MSG_START) {
+            g_udp_state = UDP_STATE_WAIT_WIFI;
             if (g_sockfd >= 0) {
                 lwip_close(g_sockfd);
                 g_sockfd = -1;
             }
-            printf("[UDP] WiFi 模式变化: %d -> %d, 重建 socket\r\n", (int)last_mode, (int)curr_mode);
+            osal_msleep(50);
+            continue;
         }
 
-        bool ip_changed = (wifi_ready && strcmp(last_ip, curr_ip) != 0);
-        if ((wifi_ready && !wifi_was_ready) || ip_changed) {
-            ui_show_mode_page(CAR_STOP_STATUS);
-            wifi_was_ready = true;
-            (void)strncpy_s(last_ip, sizeof(last_ip), curr_ip, sizeof(last_ip) - 1);
-        } else if (!wifi_ready) {
-            wifi_was_ready = false;
+        // socket 被回调关闭后重建
+        if (g_sockfd < 0) {
+            g_sockfd = udp_net_common_open_and_bind(UDP_SERVER_PORT, UDP_RECV_TIMEOUT_MS, true);
+            if (g_sockfd < 0) {
+                osal_msleep(50);
+                continue;
+            }
+            g_udp_state = UDP_STATE_DISCOVERING;
+            g_keepalive_count = KEEPALIVE_MAX_COUNT;
         }
-        last_mode = curr_mode;
 
-        // --- 状态机 ---
+        uint64_t now = osal_get_jiffies();
+
+        // --- 状态机（WiFi 此时必定就绪） ---
         switch (g_udp_state) {
             case UDP_STATE_WAIT_WIFI:
-                if (wifi_ready) {
+                // WiFi 就绪 + socket 存在 → 直接切入广播
+                if (g_sockfd >= 0) {
                     g_udp_state = UDP_STATE_DISCOVERING;
                     g_keepalive_count = KEEPALIVE_MAX_COUNT;
                 }
                 break;
 
             case UDP_STATE_DISCOVERING:
-                if (!wifi_ready) {
-                    g_udp_state = UDP_STATE_WAIT_WIFI;
-                    g_discovery_ready = false;
-                    g_keepalive_count = KEEPALIVE_MAX_COUNT;
-                    break;
-                }
+                // 广播发现态：构建发现包，每 500ms 广播一次，等待控制器主动发包触发连接
                 if (!g_discovery_ready)
                     build_discovery_packet();
                 if (now - t_send_loop >= osal_msecs_to_jiffies(BROADCAST_INTERVAL_MS)) {
                     t_send_loop = now;
-                    if (g_discovery_ready)
-                        udp_net_common_send_broadcast(g_sockfd, &g_discovery_pkt, sizeof(g_discovery_pkt),
-                                                      UDP_BROADCAST_PORT);
+                    if (g_discovery_ready) {
+                        struct sockaddr_in bcast_addr = {0};
+                        bcast_addr.sin_family = AF_INET;
+                        bcast_addr.sin_port = lwip_htons(UDP_BROADCAST_PORT);
+                        bcast_addr.sin_addr.s_addr = lwip_htonl(INADDR_BROADCAST);
+                        lwip_sendto(g_sockfd, &g_discovery_pkt, sizeof(g_discovery_pkt), 0,
+                                    (struct sockaddr *)&bcast_addr, sizeof(bcast_addr));
+                    }
                 }
                 break;
 
             case UDP_STATE_CONNECTED:
-                if (!wifi_ready) {
-                    g_udp_state = UDP_STATE_WAIT_WIFI;
-                    g_discovery_ready = false;
-                    g_keepalive_count = KEEPALIVE_MAX_COUNT;
-                    break;
-                }
+                // 已连接态：每秒衰减 keepalive 计数，计数归零则判定断连切回广播；同时每 2s 发送心跳
                 if (now - t_keepalive_decay >= osal_msecs_to_jiffies(1000)) {
                     t_keepalive_decay = now;
                     if (g_keepalive_count > 0) {
@@ -430,7 +315,6 @@ static int udp_service_task(void *arg)
                 break;
         }
 
-        // 接收始终执行；handle_udp_receive 任一包到达即触发 DISCOVERING→CONNECTED
         handle_udp_receive();
     }
 
@@ -438,8 +322,37 @@ static int udp_service_task(void *arg)
         lwip_close(g_sockfd);
         g_sockfd = -1;
     }
-    if (g_udp_exit_sem_inited) {
+    if (g_udp_exit_sem_inited)
         osal_sem_up(&g_udp_exit_sem);
-    }
+
     return 0;
+}
+
+// WiFi 状态变化回调（由 wifi_mgr_service 通过函数指针 s_state_cb 调用）
+// 职责：只清发现包标记，让主循环下次重建。不关 socket，不改 g_udp_state，
+//       所有状态切换由 udp_service_task 主循环根据 g_wifi_status == WIFI_MSG_START 统一驱动。
+static void on_wifi_state_change(bsp_wifi_event_t event, const char *ip)
+{
+    (void)ip;
+    printf("[UDP] WiFi 状态变化: event=%d\r\n", (int)event);
+    g_discovery_ready = false;
+}
+
+// 初始化UDP服务：注册 WiFi 状态回调 + 创建任务线程
+void udp_service_init(void)
+{
+    if (g_udp_task != NULL)
+        return;
+    g_udp_should_exit = false;
+    if (!g_udp_exit_sem_inited) {
+        osal_sem_binary_sem_init(&g_udp_exit_sem, 0);
+        g_udp_exit_sem_inited = true;
+    }
+    while (osal_sem_trydown(&g_udp_exit_sem) == OSAL_SUCCESS) {
+    }
+
+    // 把 on_wifi_state_change 函数地址注册到 wifi_mgr_service 的 s_state_cb 指针
+    // 之后 wifi_mgr 每次 WiFi 状态变化都会通过 s_state_cb(event, ip) 回调到这里
+    bsp_wifi_mgr_register_cb(on_wifi_state_change);
+    g_udp_task = car_task_create_locked("udp_task", (osal_kthread_handler)udp_service_task, NULL, 8192, 24);
 }
