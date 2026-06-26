@@ -164,19 +164,19 @@ static errcode_t compare_service_uuid(bt_uuid_t *uuid1, bt_uuid_t *uuid2)
 
 // ==================== 广播配置函数 ====================
 
-/* 取 16 位值的低字节 */
+// 取 16 位值的低字节
 static uint8_t u16_low_u8(uint16_t val)
 {
     return (uint8_t)(val & 0xff);
 }
 
-/* 取 16 位值的高字节 */
+// 取 16 位值的高字节
 static uint8_t u16_high_u8(uint16_t val)
 {
     return (uint8_t)((val >> 8) & 0xff);
 }
 
-/* 填充 BLE 广播标志数据（可发现+不支持经典蓝牙） */
+// 填充 BLE 广播标志数据（可发现+不支持经典蓝牙）
 static uint8_t ble_set_adv_flag_data(uint8_t *set_adv_data_position, uint8_t max_len)
 {
     ble_adv_flag adv_flags = {
@@ -190,7 +190,7 @@ static uint8_t ble_set_adv_flag_data(uint8_t *set_adv_data_position, uint8_t max
     return BLE_ADV_FLAG_LEN;
 }
 
-/* 填充 BLE 广播外观数据（键盘类别） */
+// 填充 BLE 广播外观数据（键盘类别）
 static uint8_t ble_set_adv_appearance(uint8_t *set_adv_data_position, uint8_t max_len)
 {
     ble_appearance_st adv_appearance_data = {
@@ -204,7 +204,7 @@ static uint8_t ble_set_adv_appearance(uint8_t *set_adv_data_position, uint8_t ma
     return BLE_ADV_APPEARANCE_LENGTH;
 }
 
-/* 组装 BLE 广播数据（标志+外观） */
+// 组装 BLE 广播数据（标志+外观）
 static uint16_t bsp_bt_spp_set_adv_data(uint8_t *set_adv_data, uint8_t adv_data_max_len)
 {
     uint8_t idx = 0;
@@ -217,7 +217,7 @@ static uint16_t bsp_bt_spp_set_adv_data(uint8_t *set_adv_data, uint8_t adv_data_
     return idx;
 }
 
-/* 组装 BLE 扫描响应数据（发射功率+设备名称） */
+// 组装 BLE 扫描响应数据（发射功率+设备名称）
 static uint16_t ble_set_scan_response_data(uint8_t *scan_rsp_data, uint8_t scan_rsp_data_max_len)
 {
     uint8_t idx = 0;
@@ -251,7 +251,7 @@ static uint16_t ble_set_scan_response_data(uint8_t *scan_rsp_data, uint8_t scan_
     return idx;
 }
 
-/* 配置并下发 BLE 广播数据和扫描响应数据 */
+// 配置并下发 BLE 广播数据和扫描响应数据
 static uint8_t bsp_bt_spp_config_adv(void)
 {
     errcode_t ret;
@@ -284,7 +284,7 @@ static uint8_t bsp_bt_spp_config_adv(void)
     return 0;
 }
 
-/* 设置广播参数并启动 BLE 广播 */
+// 设置广播参数并启动 BLE 广播
 static uint8_t bsp_bt_spp_start_adv(void)
 {
     errcode_t ret;
@@ -319,7 +319,7 @@ static uint8_t bsp_bt_spp_start_adv(void)
 // ==================== 重启广播 Worker ====================
 // 协议栈回调里不能 msleep，否则会阻塞协议栈线程。
 // 这里用独立任务承接断连事件，sleep 后再调 start_adv。
-/* 重启广播 worker：断连后延时再重启广播，避免阻塞协议栈回调 */
+// 重启广播 worker：断连后延时再重启广播，避免阻塞协议栈回调
 static int bsp_bt_spp_adv_worker(void *arg)
 {
     (void)arg;
@@ -335,7 +335,7 @@ static int bsp_bt_spp_adv_worker(void *arg)
     return 0;
 }
 
-/* 启动重启广播 worker 任务（仅首次创建） */
+// 启动重启广播 worker 任务（仅首次创建）
 static void bsp_bt_spp_adv_worker_start(void)
 {
     if (!g_restart_adv_inited) {

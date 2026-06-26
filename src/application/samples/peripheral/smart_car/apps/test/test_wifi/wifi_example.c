@@ -20,7 +20,7 @@
 #define EXAMPLE_WIFI_SSID "BS-8"           // WiFi热点名称
 #define EXAMPLE_WIFI_PASSWORD "BS88888888" // WiFi热点密码
 
-/* WiFi 连接测试任务：同步连接 AP 并获取 IP 地址 */
+// WiFi 连接测试任务：同步连接 AP 并获取 IP 地址
 static void wifi_task_entry(const char *arg)
 {
     UNUSED(arg);
@@ -28,7 +28,7 @@ static void wifi_task_entry(const char *arg)
 
     printf("[WiFi Example] Start\r\n");
 
-    /* 同步阻塞连接（固定等待 20 秒） */
+    // 同步阻塞连接（固定等待 20 秒）
     int ret = bsp_wifi_connect_sync(EXAMPLE_WIFI_SSID, EXAMPLE_WIFI_PASSWORD);
     if (ret != 0) {
         printf("[WiFi Example] Failed to connect to AP\r\n");
@@ -44,7 +44,7 @@ static void wifi_task_entry(const char *arg)
     }
 }
 
-/* WiFi 测试示例入口：创建 WiFi 连接任务 */
+// WiFi 测试示例入口：创建 WiFi 连接任务
 static void wifi_example_entry(void)
 {
     osThreadAttr_t attr;

@@ -35,7 +35,7 @@ static bool s_done_sem_inited = false;  // 信号量初始化标志
 static osal_mutex s_meas_lock;          // 测距操作互斥锁
 static bool s_meas_lock_inited = false; // 互斥锁初始化标志
 
-/* ECHO 引脚双边沿中断：记录上升/下降沿时间戳，下降沿释放信号量 */
+// ECHO 引脚双边沿中断：记录上升/下降沿时间戳，下降沿释放信号量
 static void hcsr04_echo_isr(pin_t pin, uintptr_t param)
 {
     UNUSED(param);
@@ -52,7 +52,7 @@ static void hcsr04_echo_isr(pin_t pin, uintptr_t param)
     }
 }
 
-/* 初始化 HC-SR04：创建信号量和互斥锁，配置 TRIG 输出和 ECHO 双边沿中断 */
+// 初始化 HC-SR04：创建信号量和互斥锁，配置 TRIG 输出和 ECHO 双边沿中断
 void hcsr04_init(void)
 {
     if (!s_done_sem_inited) {
@@ -76,7 +76,7 @@ void hcsr04_init(void)
     (void)uapi_gpio_register_isr_func(HCSR04_ECHO_GPIO, GPIO_INTERRUPT_DEDGE, hcsr04_echo_isr);
 }
 
-/* 触发一次超声波测距，返回距离（厘米），失败返回 0.0 */
+// 触发一次超声波测距，返回距离（厘米），失败返回 0.0
 float hcsr04_get_distance(void)
 {
     if (!s_done_sem_inited || !s_meas_lock_inited) {

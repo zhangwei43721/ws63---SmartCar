@@ -112,7 +112,7 @@ static void wifi_config_extract_creds(const wifi_config_pkt_t *pkt,
     }
 }
 
-// 根据包类型分发处理：WiFi配置、统一协议、PID调参、OTA触发
+// 根据包类型分发处理：WiFi配置、统一协议
 static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender)
 {
     if (len < 1)
@@ -150,57 +150,9 @@ static void process_packet(uint8_t *data, size_t len, struct sockaddr_in *sender
             break;
         }
 
-        // --- 标准 5 字节协议包 ---
-        case CAR_PKT_CONTROL:   // 0x01 电机控制
-        case CAR_PKT_MODE:      // 0x03 模式切换
-        case CAR_PKT_HEARTBEAT: // 0xFE 心跳
-            if (len == sizeof(car_packet_t))
-                car_proto_handle_packet((car_packet_t *)data, MODE_SRC_UDP);
+        default:
+            (void)car_proto_handle_packet(data, (uint16_t)len, MODE_SRC_UDP);
             break;
-
-        case CAR_PKT_PID: { // 0x04 PID 调参（退出循迹时自动持久化到 NV）
-            if (len != sizeof(car_packet_t))
-                return;
-            car_packet_t *pkt = (car_packet_t *)data;
-            mode_trace_set_pid(pkt->cmd, (int16_t)((pkt->motor1 << 8) | (uint8_t)pkt->motor2));
-            break;
-        }
-
-        case CAR_PKT_OTA: { // 0x05 OTA 触发/取消
-            if (len != sizeof(car_packet_t))
-                return;
-            car_packet_t *pkt = (car_packet_t *)data;
-            car_packet_t ack = {0};
-            ack.type = CAR_PKT_OTA;
-            if (pkt->cmd == OTA_SUBCMD_START) {
-                ack.cmd = ota_service_start(0) ? 0x00 : 0x01;
-            } else if (pkt->cmd == 0x02) {
-                ota_service_cancel();
-                ack.cmd = 0x00;
-            } else {
-                ack.cmd = 0x02;
-            }
-            udp_net_common_send_to_addr(g_sockfd, &ack, sizeof(ack), &g_server_addr);
-            break;
-        }
-
-        case CAR_PKT_TRACE_CALIB: { // 0x0C 阈值配置包
-            if (len != 7)
-                return;
-            uint16_t l = (uint16_t)((data[1] << 8) | data[2]);
-            uint16_t m = (uint16_t)((data[3] << 8) | data[4]);
-            uint16_t r = (uint16_t)((data[5] << 8) | data[6]);
-            mode_trace_update_thresholds(l, m, r);
-            break;
-        }
-
-        case CAR_PKT_TRACE_SUBMODE: { // 0x0D 循迹子模式切换包
-            if (len != sizeof(car_packet_t))
-                return;
-            car_packet_t *pkt = (car_packet_t *)data;
-            mode_trace_set_submode(pkt->cmd);
-            break;
-        }
     }
 }
 
@@ -379,7 +331,7 @@ void udp_service_init(void)
     g_udp_task = car_task_create_locked("udp_task", (osal_kthread_handler)udp_service_task, NULL, 8192, 24);
 }
 
-/* 向绑定的主机发送 UDP 数据包 */
+// 向绑定的主机发送 UDP 数据包
 void udp_service_send_data(const uint8_t *data, size_t len)
 {
     if (g_sockfd >= 0 && g_udp_state == UDP_STATE_CONNECTED) {
@@ -387,36 +339,32 @@ void udp_service_send_data(const uint8_t *data, size_t len)
     }
 }
 
-/* 获取并向主机发送红外传感器原始电压和阈值 */
+// 获取并向主机发送红外传感器原始电压和阈值
 void udp_service_send_trace_info(void)
 {
     if (g_sockfd < 0 || g_udp_state != UDP_STATE_CONNECTED) {
         return;
     }
 
-    tcrt5000_sample();
-    uint32_t adc_l, adc_m, adc_r;
-    tcrt5000_snapshot(&adc_l, &adc_m, &adc_r);
-
-    uint16_t th_l = 1750, th_m = 1150, th_r = 1600;
-    storage_service_get_trace_thresholds(&th_l, &th_m, &th_r);
+    CarState st;
+    car_mgr_get_state_copy(&st);
 
     // 格式: [0x0A, RawL_Hi, RawL_Lo, RawM_Hi, RawM_Lo, RawR_Hi, RawR_Lo, ThL_Hi, ThL_Lo, ThM_Hi, ThM_Lo, ThR_Hi, ThR_Lo]
     uint8_t pkt[13];
     pkt[0] = CAR_PKT_TRACE_INFO;
-    pkt[1] = (uint8_t)((adc_l >> 8) & 0xFF);
-    pkt[2] = (uint8_t)(adc_l & 0xFF);
-    pkt[3] = (uint8_t)((adc_m >> 8) & 0xFF);
-    pkt[4] = (uint8_t)(adc_m & 0xFF);
-    pkt[5] = (uint8_t)((adc_r >> 8) & 0xFF);
-    pkt[6] = (uint8_t)(adc_r & 0xFF);
+    pkt[1] = (uint8_t)((st.adc_left >> 8) & 0xFF);
+    pkt[2] = (uint8_t)(st.adc_left & 0xFF);
+    pkt[3] = (uint8_t)((st.adc_middle >> 8) & 0xFF);
+    pkt[4] = (uint8_t)(st.adc_middle & 0xFF);
+    pkt[5] = (uint8_t)((st.adc_right >> 8) & 0xFF);
+    pkt[6] = (uint8_t)(st.adc_right & 0xFF);
 
-    pkt[7] = (uint8_t)((th_l >> 8) & 0xFF);
-    pkt[8] = (uint8_t)(th_l & 0xFF);
-    pkt[9] = (uint8_t)((th_m >> 8) & 0xFF);
-    pkt[10] = (uint8_t)(th_m & 0xFF);
-    pkt[11] = (uint8_t)((th_r >> 8) & 0xFF);
-    pkt[12] = (uint8_t)(th_r & 0xFF);
+    pkt[7] = (uint8_t)((st.th_left >> 8) & 0xFF);
+    pkt[8] = (uint8_t)(st.th_left & 0xFF);
+    pkt[9] = (uint8_t)((st.th_middle >> 8) & 0xFF);
+    pkt[10] = (uint8_t)(st.th_middle & 0xFF);
+    pkt[11] = (uint8_t)((st.th_right >> 8) & 0xFF);
+    pkt[12] = (uint8_t)(st.th_right & 0xFF);
 
     (void)udp_net_common_send_to_addr(g_sockfd, pkt, sizeof(pkt), &g_server_addr);
 }

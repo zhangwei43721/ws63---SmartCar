@@ -24,6 +24,18 @@ void http_send_response_and_close(int client_fd, const char *response)
     lwip_close(client_fd);
 }
 
+#include "portal_html.h"
+
+// 发送 HTML 响应主体并自动加 HTTP 200 OK 头且关闭
+void http_send_html_response(int client_fd, const char *html)
+{
+    if (client_fd < 0 || html == NULL)
+        return;
+    (void)lwip_send(client_fd, HTTP_OK_HEADER, strlen(HTTP_OK_HEADER), 0);
+    (void)lwip_send(client_fd, html, strlen(html), 0);
+    lwip_close(client_fd);
+}
+
 // 创建UDP socket并绑定端口，设置接收超时和广播选项
 int udp_net_common_open_and_bind(uint16_t port, unsigned int recv_timeout_ms, bool enable_broadcast)
 {

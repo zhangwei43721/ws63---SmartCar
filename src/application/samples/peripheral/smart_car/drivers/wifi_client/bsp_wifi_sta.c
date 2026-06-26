@@ -36,28 +36,28 @@ static bool s_exit_sem_inited = false; // exit 信号量初始化标志
 static osal_semaphore s_dhcp_sem;      // DHCP 地址获取完成信号量
 static bool s_dhcp_sem_inited = false; // dhcp 信号量初始化标志
 
-/* 获取当前 WiFi 连接状态 */
+// 获取当前 WiFi 连接状态
 bsp_wifi_status_t bsp_wifi_get_status(void)
 {
     return s_status;
 }
-/* 获取当前 WiFi 工作模式（STA/AP） */
+// 获取当前 WiFi 工作模式（STA/AP）
 bsp_wifi_mode_t bsp_wifi_get_mode(void)
 {
     return s_mode;
 }
-/* 设置 WiFi 连接状态 */
+// 设置 WiFi 连接状态
 void bsp_wifi_set_status(bsp_wifi_status_t st)
 {
     s_status = st;
 }
-/* 设置 WiFi 工作模式 */
+// 设置 WiFi 工作模式
 void bsp_wifi_set_mode(bsp_wifi_mode_t m)
 {
     s_mode = m;
 }
 
-/* 获取当前 WiFi 接口的 IP 地址字符串 */
+// 获取当前 WiFi 接口的 IP 地址字符串
 int bsp_wifi_get_ip(char *ip_str, uint32_t len)
 {
     if (!ip_str || len < 16)
@@ -77,14 +77,14 @@ int bsp_wifi_get_ip(char *ip_str, uint32_t len)
     return 0;
 }
 
-/* 注册 WiFi 事件回调函数 */
+// 注册 WiFi 事件回调函数
 void bsp_wifi_register_event_cb(bsp_wifi_event_cb_t cb, void *arg)
 {
     s_event_cb = cb;
     s_event_arg = arg;
 }
 
-/* 通知已注册的事件回调，并在连接成功/失败时释放同步信号量 */
+// 通知已注册的事件回调，并在连接成功/失败时释放同步信号量
 void bsp_wifi_notify_event(bsp_wifi_event_t event)
 {
     if (s_event_cb) {
@@ -95,7 +95,7 @@ void bsp_wifi_notify_event(bsp_wifi_event_t event)
     }
 }
 
-/* 设置当前 WiFi 连接的 SSID 和密码 */
+// 设置当前 WiFi 连接的 SSID 和密码
 void bsp_wifi_set_current_config(const char *ssid, const char *pwd)
 {
     if (ssid)
@@ -104,7 +104,7 @@ void bsp_wifi_set_current_config(const char *ssid, const char *pwd)
         strncpy_s(s_pwd, sizeof(s_pwd), pwd, sizeof(s_pwd) - 1);
 }
 
-/* 获取当前存储的 WiFi SSID 和密码 */
+// 获取当前存储的 WiFi SSID 和密码
 static void bsp_wifi_get_current_config(char *ssid, uint32_t ssid_len, char *pwd, uint32_t pwd_len)
 {
     if (ssid && ssid_len > 0)
@@ -168,7 +168,7 @@ int bsp_wifi_scan_list(bsp_wifi_scan_item_t *items, uint32_t max_count, uint32_t
     return 0;
 }
 
-/* 启动 STA 常驻任务 */
+// 启动 STA 常驻任务
 bool sta_task_start(void)
 {
     if (s_sta_task)
@@ -195,7 +195,7 @@ bool sta_task_start(void)
     return s_sta_task ? true : false;
 }
 
-/* 停止 STA 任务并等待退出 */
+// 停止 STA 任务并等待退出
 void sta_task_stop(void)
 {
     if (!s_sta_task)
@@ -206,14 +206,14 @@ void sta_task_stop(void)
     s_sta_task = NULL;
 }
 
-/* 唤醒 STA 任务（触发连接或断开重连） */
+// 唤醒 STA 任务（触发连接或断开重连）
 void bsp_wifi_sta_wakeup(void)
 {
     if (s_wait_sem_inited)
         osal_sem_up(&s_wait_sem);
 }
 
-/* WiFi 连接状态变化回调：更新状态并释放连接信号量 */
+// WiFi 连接状态变化回调：更新状态并释放连接信号量
 static void wifi_cb(td_s32 state, const wifi_linked_info_stru *info, td_s32 reason)
 {
     (void)info;
@@ -227,7 +227,7 @@ static void wifi_cb(td_s32 state, const wifi_linked_info_stru *info, td_s32 reas
     }
 }
 
-/* WiFi 扫描完成回调：释放连接信号量 */
+// WiFi 扫描完成回调：释放连接信号量
 static void scan_cb(td_s32 state, td_s32 size)
 {
     (void)state;
@@ -235,7 +235,7 @@ static void scan_cb(td_s32 state, td_s32 size)
     osal_sem_up(&s_conn_sem);
 }
 
-/* 网络接口状态回调：获取到 IP 时释放 DHCP 信号量 */
+// 网络接口状态回调：获取到 IP 时释放 DHCP 信号量
 static void sta_netif_status_cb(struct netif *netif)
 {
     if (netif && netif->ip_addr.u_addr.ip4.addr != 0 && s_dhcp_sem_inited) {

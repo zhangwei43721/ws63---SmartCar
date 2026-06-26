@@ -81,5 +81,5 @@ static void tcrt5000_entry(void)
     osal_kthread_unlock();
 }
 
-/* Run the tcrt5000_entry. */
+// 运行 tcrt5000 入口。
 app_run(tcrt5000_entry);

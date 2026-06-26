@@ -12,6 +12,7 @@
 #include "errcode.h"
 
 #define OTA_TCP_PORT 8890
+#define OTA_SUBCMD_START 0x01
 
 #define OTA_RECV_CHUNK_SIZE 32768 // 每次 recv 缓冲大小
 
@@ -21,19 +22,19 @@
 // OTA 状态机：IDLE → WAITING(监听TCP) → RECEIVING → VERIFYING → UPGRADING(重启)
 // 任一阶段异常 → FAILED → 500ms 定时器自动回到 IDLE
 #define OTA_STATE_MAP(OP)                \
-    OP(OTA_STATE_IDLE, "IDLE")           \
-    OP(OTA_STATE_WAITING, "WAITING")     \
-    OP(OTA_STATE_RECEIVING, "RECEIVING") \
-    OP(OTA_STATE_VERIFYING, "VERIFYING") \
-    OP(OTA_STATE_UPGRADING, "UPGRADING") \
-    OP(OTA_STATE_FAILED, "FAILED")
+    OP(OTA_STATE_IDLE, "等待中")           \
+    OP(OTA_STATE_WAITING, "等待连接")     \
+    OP(OTA_STATE_RECEIVING, "接收中") \
+    OP(OTA_STATE_VERIFYING, "校验中") \
+    OP(OTA_STATE_UPGRADING, "重启中") \
+    OP(OTA_STATE_FAILED, "失败")
 
 #define OTA_STATE_ENUM(s, str) s,
 #define OTA_STATE_STR(s, str) str,
 
 typedef enum { OTA_STATE_MAP(OTA_STATE_ENUM) OTA_STATE_MAX } ota_state_t;
 
-void ota_service_init(void); /* 初始化 OTA 服务（创建状态机任务） */
+void ota_service_init(void); // 初始化 OTA 服务（创建状态机任务）
 
 /**
  * @brief 启动 OTA TCP 接收流程（由 UDP 触发调用）
@@ -42,6 +43,6 @@ void ota_service_init(void); /* 初始化 OTA 服务（创建状态机任务） 
  */
 bool ota_service_start(uint32_t expected_size);
 
-void ota_service_cancel(void); /* 取消正在进行的 OTA 传输 */
+void ota_service_cancel(void); // 取消正在进行的 OTA 传输
 
 #endif // OTA_SERVICE_H

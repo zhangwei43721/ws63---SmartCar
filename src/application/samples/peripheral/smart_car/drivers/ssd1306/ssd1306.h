@@ -106,50 +106,50 @@ typedef struct {
 } BspSsd1306Vertex;
 
 // ================= API =================
-bool bsp_ssd1306_init(void);                       /* 初始化 SSD1306 OLED（I2C + 命令序列） */
-void bsp_ssd1306_fill(BspSsd1306Color color);      /* 用指定颜色填充整个显存 */
-void bsp_ssd1306_set_cursor(uint8_t x, uint8_t y); /* 设置文本绘制光标位置 */
-void bsp_ssd1306_update_screen(void);              /* 将显存数据通过 I2C 刷新到屏幕 */
+bool bsp_ssd1306_init(void);                       // 初始化 SSD1306 OLED（I2C + 命令序列）
+void bsp_ssd1306_fill(BspSsd1306Color color);      // 用指定颜色填充整个显存
+void bsp_ssd1306_set_cursor(uint8_t x, uint8_t y); // 设置文本绘制光标位置
+void bsp_ssd1306_update_screen(void);              // 将显存数据通过 I2C 刷新到屏幕
 
-char bsp_ssd1306_draw_char(char ch, FontDef Font, BspSsd1306Color color);     /* 在光标处绘制单个字符 */
-char bsp_ssd1306_draw_string(char *str, FontDef Font, BspSsd1306Color color); /* 在光标处绘制字符串 */
+char bsp_ssd1306_draw_char(char ch, FontDef Font, BspSsd1306Color color);     // 在光标处绘制单个字符
+char bsp_ssd1306_draw_string(char *str, FontDef Font, BspSsd1306Color color); // 在光标处绘制字符串
 void bsp_ssd1306_draw_string16(uint8_t x,
                                uint8_t y,
                                const char *str,
-                               BspSsd1306Color color); /* 在指定位置绘制 16px 高中文字符串 */
+                               BspSsd1306Color color); // 在指定位置绘制 16px 高中文字符串
 
-void bsp_ssd1306_draw_pixel(uint8_t x, uint8_t y, BspSsd1306Color color); /* 绘制单个像素点 */
+void bsp_ssd1306_draw_pixel(uint8_t x, uint8_t y, BspSsd1306Color color); // 绘制单个像素点
 void bsp_ssd1306_draw_line(uint8_t x1,
                            uint8_t y1,
                            uint8_t x2,
                            uint8_t y2,
-                           BspSsd1306Color color); /* 绘制直线（Bresenham 算法） */
+                           BspSsd1306Color color); // 绘制直线（Bresenham 算法）
 void bsp_ssd1306_draw_polyline(const BspSsd1306Vertex *par_vertex,
                                uint16_t par_size,
-                               BspSsd1306Color color); /* 绘制折线段 */
+                               BspSsd1306Color color); // 绘制折线段
 void bsp_ssd1306_draw_rectangle(uint8_t x1,
                                 uint8_t y1,
                                 uint8_t x2,
                                 uint8_t y2,
-                                BspSsd1306Color color);                                               /* 绘制矩形边框 */
-void bsp_ssd1306_draw_circle(uint8_t par_x, uint8_t par_y, uint8_t par_r, BspSsd1306Color par_color); /* 绘制圆形边框 */
-void bsp_ssd1306_draw_bitmap(const uint8_t *bitmap, uint32_t size); /* 绘制位图到整个屏幕 */
+                                BspSsd1306Color color);                                               // 绘制矩形边框
+void bsp_ssd1306_draw_circle(uint8_t par_x, uint8_t par_y, uint8_t par_r, BspSsd1306Color par_color); // 绘制圆形边框
+void bsp_ssd1306_draw_bitmap(const uint8_t *bitmap, uint32_t size); // 绘制位图到整个屏幕
 void bsp_ssd1306_draw_region(uint8_t x,
                              uint8_t y,
                              uint8_t w,
                              const uint8_t *data,
-                             uint32_t size); /* 绘制区域位图数据 */
+                             uint32_t size); // 绘制区域位图数据
 
-void bsp_ssd1306_set_contrast(uint8_t value); /* 设置屏幕对比度 */
-void bsp_ssd1306_set_display_on(uint8_t on);  /* 开关显示 */
-uint8_t bsp_ssd1306_get_display_on(void);     /* 获取当前显示开关状态 */
+void bsp_ssd1306_set_contrast(uint8_t value); // 设置屏幕对比度
+void bsp_ssd1306_set_display_on(uint8_t on);  // 开关显示
+uint8_t bsp_ssd1306_get_display_on(void);     // 获取当前显示开关状态
 
-void bsp_ssd1306_reset(void);                                        /* 硬件复位 OLED（RST 引脚） */
-void bsp_ssd1306_write_command(uint8_t byte);                        /* 发送单字节命令 */
-void bsp_ssd1306_write_data(uint8_t *buffer, size_t buff_size);      /* 发送数据块到显存 */
-BspSsd1306Error bsp_ssd1306_fill_buffer(uint8_t *buf, uint32_t len); /* 填充 I2C 发送缓冲区 */
-void bsp_ssd1306_clear_oled(void);                                   /* 清屏（填充黑色 + 刷新） */
+void bsp_ssd1306_reset(void);                                        // 硬件复位 OLED（RST 引脚）
+void bsp_ssd1306_write_command(uint8_t byte);                        // 发送单字节命令
+void bsp_ssd1306_write_data(uint8_t *buffer, size_t buff_size);      // 发送数据块到显存
+BspSsd1306Error bsp_ssd1306_fill_buffer(uint8_t *buf, uint32_t len); // 填充 I2C 发送缓冲区
+void bsp_ssd1306_clear_oled(void);                                   // 清屏（填充黑色 + 刷新）
 
-void bsp_ssd1306_printf(char *fmt, ...); /* 格式化打印到 OLED（自动换行滚动） */
+void bsp_ssd1306_printf(char *fmt, ...); // 格式化打印到 OLED（自动换行滚动）
 
 #endif // BSP_SSD1306_H

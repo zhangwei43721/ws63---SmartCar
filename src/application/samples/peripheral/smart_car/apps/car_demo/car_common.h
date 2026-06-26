@@ -16,11 +16,7 @@
         if ((inited)) {                                                                 \
             (void)osal_mutex_lock(&(mutex));                                            \
         } else {                                                                        \
-            static int _mutex_warned_##__LINE__ = 0;                                    \
-            if (!_mutex_warned_##__LINE__) {                                            \
-                _mutex_warned_##__LINE__ = 1;                                           \
-                printf("[BUG] mutex used before init @ %s:%d\r\n", __FILE__, __LINE__); \
-            }                                                                           \
+            printf("[BUG] mutex used before init @ %s:%d\r\n", __FILE__, __LINE__);     \
         }                                                                               \
     } while (0)
 
@@ -30,37 +26,14 @@
             osal_mutex_unlock(&(mutex)); \
     } while (0)
 
-// 封装 osal_kthread_lock/create/set_priority/unlock 4 步模板，
-// 统一任务创建模式并保证 lock/unlock 配对。失败时打印 BUG 日志。
-static inline osal_task *car_task_create_locked(const char *name,
-                                                osal_kthread_handler entry,
-                                                void *arg,
-                                                unsigned int stack_size,
-                                                unsigned int priority)
-{
-    osal_task *handle = NULL;
-    osal_kthread_lock();
-    handle = osal_kthread_create(entry, arg, name, stack_size);
-    if (handle != NULL) {
-        osal_kthread_set_priority(handle, priority);
-    }
-    osal_kthread_unlock();
-    if (handle == NULL) {
-        printf("[BUG] task create failed: %s\r\n", name ? name : "(null)");
-    }
-    return handle;
-}
+// 任务与队列公共辅助函数
+osal_task *car_task_create_locked(const char *name,
+                                  osal_kthread_handler entry,
+                                  void *arg,
+                                  unsigned int stack_size,
+                                  unsigned int priority);
 
-// 队满丢最旧→写入新消息。4 处复制模板的公共实现，避免全局暴露 queue handle。
-static inline int osal_msgq_overwrite(unsigned long qid, unsigned int depth, const void *msg, unsigned int size)
-{
-    if (osal_msg_queue_get_msg_num(qid) >= depth) {
-        unsigned char drop[64];
-        unsigned int dsz = size;
-        (void)osal_msg_queue_read_copy(qid, drop, &dsz, OSAL_MSGQ_NO_WAIT);
-    }
-    return osal_msg_queue_write_copy(qid, (void *)msg, size, OSAL_MSGQ_NO_WAIT);
-}
+int osal_msgq_overwrite(unsigned long qid, unsigned int depth, const void *msg, unsigned int size);
 
 /**
  * @brief 小车运行模式枚举
@@ -100,7 +73,6 @@ typedef struct {
 
 // ---------- 模式命令来源 ----------
 typedef enum {
-    OTA_SUBCMD_START = 0x01,  // OTA命令
     MODE_SRC_BUTTON = 0x01,   // 按键 ISR
     MODE_SRC_UDP = 0x02,      // WiFi UDP 遥控
     MODE_SRC_HTTP = 0x03,     // 强制门户 HTTP
@@ -150,11 +122,15 @@ typedef struct {
 #pragma pack()
 
 /**
- * @brief 统一协议处理入口，消费 CONTROL / MODE / HEARTBEAT
+ * @brief 统一协议处理入口，消费 CONTROL / MODE / HEARTBEAT / PID / OTA / TRACE_CALIB / TRACE_SUBMODE 等
  * @return true  包已被消费
- * @return false 包未处理，调用方需自行处理（PID / OTA / WiFi 配置等）
+ * @return false 包未处理，调用方需自行处理
  */
-bool car_proto_handle_packet(const car_packet_t *pkt, uint32_t mode_source);
+bool car_proto_handle_packet(const uint8_t *data, uint16_t len, uint32_t mode_source);
+
+// 手动驾驶安全网关接口
+void car_mgr_manual_drive(int8_t left, int8_t right, uint32_t source);
+bool car_mgr_is_manual_allowed(void);
 
 // ---------- 主状态机接口 ----------
 bool car_mgr_post_mode(CarStatus status, uint32_t source); // 投递模式切换命令到状态机消息队列

@@ -44,22 +44,22 @@ static int l9110s_task(void *arg)
 
     while (1) {
         // // 前进
-        // printf("Car moving forward\n");
+        // printf("小车前进\n");
         // l9110s_set_differential(100, 100);
         // osal_msleep(L9110S_DELAY_MS);
 
         // // 后退
-        // printf("Car moving backward\n");
+        // printf("小车后退\n");
         // l9110s_set_differential(-100, -100);
         // osal_msleep(L9110S_DELAY_MS);
 
         // // 左转
-        // printf("Car turning left\n");
+        // printf("小车左转\n");
         // l9110s_set_differential(0, 100);
         // osal_msleep(L9110S_DELAY_MS);
 
         // // 右转
-        // printf("Car turning right\n");
+        // printf("小车右转\n");
         // l9110s_set_differential(100, 0);
         // osal_msleep(L9110S_DELAY_MS);
 
@@ -97,5 +97,5 @@ static void l9110s_entry(void)
     osal_kthread_unlock();
 }
 
-/* Run the l9110s_entry. */
+// 运行 l9110s 入口。
 app_run(l9110s_entry);

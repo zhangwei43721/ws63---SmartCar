@@ -19,7 +19,7 @@ static const uint8_t TCRT_ADC_CHANNELS[3] = {5, 3, 2};
 // 三路 ADC 采样共享数据
 static volatile uint32_t s_adc_data[3] = {0};
 
-/* ADC 采样完成回调 */
+// ADC 采样完成回调
 static void tcrt5000_adc_callback(uint8_t channel, uint32_t *buffer, uint32_t length, bool *next)
 {
     *next = false; // 显式置 false
@@ -58,7 +58,7 @@ void tcrt5000_sample(void)
     }
 }
 
-/* 一次性读取三路 ADC 值*/
+// 一次性读取三路 ADC 值
 void tcrt5000_snapshot(uint32_t *l, uint32_t *m, uint32_t *r)
 {
     // uint32_t irq = osal_irq_lock();

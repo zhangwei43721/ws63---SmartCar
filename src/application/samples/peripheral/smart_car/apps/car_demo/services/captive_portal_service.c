@@ -40,20 +40,20 @@ static bool g_portal_lock_inited = false; // Portal 互斥锁是否已初始化
 static osal_event g_portal_event;          // Portal 事件组（AP_READY/AP_STOPPED/EXIT）
 static bool g_portal_event_inited = false; // Portal 事件组是否已初始化
 
-/* 加锁保护 Portal 共享状态 */
+// 加锁保护 Portal 共享状态
 static inline void portal_lock(void)
 {
     if (g_portal_lock_inited)
         (void)osal_mutex_lock(&g_portal_lock);
 }
-/* 解锁 Portal 共享状态 */
+// 解锁 Portal 共享状态
 static inline void portal_unlock(void)
 {
     if (g_portal_lock_inited)
         (void)osal_mutex_unlock(&g_portal_lock);
 }
 
-/* 设置 Portal 状态并更新状态文本 */
+// 设置 Portal 状态并更新状态文本
 static void portal_set_status(portal_status_t st, const char *text)
 {
     portal_lock();
@@ -75,153 +75,9 @@ static bsp_wifi_scan_item_t g_scan_cache[SCAN_CACHE_MAX]; // WiFi 扫描结果�
 static uint32_t g_scan_cache_count = 0;                   // 当前缓存的扫描结果数量
 static bool g_scan_cache_ready = false;                   // 扫描缓存是否已构建完成
 
-static const char s_html_page[] =
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/html; charset=utf-8\r\n"
-    "Connection: close\r\n\r\n"
-    "<!DOCTYPE html><html><head>"
-    "<meta charset=\"utf-8\">"
-    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-    "<title>小车WiFi配网</title>"
-    "<style>"
-    "*{box-sizing:border-box;margin:0;padding:0}"
-    "body{font-family:-apple-system,BlinkMacSystemFont,Segoe "
-    "UI,Caro,Helvetica,Arial,sans-serif;background:#f2f3f5;display:flex;justify-content:center;align-items:center;"
-    "min-height:100vh;padding:16px}"
-    ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px "
-    "rgba(0,0,0,.08);padding:28px;width:100%;max-width:360px}"
-    "h1{font-size:20px;color:#1a1a1a;margin-bottom:4px;text-align:center}"
-    ".sub{color:#888;font-size:13px;text-align:center;margin-bottom:20px}"
-    ".field{margin-bottom:14px}"
-    "label{display:block;font-size:13px;color:#555;margin-bottom:4px;font-weight:500}"
-    "input{width:100%;padding:12px 14px;border:1px solid "
-    "#ddd;border-radius:10px;font-size:15px;outline:0;transition:border .2s}"
-    "input:focus{border-color:#007aff}"
-    "button{width:100%;padding:13px;border:0;border-radius:10px;background:#007aff;color:#fff;font-size:16px;font-"
-    "weight:600;cursor:pointer;margin-top:4px}"
-    "button:active{opacity:.9}"
-    ".tip{margin-top:14px;font-size:12px;color:#999;text-align:center;line-height:1.5}"
-    "</style></head><body>"
-    "<div class=\"card\">"
-    "<h1>智能小车配网</h1>"
-    "<p class=\"sub\">连接你的WiFi，让小车接入局域网</p>"
-    "<form method=\"POST\" action=\"/config\">"
-    "<div class=\"field\">"
-    "<label>WiFi 名称 (SSID)</label>"
-    "<input type=\"text\" id=\"ssid\" name=\"ssid\" placeholder=\"请输入WiFi名称\" required maxlength=31>"
-    "<select id=\"ssid_sel\" onchange=\"pickSsid()\" style=\"width:100%;margin-top:8px;padding:10px;border:1px solid "
-    "#ddd;border-radius:10px;font-size:14px;background:#fafafa\">"
-    "<option value=\"\">-- 附近 WiFi --</option>"
-    "</select>"
-    "<button type=\"button\" onclick=\"scanWifi(true)\" "
-    "style=\"margin-top:8px;background:#e5e5ea;color:#333;font-size:13px;padding:8px\">刷新 WiFi 列表</button>"
-    "<p id=\"scan_tip\" style=\"font-size:12px;color:#999;margin-top:4px\">正在加载附近 WiFi...</p>"
-    "</div>"
-    "<div class=\"field\">"
-    "<label>WiFi 密码</label>"
-    "<input type=\"password\" name=\"password\" placeholder=\"请输入WiFi密码\" maxlength=63>"
-    "</div>"
-    "<button type=\"submit\">保存并连接</button>"
-    "</form>"
-    "<div style=\"margin-top:18px;text-align:center\">"
-    "<a href=\"/control\" style=\"display:inline-block;padding:10px "
-    "20px;background:#34c759;color:#fff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600\">"
-    "点击控制小车</a>"
-    "<p style=\"margin-top:8px;font-size:12px;color:#999\">无需配网也可直接遥控</p>"
-    "</div>"
-    "<p class=\"tip\">提示：密码为空表示连接开放网络<br>配网成功后页面将自动跳转</p>"
-    "</div>"
-    "<script>"
-    "function pickSsid(){var "
-    "s=document.getElementById('ssid_sel');if(s.value){document.getElementById('ssid').value=s.value;}}"
-    "function scanWifi(refresh){"
-    "var t=document.getElementById('scan_tip');t.textContent=refresh?'刷新中，请等待...':'加载中...';"
-    "var x=new XMLHttpRequest();x.open('GET',refresh?'/scan?refresh=1':'/scan',true);x.timeout=8000;"
-    "x.onreadystatechange=function(){if(x.readyState==4){"
-    "if(x.status==200){try{var d=JSON.parse(x.responseText);var s=document.getElementById('ssid_sel');"
-    "s.innerHTML='<option value=\"\">-- 选择 SSID --</option>';"
-    "d.list.forEach(function(it){var o=document.createElement('option');o.value=it.ssid;"
-    "o.textContent=it.ssid+' ('+it.rssi+'dBm'+(it.sec>0?' 加密':' 开放')+')';s.appendChild(o);});"
-    "t.textContent='共发现 '+d.list.length+' 个网络';}catch(e){t.textContent='解析失败';}}"
-    "else{t.textContent='加载失败';}}};"
-    "x.ontimeout=function(){t.textContent='加载超时';};"
-    "x.send();}"
-    "window.onload=function(){scanWifi(false);"
-    "if(location.search.includes('fail'))"
-    "document.body.insertAdjacentHTML('afterbegin','<div style=\"background:#ff3b30;color:#fff;"
-    "padding:12px 16px;border-radius:10px;font-size:14px;text-align:center;margin-bottom:16px\">"
-    "连接失败，请检查密码后重新配网</div>');};"
-    "</script>"
-    "</body></html>";
+#include "portal_html.h"
 
-static const char s_html_fail_result[] =
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/html; charset=utf-8\r\n"
-    "Connection: close\r\n\r\n"
-    "<!DOCTYPE html><html><head>"
-    "<meta charset=\"utf-8\">"
-    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-    "<title>连接失败</title>"
-    "<style>"
-    "body{font-family:-apple-system,sans-serif;background:#f2f3f5;display:flex;"
-    "justify-content:center;align-items:center;min-height:100vh;margin:0}"
-    ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.08);"
-    "padding:28px;width:100%;max-width:320px;text-align:center}"
-    ".err{background:#ff3b30;color:#fff;padding:12px 16px;border-radius:10px;"
-    "font-size:14px;margin-bottom:16px}"
-    "a{display:inline-block;margin-top:12px;padding:10px 24px;background:#007aff;"
-    "color:#fff;text-decoration:none;border-radius:8px;font-size:15px}"
-    "</style></head><body>"
-    "<div class=\"card\">"
-    "<div class=\"err\">连接失败，请检查密码后重新配网</div>"
-    "<a href=\"/\">返回配网页面</a>"
-    "</div></body></html>";
-
-static const char s_html_busy[] =
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/html; charset=utf-8\r\n"
-    "Connection: close\r\n\r\n"
-    "<!DOCTYPE html><html><head>"
-    "<meta charset=\"utf-8\">"
-    "<meta http-equiv=\"refresh\" content=\"3;url=/\">"
-    "<title>处理中</title>"
-    "<style>"
-    "body{font-family:-apple-system,BlinkMacSystemFont,Segoe "
-    "UI,Caro,Helvetica,Arial,sans-serif;background:#f2f3f5;display:flex;justify-content:center;align-items:center;"
-    "min-height:100vh;margin:0}"
-    ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px "
-    "rgba(0,0,0,.08);padding:32px;width:100%;max-width:320px;text-align:center}"
-    "h1{font-size:20px;color:#ff9500;margin-bottom:8px}"
-    "p{color:#555;font-size:15px}"
-    "</style></head><body>"
-    "<div class=\"card\">"
-    "<h1>正在处理...</h1>"
-    "<p>上一条配网请求正在执行中<br>请稍候</p>"
-    "</div></body></html>";
-
-static const char s_html_submitted[] =
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/html; charset=utf-8\r\n"
-    "Connection: close\r\n\r\n"
-    "<!DOCTYPE html><html><head>"
-    "<meta charset=\"utf-8\">"
-    "<meta http-equiv=\"refresh\" content=\"3;url=/result\">"
-    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-    "<title>正在连接</title>"
-    "<style>"
-    "body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f2f3f5;display:flex;"
-    "justify-content:center;align-items:center;min-height:100vh;margin:0}"
-    ".card{background:#fff;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.08);"
-    "padding:32px;width:100%;max-width:320px;text-align:center}"
-    "h1{font-size:18px;color:#007aff;margin-bottom:12px}"
-    "p{color:#888;font-size:14px;line-height:1.6}"
-    "</style></head><body>"
-    "<div class=\"card\">"
-    "<h1>正在连接 WiFi...</h1>"
-    "<p>3 秒后自动检查连接结果</p>"
-    "</div></body></html>";
-
-/* URL 解码：%XX 转字符，+ 转空格 */
+// URL 解码：%XX 转字符，+ 转空格
 static int url_decode(const char *src, char *dst, size_t dst_len)
 {
     size_t i = 0, j = 0;
@@ -244,7 +100,7 @@ static int url_decode(const char *src, char *dst, size_t dst_len)
     return (int)j;
 }
 
-/* 解析 HTTP POST 表单体，提取 ssid 和 password 字段 */
+// 解析 HTTP POST 表单体，提取 ssid 和 password 字段
 static bool parse_form_body(const char *body, char *ssid, size_t ssid_len, char *password, size_t password_len)
 {
     const char *p = body;
@@ -280,7 +136,7 @@ static bool parse_form_body(const char *body, char *ssid, size_t ssid_len, char 
     return got_ssid && (ssid[0] != '\0');
 }
 
-/* 扫描附近 WiFi 并更新缓存 */
+// 扫描附近 WiFi 并更新缓存
 static void refresh_scan_cache(void)
 {
     bsp_wifi_scan_item_t tmp[SCAN_CACHE_MAX];
@@ -300,7 +156,7 @@ static void refresh_scan_cache(void)
     portal_unlock();
 }
 
-/* 将扫描结果以 JSON 格式发送给 HTTP 客户端 */
+// 将扫描结果以 JSON 格式发送给 HTTP 客户端
 static void send_scan_json(int client_fd, bsp_wifi_scan_item_t *items, uint32_t count, bool ok)
 {
     size_t buf_size = 256 + count * 96;
@@ -342,7 +198,7 @@ static void send_scan_json(int client_fd, bsp_wifi_scan_item_t *items, uint32_t 
     osal_kfree(json);
 }
 
-/* 处理 /scan 请求，返回附近 WiFi 列表 JSON */
+// 处理 /scan 请求，返回附近 WiFi 列表 JSON
 static void handle_scan_request(int client_fd, const char *query)
 {
     bool force_refresh = (query != NULL && strstr(query, "refresh=1") != NULL);
@@ -372,7 +228,7 @@ static void handle_scan_request(int client_fd, const char *query)
     send_scan_json(client_fd, snap, snap_cnt, ready);
 }
 
-/* 处理 /status 请求，返回当前 Portal 状态 JSON */
+// 处理 /status 请求，返回当前 Portal 状态 JSON
 static void handle_status_request(int client_fd)
 {
     const char *status_str = "idle";
@@ -409,7 +265,7 @@ static void handle_status_request(int client_fd)
     http_send_response_and_close(client_fd, json);
 }
 
-/* 处理单个 HTTP 客户端连接，解析请求并路由到对应处理函数 */
+// 处理单个 HTTP 客户端连接，解析请求并路由到对应处理函数
 static void handle_http_client(int client_fd)
 {
     char buf[1536];
@@ -478,7 +334,7 @@ static void handle_http_client(int client_fd)
     if (is_get &&
         (strcmp(path, "/generate_204") == 0 || strcmp(path, "/hotspot-detect.html") == 0 ||
          strcmp(path, "/ncsi.txt") == 0 || strcmp(path, "/success.txt") == 0 || strcmp(path, "/redirect") == 0)) {
-        http_send_response_and_close(client_fd, s_html_page);
+        http_send_html_response(client_fd, s_html_page);
         return;
     }
 
@@ -488,7 +344,7 @@ static void handle_http_client(int client_fd)
     }
     if (is_get && strcmp(path, "/result") == 0) {
         if (g_portal_status == PORTAL_STATUS_FAILED) {
-            http_send_response_and_close(client_fd, s_html_fail_result);
+            http_send_html_response(client_fd, s_html_fail_result);
         } else {
             char red[128];
             snprintf(red, sizeof(red), "HTTP/1.1 302 Found\r\nLocation: http://%s/\r\n\r\n", PORTAL_STATIC_IP);
@@ -498,13 +354,13 @@ static void handle_http_client(int client_fd)
     }
 
     if (is_get && strcmp(path, "/") == 0) {
-        http_send_response_and_close(client_fd, s_html_page);
+        http_send_html_response(client_fd, s_html_page);
         return;
     }
 
     if (is_post && strcmp(path, "/config") == 0) {
         if (g_portal_status == PORTAL_STATUS_CONFIG_RECEIVED || g_portal_status == PORTAL_STATUS_SWITCHING) {
-            http_send_response_and_close(client_fd, s_html_busy);
+            http_send_html_response(client_fd, s_html_busy);
             return;
         }
 
@@ -550,10 +406,10 @@ static void handle_http_client(int client_fd)
 
             portal_set_status(PORTAL_STATUS_SWITCHING, "切换STA");
             bsp_wifi_connect_ap_from_portal(g_switch_ssid, g_switch_password);
-            http_send_response_and_close(client_fd, s_html_submitted);
+            http_send_html_response(client_fd, s_html_submitted);
             return;
         } else {
-            http_send_response_and_close(client_fd, s_html_submitted);
+            http_send_html_response(client_fd, s_html_submitted);
             return;
         }
     }
@@ -565,7 +421,7 @@ static void handle_http_client(int client_fd)
     http_send_response_and_close(client_fd, redirect_root);
 }
 
-/* 创建并启动 HTTP 服务器（监听 80 端口） */
+// 创建并启动 HTTP 服务器（监听 80 端口）
 static int http_server_start(void)
 {
     int fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
@@ -591,14 +447,14 @@ static int http_server_start(void)
     return fd;
 }
 
-/* 关闭 HTTP 服务器 socket */
+// 关闭 HTTP 服务器 socket
 static void http_server_stop(int fd)
 {
     if (fd >= 0)
         lwip_close(fd);
 }
 
-/* 创建并启动 DNS 服务器（监听 53 端口，用于 Captive Portal 劫持） */
+// 创建并启动 DNS 服务器（监听 53 端口，用于 Captive Portal 劫持）
 static int dns_server_start(void)
 {
     int fd = lwip_socket(AF_INET, SOCK_DGRAM, 0);
@@ -622,14 +478,14 @@ static int dns_server_start(void)
     return fd;
 }
 
-/* 关闭 DNS 服务器 socket */
+// 关闭 DNS 服务器 socket
 static void dns_server_stop(int fd)
 {
     if (fd >= 0)
         lwip_close(fd);
 }
 
-/* 处理 DNS 查询，将所有 A 记录响应重定向到 AP 静态 IP */
+// 处理 DNS 查询，将所有 A 记录响应重定向到 AP 静态 IP
 static void dns_server_handle(int fd)
 {
     struct sockaddr_in client_addr;
@@ -682,7 +538,7 @@ copy_question:
     (void)lwip_sendto(fd, resp, resp_len, 0, (struct sockaddr *)&client_addr, addr_len);
 }
 
-/* Portal 主任务：检测 AP 模式，驱动 HTTP/DNS 服务器的启停与事件循环 */
+// Portal 主任务：检测 AP 模式，驱动 HTTP/DNS 服务器的启停与事件循环
 static int captive_portal_task(void *arg)
 {
     (void)arg;
@@ -757,7 +613,7 @@ static int captive_portal_task(void *arg)
     return 0;
 }
 
-/* 初始化 Portal 服务：创建互斥锁、事件和主任务 */
+// 初始化 Portal 服务：创建互斥锁、事件和主任务
 void captive_portal_service_init(void)
 {
     if (g_portal_task != NULL)
@@ -775,27 +631,27 @@ void captive_portal_service_init(void)
     g_portal_task = car_task_create_locked("portal_task", (osal_kthread_handler)captive_portal_task, NULL, 8192, 23);
 }
 
-/* 获取 AP 模式的静态 IP 地址字符串 */
+// 获取 AP 模式的静态 IP 地址字符串
 const char *captive_portal_service_get_ap_ip(void)
 {
     return PORTAL_STATIC_IP;
 }
 
-/* 通知 Portal 任务 AP 模式已就绪 */
+// 通知 Portal 任务 AP 模式已就绪
 void captive_portal_service_notify_ap_ready(void)
 {
     if (g_portal_event_inited)
         (void)osal_event_write(&g_portal_event, 0x01);
 }
 
-/* 通知 Portal 任务 AP 模式已停止 */
+// 通知 Portal 任务 AP 模式已停止
 void captive_portal_service_notify_ap_stopped(void)
 {
     if (g_portal_event_inited)
         (void)osal_event_write(&g_portal_event, 0x02);
 }
 
-/* 通知 Portal 任务 STA 连接失败，提示用户重新配网 */
+// 通知 Portal 任务 STA 连接失败，提示用户重新配网
 void captive_portal_service_notify_sta_fail(void)
 {
     portal_set_status(PORTAL_STATUS_FAILED, "连接失败，请重新配网");

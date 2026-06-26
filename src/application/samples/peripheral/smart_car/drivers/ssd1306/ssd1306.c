@@ -33,13 +33,13 @@
 #define SSD1306_CTRL_MASK_CONT (0x1 << 7) // 控制字节：连续传输标志
 #define DOUBLE 2                          // 双倍系数
 
-/* 复位 SSD1306（延时等待硬件就绪） */
+// 复位 SSD1306（延时等待硬件就绪）
 void bsp_ssd1306_reset(void)
 {
     osal_mdelay(1);
 }
 
-/* 通过 I2C 发送原始数据到 SSD1306 */
+// 通过 I2C 发送原始数据到 SSD1306
 static uint32_t ssd1306_SendData(uint8_t *buffer, uint32_t size)
 {
     uint16_t dev_addr = I2C_SLAVE2_ADDR;
@@ -53,20 +53,20 @@ static uint32_t ssd1306_SendData(uint8_t *buffer, uint32_t size)
     return 0;
 }
 
-/* 向指定控制字节地址写入单字节 */
+// 向指定控制字节地址写入单字节
 static uint32_t ssd1306_WriteByte(uint8_t regAddr, uint8_t byte)
 {
     uint8_t buffer[] = {regAddr, byte};
     return ssd1306_SendData(buffer, sizeof(buffer));
 }
 
-/* 向 SSD1306 写入一条命令 */
+// 向 SSD1306 写入一条命令
 void bsp_ssd1306_write_command(uint8_t byte)
 {
     ssd1306_WriteByte(SSD1306_CTRL_CMD, byte);
 }
 
-/* 向 SSD1306 写入批量显示数据 */
+// 向 SSD1306 写入批量显示数据
 void bsp_ssd1306_write_data(uint8_t *buffer, size_t buff_size)
 {
     uint8_t data[SSD1306_WIDTH * DOUBLE] = {0};
@@ -81,7 +81,7 @@ void bsp_ssd1306_write_data(uint8_t *buffer, size_t buff_size)
 static uint8_t g_ssd1306_buffer[SSD1306_BUFFER_SIZE];
 static BspSsd1306Ctx g_ssd1306_ctx; // OLED 显示上下文（光标、状态）
 
-/* 将外部数据拷贝到内部帧缓冲区 */
+// 将外部数据拷贝到内部帧缓冲区
 BspSsd1306Error bsp_ssd1306_fill_buffer(uint8_t *buf, uint32_t len)
 {
     BspSsd1306Error ret = BSP_SSD1306_ERR;
@@ -92,7 +92,7 @@ BspSsd1306Error bsp_ssd1306_fill_buffer(uint8_t *buf, uint32_t len)
     return ret;
 }
 
-/* 发送 SSD1306 硬件初始化命令序列 */
+// 发送 SSD1306 硬件初始化命令序列
 static void bsp_ssd1306_init_cmd(void)
 {
     bsp_ssd1306_write_command(SSD1306_CMD_ENTIRE_ON_RESUME);
@@ -125,7 +125,7 @@ static void bsp_ssd1306_init_cmd(void)
     bsp_ssd1306_set_display_on(1);
 }
 
-/* 初始化 SSD1306 OLED：探测设备、配置显示参数、清屏 */
+// 初始化 SSD1306 OLED：探测设备、配置显示参数、清屏
 bool bsp_ssd1306_init(void)
 {
     uint8_t probe_buf[] = {SSD1306_CTRL_CMD, 0x00};
@@ -194,7 +194,7 @@ bool bsp_ssd1306_init(void)
     return true;
 }
 
-/* 用指定颜色填充整个帧缓冲区 */
+// 用指定颜色填充整个帧缓冲区
 void bsp_ssd1306_fill(BspSsd1306Color color)
 {
     for (uint32_t i = 0; i < sizeof(g_ssd1306_buffer); i++) {
@@ -202,7 +202,7 @@ void bsp_ssd1306_fill(BspSsd1306Color color)
     }
 }
 
-/* 将帧缓冲区数据通过 I2C 发送到屏幕，刷新显示 */
+// 将帧缓冲区数据通过 I2C 发送到屏幕，刷新显示
 void bsp_ssd1306_update_screen(void)
 {
     uint8_t cmd[] = {
@@ -228,7 +228,7 @@ void bsp_ssd1306_update_screen(void)
     }
 }
 
-/* 在帧缓冲区中绘制单个像素点 */
+// 在帧缓冲区中绘制单个像素点
 void bsp_ssd1306_draw_pixel(uint8_t x, uint8_t y, BspSsd1306Color color)
 {
     if (x >= SSD1306_WIDTH || y >= SSD1306_HEIGHT) {
@@ -247,7 +247,7 @@ void bsp_ssd1306_draw_pixel(uint8_t x, uint8_t y, BspSsd1306Color color)
     }
 }
 
-/* 在当前光标位置绘制单个 ASCII 字符并推进光标 */
+// 在当前光标位置绘制单个 ASCII 字符并推进光标
 char bsp_ssd1306_draw_char(char ch, FontDef Font, BspSsd1306Color color)
 {
     uint32_t ch_min = 32;
@@ -278,7 +278,7 @@ char bsp_ssd1306_draw_char(char ch, FontDef Font, BspSsd1306Color color)
     return ch;
 }
 
-/* 在当前光标位置绘制 ASCII 字符串 */
+// 在当前光标位置绘制 ASCII 字符串
 char bsp_ssd1306_draw_string(char *str, FontDef Font, BspSsd1306Color color)
 {
     char *str1 = str;
@@ -291,14 +291,14 @@ char bsp_ssd1306_draw_string(char *str, FontDef Font, BspSsd1306Color color)
     return *str1;
 }
 
-/* 设置文本绘制光标位置 */
+// 设置文本绘制光标位置
 void bsp_ssd1306_set_cursor(uint8_t x, uint8_t y)
 {
     g_ssd1306_ctx.CurrentX = x;
     g_ssd1306_ctx.CurrentY = y;
 }
 
-/* 用 Bresenham 算法绘制直线 */
+// 用 Bresenham 算法绘制直线
 void bsp_ssd1306_draw_line(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, BspSsd1306Color color)
 {
     uint8_t x = x1;
@@ -324,7 +324,7 @@ void bsp_ssd1306_draw_line(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, BspSs
     }
 }
 
-/* 绘制折线（连接顶点序列中相邻两点） */
+// 绘制折线（连接顶点序列中相邻两点）
 void bsp_ssd1306_draw_polyline(const BspSsd1306Vertex *par_vertex, uint16_t par_size, BspSsd1306Color color)
 {
     if (par_vertex != 0) {
@@ -334,7 +334,7 @@ void bsp_ssd1306_draw_polyline(const BspSsd1306Vertex *par_vertex, uint16_t par_
     }
 }
 
-/* 用中点圆算法绘制圆 */
+// 用中点圆算法绘制圆
 void bsp_ssd1306_draw_circle(uint8_t par_x, uint8_t par_y, uint8_t par_r, BspSsd1306Color par_color)
 {
     int32_t x = -par_r;
@@ -367,7 +367,7 @@ void bsp_ssd1306_draw_circle(uint8_t par_x, uint8_t par_y, uint8_t par_r, BspSsd
     } while (x <= 0);
 }
 
-/* 绘制矩形边框 */
+// 绘制矩形边框
 void bsp_ssd1306_draw_rectangle(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, BspSsd1306Color color)
 {
     bsp_ssd1306_draw_line(x1, y1, x2, y1, color);
@@ -376,7 +376,7 @@ void bsp_ssd1306_draw_rectangle(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, 
     bsp_ssd1306_draw_line(x1, y2, x1, y1, color);
 }
 
-/* 将位图数据绘制到屏幕（从左上角开始逐行扫描） */
+// 将位图数据绘制到屏幕（从左上角开始逐行扫描）
 void bsp_ssd1306_draw_bitmap(const uint8_t *bitmap, uint32_t size)
 {
     unsigned int c = 8;
@@ -393,7 +393,7 @@ void bsp_ssd1306_draw_bitmap(const uint8_t *bitmap, uint32_t size)
     }
 }
 
-/* 在指定位置绘制一块矩形区域的位图数据 */
+// 在指定位置绘制一块矩形区域的位图数据
 void bsp_ssd1306_draw_region(uint8_t x, uint8_t y, uint8_t w, const uint8_t *data, uint32_t size)
 {
     uint32_t stride = w;
@@ -421,14 +421,14 @@ void bsp_ssd1306_draw_region(uint8_t x, uint8_t y, uint8_t w, const uint8_t *dat
     }
 }
 
-/* 设置 OLED 显示对比度 */
+// 设置 OLED 显示对比度
 void bsp_ssd1306_set_contrast(uint8_t value)
 {
     bsp_ssd1306_write_command(SSD1306_CMD_SET_CONTRAST);
     bsp_ssd1306_write_command(value);
 }
 
-/* 开启或关闭 OLED 显示 */
+// 开启或关闭 OLED 显示
 void bsp_ssd1306_set_display_on(uint8_t on)
 {
     uint8_t value;
@@ -442,7 +442,7 @@ void bsp_ssd1306_set_display_on(uint8_t on)
     bsp_ssd1306_write_command(value);
 }
 
-/* 获取当前显示开关状态 */
+// 获取当前显示开关状态
 uint8_t bsp_ssd1306_get_display_on(void)
 {
     return g_ssd1306_ctx.DisplayOn;
@@ -451,14 +451,14 @@ uint8_t bsp_ssd1306_get_display_on(void)
 static int g_ssd1306_current_loc_v = 0; // 当前垂直打印行位置
 #define SSD1306_INTERVAL_V (15)         // 垂直行间距(像素)
 
-/* 清屏并重置垂直打印位置 */
+// 清屏并重置垂直打印位置
 void bsp_ssd1306_clear_oled(void)
 {
     bsp_ssd1306_fill(BSP_SSD1306_COLOR_BLACK);
     g_ssd1306_current_loc_v = 0;
 }
 
-/* 格式化打印到 OLED 屏幕（自动换行，Font_7x10） */
+// 格式化打印到 OLED 屏幕（自动换行，Font_7x10）
 void bsp_ssd1306_printf(char *fmt, ...)
 {
     char buffer[20];

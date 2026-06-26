@@ -27,7 +27,7 @@ static bool s_ap_exit_sem_inited = false; // exit 信号量初始化标志
 static osal_semaphore s_ap_wake_sem;      // AP 任务唤醒/退出通知信号量
 static bool s_ap_wake_sem_inited = false; // wake 信号量初始化标志
 
-/* 启动 WiFi AP 热点任务 */
+// 启动 WiFi AP 热点任务
 bool ap_task_start(void)
 {
     if (s_ap_task)
@@ -54,7 +54,7 @@ bool ap_task_start(void)
     return s_ap_task ? true : false;
 }
 
-/* 停止 WiFi AP 热点任务并等待退出 */
+// 停止 WiFi AP 热点任务并等待退出
 void ap_task_stop(void)
 {
     if (!s_ap_task)
@@ -66,7 +66,7 @@ void ap_task_stop(void)
     s_ap_task = NULL;
 }
 
-/* AP 任务主函数：配置热点、启动 DHCP 服务器，挂起等待退出信号 */
+// AP 任务主函数：配置热点、启动 DHCP 服务器，挂起等待退出信号
 static int ap_task_main(void *arg)
 {
     (void)arg;

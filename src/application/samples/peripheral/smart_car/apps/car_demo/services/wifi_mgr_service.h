@@ -25,19 +25,19 @@ typedef struct {
 } bsp_wifi_msg_t;
 
 // ========== Manager ==========
-int bsp_wifi_mgr_init(void);                          /* 初始化 WiFi 管理器（创建任务 + 消息队列） */
-int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg); /* 向 WiFi 管理器投递消息 */
+int bsp_wifi_mgr_init(void);                          // 初始化 WiFi 管理器（创建任务 + 消息队列）
+int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg); // 向 WiFi 管理器投递消息
 
 // ========== WiFi 状态查询 & 通知 ==========
 extern volatile wifi_status_t g_wifi_status; // WiFi 当前状态，WIFI_MSG_START=未就绪
 typedef void (*wifi_state_cb_t)(bsp_wifi_event_t event, const char *ip);
-void bsp_wifi_mgr_register_cb(wifi_state_cb_t cb); /* 注册 WiFi 状态变化回调 */
+void bsp_wifi_mgr_register_cb(wifi_state_cb_t cb); // 注册 WiFi 状态变化回调
 
-const char *bsp_wifi_mgr_get_ip(void);           /* 获取当前 IP 地址字符串 */
+const char *bsp_wifi_mgr_get_ip(void);           // 获取当前 IP 地址字符串
 
 // ========== 向后兼容接口 ==========
-int bsp_wifi_connect_ap(const char *ssid, const char *password); /* 请求连接到指定 AP（STA 模式） */
+int bsp_wifi_connect_ap(const char *ssid, const char *password); // 请求连接到指定 AP（STA 模式）
 int bsp_wifi_connect_ap_from_portal(const char *ssid,
-                                    const char *password); /* 从配网页面请求连接 AP（带 portal 标记） */
+                                    const char *password); // 从配网页面请求连接 AP（带 portal 标记）
 
 #endif

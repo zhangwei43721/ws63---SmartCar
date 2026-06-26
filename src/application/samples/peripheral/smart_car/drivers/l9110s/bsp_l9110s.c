@@ -19,7 +19,7 @@
 // 驱动电机 PWM 通道
 static const uint8_t MOTOR_CH[] = {4, 5, 0, 2};
 
-/* 更新指定 PWM 通道的占空比 */
+// 更新指定 PWM 通道的占空比
 static void pwm_update(uint8_t ch, uint32_t duty)
 {
     pwm_config_t cfg = {.low_time = PWM_PERIOD - duty, .high_time = duty, .repeat = true};
@@ -42,7 +42,7 @@ void l9110s_init(void)
     uapi_pwm_start_group(0);
 }
 
-/* 辅助内联：处理单边电机逻辑 */
+// 辅助内联：处理单边电机逻辑
 static inline void set_side(uint8_t idx_a, uint8_t idx_b, int8_t speed)
 {
 
@@ -54,7 +54,7 @@ static inline void set_side(uint8_t idx_a, uint8_t idx_b, int8_t speed)
     pwm_update(MOTOR_CH[idx_b], (speed > 0) ? duty : 0);
 }
 
-/* 设置左右电机差速（-100~100） */
+// 设置左右电机差速（-100~100）
 void l9110s_set_differential(int8_t left, int8_t right)
 {
     set_side(0, 1, left);

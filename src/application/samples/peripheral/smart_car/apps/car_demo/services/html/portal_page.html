@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>小车WiFi配网</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Caro, Helvetica, Arial, sans-serif; background: #f2f3f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
+        .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,.08); padding: 28px; width: 100%; max-width: 360px; }
+        h1 { font-size: 20px; color: #1a1a1a; margin-bottom: 4px; text-align: center; }
+        .sub { color: #888; font-size: 13px; text-align: center; margin-bottom: 20px; }
+        .field { margin-bottom: 14px; }
+        label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; font-weight: 500; }
+        input { width: 100%; padding: 12px 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 15px; outline: 0; transition: border .2s; }
+        input:focus { border-color: #007aff; }
+        button { width: 100%; padding: 13px; border: 0; border-radius: 10px; background: #007aff; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 4px; }
+        button:active { opacity: .9; }
+        .tip { margin-top: 14px; font-size: 12px; color: #999; text-align: center; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>智能小车配网</h1>
+        <p class="sub">连接你的WiFi，让小车接入局域网</p>
+        <form method="POST" action="/config">
+            <div class="field">
+                <label>WiFi 名称 (SSID)</label>
+                <input type="text" id="ssid" name="ssid" placeholder="请输入WiFi名称" required maxlength="31">
+                <select id="ssid_sel" onchange="pickSsid()" style="width: 100%; margin-top: 8px; padding: 10px; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; background: #fafafa; ">
+                    <option value="">-- 附近 WiFi --</option>
+                </select>
+                <button type="button" onclick="scanWifi(true)" style="margin-top: 8px; background: #e5e5ea; color: #333; font-size: 13px; padding: 8px; ">刷新 WiFi 列表</button>
+                <p id="scan_tip" style="font-size: 12px; color: #999; margin-top: 4px; ">正在加载附近 WiFi...</p>
+            </div>
+            <div class="field">
+                <label>WiFi 密码</label>
+                <input type="password" name="password" placeholder="请输入WiFi密码" maxlength="63">
+            </div>
+            <button type="submit">保存并连接</button>
+        </form>
+        <div style="margin-top: 18px; text-align: center; ">
+            <a href="/control" style="display: inline-block; padding: 10px 20px; background: #34c759; color: #fff; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; ">点击控制小车</a>
+            <p style="margin-top: 8px; font-size: 12px; color: #999; ">无需配网也可直接遥控</p>
+        </div>
+        <p class="tip">提示：密码为空表示连接开放网络<br>配网成功后页面将自动跳转</p>
+    </div>
+    <script>
+        function pickSsid() {
+            var s = document.getElementById('ssid_sel');
+            if (s.value) { document.getElementById('ssid').value = s.value; }
+        }
+        function scanWifi(refresh) {
+            var t = document.getElementById('scan_tip');
+            t.textContent = refresh ? '刷新中，请等待...' : '加载中...';
+            var x = new XMLHttpRequest();
+            x.open('GET', refresh ? '/scan?refresh=1' : '/scan', true);
+            x.timeout = 8000;
+            x.onreadystatechange = function () {
+                if (x.readyState == 4) {
+                    if (x.status == 200) {
+                        try {
+                            var d = JSON.parse(x.responseText);
+                            var s = document.getElementById('ssid_sel');
+                            s.innerHTML = '<option value="">-- 选择 SSID --</option>';
+                            d.list.forEach(function (it) {
+                                var o = document.createElement('option');
+                                o.value = it.ssid;
+                                o.textContent = it.ssid + ' (' + it.rssi + 'dBm' + (it.sec > 0 ? ' 加密' : ' 开放') + ')';
+                                s.appendChild(o);
+                            });
+                            t.textContent = '共发现 ' + d.list.length + ' 个网络';
+                        } catch (e) { t.textContent = '解析失败'; }
+                    } else { t.textContent = '加载失败'; }
+                }
+            };
+            x.ontimeout = function () { t.textContent = '加载超时'; };
+            x.send();
+        }
+        window.onload = function () {
+            scanWifi(false);
+            if (location.search.includes('fail')) {
+                document.body.insertAdjacentHTML('afterbegin', '<div style="background:#ff3b30;color:#fff;padding:12px 16px;border-radius:10px;font-size:14px;text-align:center;margin-bottom:16px">连接失败，请检查密码后重新配网</div>');
+            }
+        };
+    </script>
+</body>
+</html>

@@ -133,5 +133,5 @@ static void ssd1306_example_entry(void)
     osal_kthread_unlock();
 }
 
-/* Run the ssd1306_example_entry. */
+// 运行 ssd1306 示例入口。
 app_run(ssd1306_example_entry);

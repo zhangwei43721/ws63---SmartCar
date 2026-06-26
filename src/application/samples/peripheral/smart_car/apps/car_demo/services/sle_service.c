@@ -39,31 +39,22 @@ static bool g_connected = false; // SLE 设备是否已连接
 /**
  * @brief 处理接收到的数据包
  */
-/* 解析SLE接收到的数据包，交由统一协议处理器处理 */
+// 解析SLE接收到的数据包，交由统一协议处理器处理
 static void process_packet(const uint8_t *data, uint16_t len)
 {
     if (len < 1)
         return;
 
-    if (len == sizeof(car_packet_t)) {
-        const car_packet_t *pkt = (const car_packet_t *)data;
-
-        if (car_proto_handle_packet(pkt, MODE_SRC_SLE))
-            return; // CONTROL / MODE / HEARTBEAT 已由统一处理器消费
-
-        // PID 仅 UDP 实现，SLE 收到忽略
-        if (pkt->type == CAR_PKT_PID)
-            return;
-
-        printf("[SLE_SRV] 未知包类型: 0x%02X\r\n", pkt->type);
-    } else {
-        printf("[SLE_SRV] 包长度错误: %d (期望 %zu)\r\n", len, sizeof(car_packet_t));
+    if (car_proto_handle_packet(data, len, MODE_SRC_SLE)) {
+        return;
     }
+
+    printf("[SLE_SRV] 未知包类型: 0x%02X or 长度错误: %d\r\n", data[0], len);
 }
 
 // ==================== SLE 设备回调 ====================
 
-/* SLE设备连接回调，标记连接状态 */
+// SLE设备连接回调，标记连接状态
 static void sle_connect_callback(uint16_t conn_id)
 {
     unused(conn_id);
@@ -71,7 +62,7 @@ static void sle_connect_callback(uint16_t conn_id)
     printf("[SLE_SRV] 设备已连接\r\n");
 }
 
-/* SLE设备断开回调，清除连接状态并停车 */
+// SLE设备断开回调，清除连接状态并停车
 static void sle_disconnect_callback(uint16_t conn_id)
 {
     unused(conn_id);
@@ -81,7 +72,7 @@ static void sle_disconnect_callback(uint16_t conn_id)
     printf("[SLE_SRV] 设备已断开\r\n");
 }
 
-/* SLE数据接收回调，转发给process_packet处理 */
+// SLE数据接收回调，转发给process_packet处理
 static void sle_data_recv_callback(const uint8_t *data, uint16_t len)
 {
     process_packet(data, len);
@@ -89,7 +80,7 @@ static void sle_data_recv_callback(const uint8_t *data, uint16_t len)
 
 // ==================== 对外接口实现 ====================
 
-/* 初始化SLE遥控服务：注册回调并启动SLE设备 */
+// 初始化SLE遥控服务：注册回调并启动SLE设备
 void sle_service_init(void)
 {
     printf("[SLE_SRV] 初始化 SLE 遥控服务...\r\n");

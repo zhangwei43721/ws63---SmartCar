@@ -16,6 +16,6 @@
 #ifndef SLE_TEST_H
 #define SLE_TEST_H
 
-/* SLE 测试应用通过 app_run() 宏自动注册，无需显式初始化函数 */
+// SLE 测试应用通过 app_run() 宏自动注册，无需显式初始化函数
 
-#endif /* SLE_TEST_H */
+#endif // SLE_TEST_H

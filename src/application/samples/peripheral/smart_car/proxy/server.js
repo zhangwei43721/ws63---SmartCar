@@ -53,6 +53,19 @@ const buildPacket = (type, cmd, m1 = 0, m2 = 0, extra = 0) => {
   return buf;
 };
 
+// 构建 WiFi 配置包 (Type, SSID, Password)
+const buildWifiConfigPacket = (type, ssid, password) => {
+  const ssidBuf = Buffer.from(ssid || "", "utf8");
+  const pwdBuf = Buffer.from(password || "", "utf8");
+  const buf = Buffer.alloc(3 + 64);
+  buf[0] = type;
+  buf[1] = Math.min(ssidBuf.length, 32);
+  buf[2] = Math.min(pwdBuf.length, 63);
+  ssidBuf.copy(buf, 3);
+  pwdBuf.copy(buf, 3 + buf[1]);
+  return buf;
+};
+
 // --- OTA 工具函数 ---
 
 const broadcastOtaStatus = (deviceIP, state, progress, message) => {
@@ -393,26 +406,12 @@ wss.on("connection", (ws) => {
           break;
         }
         case "wifiConfigSet": { // 保存 WiFi 配置 (0xE0)
-          const ssidBuf = Buffer.from(data.ssid || "", "utf8");
-          const pwdBuf = Buffer.from(data.password || "", "utf8");
-          const buf = Buffer.alloc(3 + 64);
-          buf[0] = 0xE0;
-          buf[1] = Math.min(ssidBuf.length, 32);
-          buf[2] = Math.min(pwdBuf.length, 63);
-          ssidBuf.copy(buf, 3);
-          pwdBuf.copy(buf, 3 + buf[1]);
+          const buf = buildWifiConfigPacket(0xE0, data.ssid, data.password);
           sendToCar(buf, ip);
           break;
         }
         case "wifiConfigConnect": { // 保存并连接 WiFi (0xE1)
-          const ssidBuf = Buffer.from(data.ssid || "", "utf8");
-          const pwdBuf = Buffer.from(data.password || "", "utf8");
-          const buf = Buffer.alloc(3 + 64);
-          buf[0] = 0xE1;
-          buf[1] = Math.min(ssidBuf.length, 32);
-          buf[2] = Math.min(pwdBuf.length, 63);
-          ssidBuf.copy(buf, 3);
-          pwdBuf.copy(buf, 3 + buf[1]);
+          const buf = buildWifiConfigPacket(0xE1, data.ssid, data.password);
           sendToCar(buf, ip);
           break;
         }

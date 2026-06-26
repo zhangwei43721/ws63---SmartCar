@@ -35,7 +35,7 @@ static osal_timer g_voice_stop_timer;
 static bool g_voice_stop_timer_inited = false;   // 停车定时器是否已初始化
 static volatile bool g_voice_cmd_active = false; // 单写者(voice_task)，定时器回调清除
 
-/* 语音命令超时回调，自动停车 */
+// 语音命令超时回调，自动停车
 static void voice_stop_timer_cb(unsigned long arg)
 {
     (void)arg;
@@ -43,10 +43,10 @@ static void voice_stop_timer_cb(unsigned long arg)
     bsp_motor_push_cmd(0, 0);
 }
 
-/* 设置电机运动并启动/重置超时定时器 */
+// 设置电机运动并启动/重置超时定时器
 static void voice_set_motion(int8_t l, int8_t r, uint32_t ms)
 {
-    bsp_motor_push_cmd(l, r);
+    car_mgr_manual_drive(l, r, MODE_SRC_VOICE);
     if (g_voice_stop_timer_inited) {
         osal_timer_stop(&g_voice_stop_timer);
     }
@@ -85,7 +85,7 @@ static const CarStatus g_mode_table[] = {
 #define VOICE_MODE_CMD_BASE 0x10                                              // 模式切换命令起始值
 #define VOICE_MODE_CMD_COUNT (sizeof(g_mode_table) / sizeof(g_mode_table[0])) // 模式表条目数
 
-/* 解析语音命令，执行运动或模式切换 */
+// 解析语音命令，执行运动或模式切换
 static void process_command(uint8_t cmd)
 {
     if (cmd >= VOICE_MODE_CMD_BASE) {
@@ -132,7 +132,7 @@ static int voice_main_task(void *arg)
     return 0;
 }
 
-/* 初始化语音服务：创建定时器、消息队列、UART和语音任务 */
+// 初始化语音服务：创建定时器、消息队列、UART和语音任务
 void voice_service_init(void)
 {
     g_voice_cmd_active = false;

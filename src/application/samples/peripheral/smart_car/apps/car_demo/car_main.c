@@ -50,7 +50,7 @@ static CarState g_car_state = {0};    // 全局机器人状态（WiFi连接、�
 static osal_mutex g_state_mutex;          // 保护g_car_state的互斥锁
 static bool g_state_mutex_inited = false; // 状态互斥锁是否已初始化
 
-/* 初始化全局状态互斥锁（仅执行一次） */
+// 初始化全局状态互斥锁（仅执行一次）
 static void car_mgr_state_mutex_init(void)
 {
     if (g_state_mutex_inited)
@@ -61,7 +61,7 @@ static void car_mgr_state_mutex_init(void)
         printf("CarMgr: 状态互斥锁初始化失败\r\n");
 }
 
-/* 应用新模式：更新全局状态、刷新OLED显示。返回 true 表示状态发生了变化 */
+// 应用新模式：更新全局状态、刷新OLED显示。返回 true 表示状态发生了变化
 static bool car_mgr_apply_status(CarStatus status)
 {
     if (g_status == status)
@@ -84,7 +84,7 @@ static bool car_mgr_apply_status(CarStatus status)
 
 static unsigned long long button_time_tick = 0;
 
-/* 按键中断回调：200ms消抖后循环切换小车模式 */
+// 按键中断回调：200ms消抖后循环切换小车模式
 static void mode_switch_isr(pin_t pin, uintptr_t param)
 {
     UNUSED(pin);
@@ -100,7 +100,7 @@ static void mode_switch_isr(pin_t pin, uintptr_t param)
     car_mgr_post_mode(next_status, MODE_SRC_BUTTON);
 }
 
-/* 初始化模式切换按键GPIO及下降沿中断 */
+// 初始化模式切换按键GPIO及下降沿中断
 static void car_key_init(void)
 {
     uapi_pin_set_mode(3, HAL_PIO_FUNC_GPIO);
@@ -114,7 +114,7 @@ static void car_key_init(void)
  * 公共接口
  * ============================================================ */
 
-/* 向模式切换消息队列投递切换请求（可在中断中调用） */
+// 向模式切换消息队列投递切换请求（可在中断中调用）
 bool car_mgr_post_mode(CarStatus status, uint32_t source)
 {
     if (!g_mode_queue_inited)
@@ -129,7 +129,7 @@ bool car_mgr_post_mode(CarStatus status, uint32_t source)
     return (ret == OSAL_SUCCESS);
 }
 
-/* 线程安全地获取当前CarState快照 */
+// 线程安全地获取当前CarState快照
 void car_mgr_get_state_copy(CarState *out)
 {
     if (out == NULL)
@@ -139,7 +139,7 @@ void car_mgr_get_state_copy(CarState *out)
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 
-/* 更新全局状态中的超声波测距值 */
+// 更新全局状态中的超声波测距值
 void car_mgr_update_distance(float distance)
 {
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
@@ -147,7 +147,7 @@ void car_mgr_update_distance(float distance)
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 
-/* 更新全局状态中的三路循迹红外传感器状态 */
+// 更新全局状态中的三路循迹红外传感器状态
 void car_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned int right)
 {
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
@@ -157,7 +157,7 @@ void car_mgr_update_ir_status(unsigned int left, unsigned int middle, unsigned i
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 
-/* 更新原始采样 ADC */
+// 更新原始采样 ADC
 void car_mgr_update_adc_values(uint32_t left, uint32_t middle, uint32_t right)
 {
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
@@ -167,7 +167,7 @@ void car_mgr_update_adc_values(uint32_t left, uint32_t middle, uint32_t right)
     MUTEX_UNLOCK(g_state_mutex, g_state_mutex_inited);
 }
 
-/* 更新当前活跃阈值 */
+// 更新当前活跃阈值
 void car_mgr_update_thresholds(uint16_t left, uint16_t middle, uint16_t right)
 {
     MUTEX_LOCK(g_state_mutex, g_state_mutex_inited);
@@ -181,7 +181,7 @@ void car_mgr_update_thresholds(uint16_t left, uint16_t middle, uint16_t right)
  * 统一初始化与任务入口
  * ============================================================ */
 
-/* 统一初始化：驱动、互斥锁、WiFi、各服务、按键、模式队列 */
+// 统一初始化：驱动、互斥锁、WiFi、各服务、按键、模式队列
 static void car_system_init(void)
 {
     car_mgr_state_mutex_init();
@@ -280,7 +280,7 @@ static int car_main_task(void *arg)
     return 0;
 }
 
-/* 应用入口：创建主状态机任务 */
+// 应用入口：创建主状态机任务
 static void car_demo_entry(void)
 {
     (void)car_task_create_locked("car_main_task", (osal_kthread_handler)car_main_task, NULL, 4096, 25);

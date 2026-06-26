@@ -87,5 +87,5 @@ static void hcsr04_entry(void)
     osal_kthread_unlock();
 }
 
-/* Run the hcsr04_entry. */
+// 运行 hcsr04 入口
 app_run(hcsr04_entry);

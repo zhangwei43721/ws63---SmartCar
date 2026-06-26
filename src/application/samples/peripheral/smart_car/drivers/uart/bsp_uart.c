@@ -96,7 +96,7 @@ static void uart_register_rx_callback(void)
                                    uart_rx_interrupt_handler);
 }
 
-/* 初始化 UART：设置回调、配置引脚和波特率、注册接收中断 */
+// 初始化 UART：设置回调、配置引脚和波特率、注册接收中断
 int bsp_uart_init(uart_data_callback_t callback)
 {
     if (callback == NULL) {

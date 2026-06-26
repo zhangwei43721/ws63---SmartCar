@@ -44,7 +44,7 @@ static void notify_wifi_change(bsp_wifi_event_t event, const char *ip)
         s_state_cb(event, ip); // 等价于调用 on_wifi_state_change(event, ip)
 }
 
-/* WiFi管理主任务：从消息队列接收事件并驱动STA/AP状态切换 */
+// WiFi管理主任务：从消息队列接收事件并驱动STA/AP状态切换
 static int mgr_task_main(void *arg)
 {
     (void)arg;
@@ -140,7 +140,7 @@ void bsp_wifi_mgr_register_cb(wifi_state_cb_t cb)
     s_state_cb = cb; // 存函数地址，之后 notify_wifi_change() 通过它回调
 }
 
-/* 获取当前 WiFi 的 IP 地址字符串（UI 服务调用） */
+// 获取当前 WiFi 的 IP 地址字符串（UI 服务调用）
 const char *bsp_wifi_mgr_get_ip(void)
 {
     static char ip_buf[32] = "0.0.0.0";
@@ -148,7 +148,7 @@ const char *bsp_wifi_mgr_get_ip(void)
     return ip_buf;
 }
 
-/* 初始化WiFi管理器：创建消息队列和管理任务 */
+// 初始化WiFi管理器：创建消息队列和管理任务
 int bsp_wifi_mgr_init(void)
 {
     if (s_mgr_task)
@@ -159,7 +159,7 @@ int bsp_wifi_mgr_init(void)
     return s_mgr_task ? 0 : -1;
 }
 
-/* 向WiFi管理任务发送消息（覆盖式写入队列） */
+// 向WiFi管理任务发送消息（覆盖式写入队列）
 int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg)
 {
     if (s_msg_queue == 0)
@@ -167,7 +167,7 @@ int bsp_wifi_mgr_send_msg(const bsp_wifi_msg_t *msg)
     return (osal_msgq_overwrite(s_msg_queue, 8, msg, sizeof(*msg)) == OSAL_SUCCESS) ? 0 : -1;
 }
 
-/* 发起STA连接指定AP（保存旧配置用于失败恢复） */
+// 发起STA连接指定AP（保存旧配置用于失败恢复）
 int bsp_wifi_connect_ap(const char *ssid, const char *password)
 {
     // 保存旧配置，用于失败后恢复
@@ -178,7 +178,7 @@ int bsp_wifi_connect_ap(const char *ssid, const char *password)
     return bsp_wifi_mgr_send_msg(&(bsp_wifi_msg_t){.id = WIFI_MSG_START, .from_portal = false, .user_initiated = true});
 }
 
-/* 从Portal页面发起STA连接（失败后保持AP模式） */
+// 从Portal页面发起STA连接（失败后保持AP模式）
 int bsp_wifi_connect_ap_from_portal(const char *ssid, const char *password)
 {
     if (ssid && password)

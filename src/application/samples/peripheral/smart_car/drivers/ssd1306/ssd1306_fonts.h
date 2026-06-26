@@ -22,7 +22,7 @@
    IN THE SOFTWARE.
 */
 /**
- * @file ssd1306_fonts.h Fonts for monochrome/rgb oled display
+ * @file ssd1306_fonts.h 单色/RGB OLED 显示屏的字体
  */
 
 #ifndef SSD1306_FONTS_H
@@ -33,14 +33,14 @@ extern "C" {
 #endif
 
 /**
- * @defgroup LCD_FONTS FONTS: Supported LCD fonts
+ * @defgroup LCD_FONTS 字体: 支持的 LCD 字体
  * @{
  */
 
 typedef struct {
-    const unsigned char FontWidth; //!< Font width in pixels
-    unsigned char FontHeight;      //!< Font height in pixels
-    const unsigned short *data;    //!< Pointer to data font data array
+    const unsigned char FontWidth; // 像素形式的字体宽度
+    unsigned char FontHeight;      // 像素形式的字体高度
+    const unsigned short *data;    // 指向字形点阵数据数组的指针
 } FontDef;
 
 extern FontDef Font_7x10;

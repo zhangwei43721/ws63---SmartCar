@@ -9,7 +9,7 @@
 static osal_mutex s_log_mutex;
 static bool s_log_inited = false;
 
-/* 初始化调试日志服务 */
+// 初始化调试日志服务
 void debug_log_init(void)
 {
     if (s_log_inited) {
@@ -20,7 +20,7 @@ void debug_log_init(void)
     }
 }
 
-/* 线程安全的日志写入接口（仅通过 UDP 发送日志包，避免阻塞物理串口） */
+// 线程安全的日志写入接口（仅通过 UDP 发送日志包，避免阻塞物理串口）
 void car_log(const char *fmt, ...)
 {
     char buf[256];

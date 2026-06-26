@@ -84,7 +84,7 @@ static const ModeDisplayInfo g_mode_display[] = {
 
 // ---------- 实际渲染函数（仅 UI 任务调用） ----------
 
-/* 根据小车状态渲染对应的模式页面到 OLED */
+// 根据小车状态渲染对应的模式页面到 OLED
 static void ui_render_mode(CarStatus status)
 {
     if (!g_oled_ready)
@@ -102,7 +102,7 @@ static void ui_render_mode(CarStatus status)
     }
 }
 
-/* 渲染待机页面，显示WiFi状态和IP地址 */
+// 渲染待机页面，显示WiFi状态和IP地址
 static void ui_render_standby_impl(wifi_status_t wifi_state, const char *ip_addr)
 {
     if (!g_oled_ready)
@@ -124,7 +124,7 @@ static void ui_render_standby_impl(wifi_status_t wifi_state, const char *ip_addr
     bsp_ssd1306_update_screen();
 }
 
-/* 渲染OTA升级进度页面 */
+// 渲染OTA升级进度页面
 static void ui_render_ota(uint8_t percent, const char *status_line)
 {
     if (!g_oled_ready)
@@ -141,7 +141,7 @@ static void ui_render_ota(uint8_t percent, const char *status_line)
 
 // ---------- UI 任务主循环 ----------
 
-/* UI任务主循环，阻塞等待消息队列并渲染对应页面 */
+// UI任务主循环，阻塞等待消息队列并渲染对应页面
 static int ui_task_entry(void *arg)
 {
     (void)arg;
@@ -183,7 +183,7 @@ static int ui_task_entry(void *arg)
 
 // ---------- 初始化 ----------
 
-/* 初始化OLED显示屏、消息队列和UI任务 */
+// 初始化OLED显示屏、消息队列和UI任务
 void ui_service_init(void)
 {
     static bool init_attempted = false;
@@ -227,17 +227,17 @@ void ui_service_init(void)
 
 // ---------- 对外接口：仅投递消息 ----------
 
-/* 向UI消息队列投递消息，队列满时覆盖最旧消息 */
+// 向UI消息队列投递消息，队列满时覆盖最旧消息
 static void ui_post(const ui_msg_t *msg)
 {
     if (!g_queue_inited)
         return;
 
-    /* 队列满则丢弃最旧的，保证 ISR/任意上下文都能安全投递。 */
+    // 队列满则丢弃最旧的，保证 ISR/任意上下文都能安全投递。
     (void)osal_msgq_overwrite(g_ui_queue, UI_MSG_QUEUE_DEPTH, msg, sizeof(*msg));
 }
 
-/* 异步显示指定模式的页面 */
+// 异步显示指定模式的页面
 void ui_show_mode_page(CarStatus status)
 {
     ui_msg_t msg = {0};
@@ -246,7 +246,7 @@ void ui_show_mode_page(CarStatus status)
     ui_post(&msg);
 }
 
-/* 异步显示OTA升级进度 */
+// 异步显示OTA升级进度
 void ui_show_ota_progress(uint8_t percent, const char *status_line)
 {
     ui_msg_t msg = {0};
@@ -258,18 +258,18 @@ void ui_show_ota_progress(uint8_t percent, const char *status_line)
     ui_post(&msg);
 }
 
-/* 查询OLED是否已初始化就绪 */
+// 查询OLED是否已初始化就绪
 bool ui_service_is_ready(void)
 {
     return g_oled_ready;
 }
 
-/* 独占OLED，阻止UI任务刷新屏幕（OTA写入时使用） */
+// 独占OLED，阻止UI任务刷新屏幕（OTA写入时使用）
 void ui_service_acquire(void)
 {
     g_ui_busy = true;
 }
-/* 释放OLED独占，恢复UI任务刷新 */
+// 释放OLED独占，恢复UI任务刷新
 void ui_service_release(void)
 {
     g_ui_busy = false;

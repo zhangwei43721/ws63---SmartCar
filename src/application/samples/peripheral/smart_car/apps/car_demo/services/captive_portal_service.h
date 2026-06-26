@@ -23,8 +23,8 @@ void captive_portal_service_init(void);
 const char *captive_portal_service_get_ap_ip(void);
 
 // wifi_mgr 在 AP_READY / AP_STOPPED / STA_FAIL 时通知 portal
-void captive_portal_service_notify_ap_ready(void);   /* 通知 portal：AP 热点已就绪 */
-void captive_portal_service_notify_ap_stopped(void); /* 通知 portal：AP 热点已停止 */
-void captive_portal_service_notify_sta_fail(void);   /* 通知 portal：STA 连接失败 */
+void captive_portal_service_notify_ap_ready(void);   // 通知 portal：AP 热点已就绪
+void captive_portal_service_notify_ap_stopped(void); // 通知 portal：AP 热点已停止
+void captive_portal_service_notify_sta_fail(void);   // 通知 portal：STA 连接失败
 
 #endif // CAPTIVE_PORTAL_SERVICE_H

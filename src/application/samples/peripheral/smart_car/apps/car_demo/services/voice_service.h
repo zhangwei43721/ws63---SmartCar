@@ -36,6 +36,6 @@ typedef enum {
     VOICE_CMD_REMOTE = 0x13    // 遥控模式
 } VoiceCommand;
 
-void voice_service_init(void); /* 初始化语音/串口命令服务（注册 UART 回调） */
+void voice_service_init(void); // 初始化语音/串口命令服务（注册 UART 回调）
 
 #endif // VOICE_SERVICE_H

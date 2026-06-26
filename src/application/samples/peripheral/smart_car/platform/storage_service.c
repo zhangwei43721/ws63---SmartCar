@@ -47,7 +47,7 @@ typedef struct {
 #define CAR_NV_CONFIG_MAGIC ((uint32_t)0x524F4254) // "ROBT"
 #define CAR_NV_CONFIG_VERSION ((uint16_t)2)        // NV 配置结构体版本号
 
-static car_nv_config_t g_nv_cfg = {0};    // NV 存储的配置数据
+static car_nv_config_t g_nv_cfg = {0};      // NV 存储的配置数据
 static osal_mutex g_storage_mutex;          // 保护 NV 存储访问的互斥锁
 static bool g_storage_mutex_inited = false; // 互斥锁是否已初始化
 
@@ -68,6 +68,17 @@ static uint16_t nv_checksum16_add(const uint8_t *data, size_t len)
         sum += data[i];
     }
     return (uint16_t)(sum & 0xFFFFu);
+}
+
+// 公共 NV 数据持久化模块。提取通用的校验和重算、写 Flash API
+// 调用以及统一日志输出，消除了原本分散在各项配置保存函数中的高度重复代码。
+static errcode_t nv_flush_config(void)
+{
+    g_nv_cfg.checksum = 0;
+    g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
+    errcode_t ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
+    printf("[存储] NV 写入: 返回值=%d\r\n", ret);
+    return ret;
 }
 
 /**
@@ -170,9 +181,7 @@ void storage_service_init(void)
             updated = true;
         }
         if (updated) {
-            g_nv_cfg.checksum = 0;
-            g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
-            ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
+            ret = nv_flush_config();
             printf("[存储] 检测到旧版本 NV 配置，已升级循迹阈值默认值并写入，Ret=%d\r\n", ret);
         }
         printf("[存储] 加载 NV 配置成功\r\n");
@@ -207,8 +216,8 @@ errcode_t storage_service_save_pid_params(float kp, float ki, float kd, int16_t 
 
     // 防止重复保存
     STORAGE_LOCK();
-    if (g_nv_cfg.pid_kp_x1000 == kp_x1000 && g_nv_cfg.pid_ki_x10000 == ki_x10000 &&
-        g_nv_cfg.pid_kd_x500 == kd_x500 && g_nv_cfg.pid_base_speed == speed) {
+    if (g_nv_cfg.pid_kp_x1000 == kp_x1000 && g_nv_cfg.pid_ki_x10000 == ki_x10000 && g_nv_cfg.pid_kd_x500 == kd_x500 &&
+        g_nv_cfg.pid_base_speed == speed) {
         STORAGE_UNLOCK();
         return ERRCODE_SUCC;
     }
@@ -218,14 +227,9 @@ errcode_t storage_service_save_pid_params(float kp, float ki, float kd, int16_t 
     g_nv_cfg.pid_kd_x500 = kd_x500;
     g_nv_cfg.pid_base_speed = speed;
 
-    // 重新计算校验和
-    g_nv_cfg.checksum = 0;
-    g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
-
     printf("[存储] 保存 PID: Kp=%d/1000, Ki=%d/10000, Kd=%d/500, 基础速度=%d\r\n", (int)(kp * 1000), (int)(ki * 10000),
            (int)(kd * 500), speed);
-    errcode_t ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
-    printf("[存储] NV 写入: 返回值=%d\r\n", ret);
+    errcode_t ret = nv_flush_config();
     STORAGE_UNLOCK();
 
     return ret;
@@ -265,13 +269,8 @@ errcode_t storage_service_save_wifi_config(const char *ssid, const char *passwor
     (void)strncpy_s(g_nv_cfg.wifi_password, sizeof(g_nv_cfg.wifi_password), password,
                     sizeof(g_nv_cfg.wifi_password) - 1);
 
-    // 重新计算校验和
-    g_nv_cfg.checksum = 0;
-    g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
-
     printf("[存储] 保存 WiFi: SSID='%s', 密码长度=%zu\r\n", ssid, strlen(password));
-    errcode_t ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
-    printf("[存储] NV 写入: 返回值=%d (成功值=%d)\r\n", ret, ERRCODE_SUCC);
+    errcode_t ret = nv_flush_config();
     STORAGE_UNLOCK();
     return ret;
 }
@@ -298,8 +297,7 @@ void storage_service_get_trace_thresholds(uint16_t *l, uint16_t *m, uint16_t *r)
 errcode_t storage_service_save_trace_thresholds(uint16_t l, uint16_t m, uint16_t r)
 {
     STORAGE_LOCK();
-    if (g_nv_cfg.trace_l_threshold == l && g_nv_cfg.trace_m_threshold == m &&
-        g_nv_cfg.trace_r_threshold == r) {
+    if (g_nv_cfg.trace_l_threshold == l && g_nv_cfg.trace_m_threshold == m && g_nv_cfg.trace_r_threshold == r) {
         STORAGE_UNLOCK();
         return ERRCODE_SUCC;
     }
@@ -308,13 +306,8 @@ errcode_t storage_service_save_trace_thresholds(uint16_t l, uint16_t m, uint16_t
     g_nv_cfg.trace_m_threshold = m;
     g_nv_cfg.trace_r_threshold = r;
 
-    // 重新计算校验和
-    g_nv_cfg.checksum = 0;
-    g_nv_cfg.checksum = nv_checksum16_add((const uint8_t *)&g_nv_cfg, sizeof(g_nv_cfg));
-
     printf("[存储] 保存循迹阈值: L=%d, M=%d, R=%d\r\n", l, m, r);
-    errcode_t ret = uapi_nv_write(CAR_NV_CONFIG_KEY, (const uint8_t *)&g_nv_cfg, (uint16_t)sizeof(g_nv_cfg));
-    printf("[存储] NV 写入: 返回值=%d\r\n", ret);
+    errcode_t ret = nv_flush_config();
     STORAGE_UNLOCK();
 
     return ret;

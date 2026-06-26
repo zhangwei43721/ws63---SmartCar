@@ -21,22 +21,22 @@
 
 #include "../../drivers/sle/sle_device.h"
 
-/* ==================== 测试状态 ==================== */
+// ==================== 测试状态 ====================
 
 static uint16_t g_test_conn_id = 0; // 当前 SLE 连接 ID，未连接时为 0
 static uint32_t g_rx_count = 0;     // 累计接收数据次数
 static uint32_t g_tx_count = 0;     // 累计发送数据次数
 
-/* ==================== 回调函数 ==================== */
+// ==================== 回调函数 ====================
 
-/* SLE 连接成功回调：记录连接 ID */
+// SLE 连接成功回调：记录连接 ID
 static void test_connect_callback(uint16_t conn_id)
 {
     g_test_conn_id = conn_id;
     printf("[SLE_TEST] 设备已连接, conn_id=%d\r\n", conn_id);
 }
 
-/* SLE 断开连接回调：打印收发统计并清除连接 ID */
+// SLE 断开连接回调：打印收发统计并清除连接 ID
 static void test_disconnect_callback(uint16_t conn_id)
 {
     printf("[SLE_TEST] 设备已断开, conn_id=%d\r\n", conn_id);
@@ -44,7 +44,7 @@ static void test_disconnect_callback(uint16_t conn_id)
     g_test_conn_id = 0;
 }
 
-/* SLE 数据接收回调：打印收到的数据并原样回显 */
+// SLE 数据接收回调：打印收到的数据并原样回显
 static void test_data_recv_callback(const uint8_t *data, uint16_t len)
 {
     g_rx_count++;
@@ -71,9 +71,9 @@ static void test_data_recv_callback(const uint8_t *data, uint16_t len)
     }
 }
 
-/* ==================== 主任务 ==================== */
+// ==================== 主任务 ====================
 
-/* SLE 测试主任务：初始化星闪设备并周期性打印连接状态 */
+// SLE 测试主任务：初始化星闪设备并周期性打印连接状态
 static int sle_test_task(void *arg)
 {
     unused(arg);
@@ -118,9 +118,9 @@ static int sle_test_task(void *arg)
     return 0;
 }
 
-/* ==================== 初始化入口 ==================== */
+// ==================== 初始化入口 ====================
 
-/* SLE 测试示例入口：创建星闪测试任务 */
+// SLE 测试示例入口：创建星闪测试任务
 static void sle_test_entry(void)
 {
     osal_task *task_handle = NULL;
@@ -134,5 +134,5 @@ static void sle_test_entry(void)
     osal_kthread_unlock();
 }
 
-/* Run the SLE test application. */
+// 运行 SLE 测试应用程序。
 app_run(sle_test_entry);
