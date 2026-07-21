@@ -1,4 +1,4 @@
-# 鸿蒙 WS63 智能小车 (Smart Car K12 Edition)
+# 鸿蒙 WS63 智能小车
 
 ## 概述
 
