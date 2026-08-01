@@ -5,9 +5,10 @@
 #include "../../../platform/storage_service.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
 #include "../car_common.h"
+#include "car_state.h"
 #include "soc_osal.h"
 #include "../services/debug_log_service.h"
-#include "../services/udp_service.h"
+#include "../channels/udp_channel.h"
 
 // 循迹判定阈值（动态更新，初始使用默认宏值）
 static uint16_t g_trace_l_threshold = TCRT5000_LEFT_THRESHOLD;
@@ -104,11 +105,11 @@ static void trace_read_sensors(uint8_t *l, uint8_t *m, uint8_t *r, trace_state_t
     *m = (adc_m >= g_trace_m_threshold);
     *r = (adc_r >= g_trace_r_threshold);
 
-    car_mgr_update_ir_status(*l ? TCRT5000_BLACK : TCRT5000_WHITE, 
+    car_state_update_ir_status(*l ? TCRT5000_BLACK : TCRT5000_WHITE, 
                              *m ? TCRT5000_BLACK : TCRT5000_WHITE,
                              *r ? TCRT5000_BLACK : TCRT5000_WHITE);
 
-    car_mgr_update_adc_values(adc_l, adc_m, adc_r);
+    car_state_update_adc_values(adc_l, adc_m, adc_r);
     *state = (trace_state_t)((*l << 2) | (*m << 1) | *r);
 }
 
@@ -152,7 +153,7 @@ static void trace_tick_once(void)
             static int send_cnt = 0;
             if (++send_cnt >= 5) { // 100ms 周期
                 send_cnt = 0;
-                udp_service_send_trace_info();
+                udp_channel_send_trace_info();
             }
             break;
         }
@@ -297,7 +298,7 @@ void mode_trace_enter(void)
 
     // 读取循迹传感器校准阈值并同步至 CarState 与本地变量
     storage_service_get_trace_thresholds(&g_trace_l_threshold, &g_trace_m_threshold, &g_trace_r_threshold);
-    car_mgr_update_thresholds(g_trace_l_threshold, g_trace_m_threshold, g_trace_r_threshold);
+    car_state_update_thresholds(g_trace_l_threshold, g_trace_m_threshold, g_trace_r_threshold);
 
     (void)osal_sem_trydown(&g_os.exit_sem); // 抽空旧信号
     g_os.task = car_task_create_locked("trace_task", (osal_kthread_handler)trace_task_entry, NULL, 4096, 22);
@@ -344,7 +345,7 @@ void mode_trace_update_thresholds(uint16_t l, uint16_t m, uint16_t r)
     // 同步到存储服务
     (void)storage_service_save_trace_thresholds(l, m, r);
     // 同步更新全局 CarState
-    car_mgr_update_thresholds(l, m, r);
+    car_state_update_thresholds(l, m, r);
 }
 
 // 设置循迹子模式 (0: PID巡线, 1: 硬编码巡线, 2: 传感器校准)

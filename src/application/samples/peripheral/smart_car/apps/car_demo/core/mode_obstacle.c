@@ -8,6 +8,7 @@
 #include "../../../drivers/hcsr04/bsp_hcsr04.h"
 #include "../../../drivers/motor_control/bsp_motor.h"
 #include "../car_common.h"
+#include "car_state.h"
 #include "soc_osal.h"
 
 // ================= 参数配置 =================
@@ -80,7 +81,7 @@ static void obstacle_step(bool timer_fired)
     switch (g_obst_state) {
         case OBST_FORWARD: { // 前进中，主动测距
             float d = hcsr04_get_distance();
-            car_mgr_update_distance(d);
+            car_state_update_distance(d);
             if (d > OBSTACLE_LIMIT)
                 obst_push(OBST_FWD_SPEED, OBST_FWD_SPEED);
             else {
@@ -127,7 +128,7 @@ static void obstacle_step(bool timer_fired)
             break;
         case OBST_CHECKING: { // 测距判断：通畅→前进，受阻→继续转
             float d = hcsr04_get_distance();
-            car_mgr_update_distance(d);
+            car_state_update_distance(d);
             printf("转向后距离: %dcm\r\n", (int)d);
             if (d > OBSTACLE_LIMIT) {
                 printf("找到出口！继续前进。\r\n");

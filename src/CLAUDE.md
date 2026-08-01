@@ -97,20 +97,27 @@ application/samples/peripheral/smart_car/
 │   └── uart/                        # UART 命令接口
 └── apps/
     ├── car_demo/                  # 主集成应用（循迹/避障/遥控）
-    │   ├── car_main.c             # 入口：任务创建、模式切换按键中断
-    │   ├── core/
-    │   │   ├── car_mgr.c/h        # 状态机 & 模式生命周期管理器
-    │   │   ├── car_config.h       # 任务栈大小、优先级、时序常量
+    │   ├── car_main.c             # 入口：初始化编排 + 模式切换按键中断
+    │   ├── car_common.h           # 共享类型与协议定义（CarStatus/CarState/包格式），不含逻辑
+    │   ├── car_utils.c            # OS 任务/队列辅助函数
+    │   ├── core/                  # 控制核心（全车唯一决策层）
+    │   │   ├── car_ctrl.c/h         # 控制中枢：安全驾驶网关 + 统一协议包分发
+    │   │   ├── car_state.c/h        # 状态仓库：CarState 互斥保护读写
+    │   │   ├── mode_mgr.c/h         # 模式状态机：切换命令队列 + enter/exit 调度
     │   │   ├── mode_trace.c/h       # 循迹模式
-    │   │   ├── mode_obstacle.c/h    # 避障模式
-    │   │   └── mode_remote.c/h      # WiFi/SLE 遥控模式
-    │   └── services/
+    │   │   └── mode_obstacle.c/h    # 避障模式
+    │   ├── channels/              # 通道适配层（只翻译，不决策）
+    │   │   ├── udp_channel.c/h      # WiFi UDP 控制通道（广播发现+心跳）
+    │   │   ├── sle_channel.c/h      # 星闪（SLE）控制通道
+    │   │   ├── voice_channel.c/h    # UART 语音/串口命令通道
+    │   │   └── http_channel.c/h     # AP 门户 HTTP REST 控制通道
+    │   └── services/              # 支撑服务（非控制通道）
     │       ├── ui_service.c/h       # OLED UI 渲染
-    │       ├── voice_service.c/h    # UART 命令解析（语音/串口指令）
-    │       ├── udp_service.c/h      # WiFi UDP 控制服务器
-    │       ├── sle_service.c/h      # SLE 遥控服务
-    │       ├── storage_service.c/h  # 设置项 NV 存储
+    │       ├── wifi_mgr_service.c/h # WiFi 管理器（STA/AP 生命周期，接口前缀 wifi_mgr_）
+    │       ├── captive_portal_service.c/h # 强制门户（HTTP/DNS 服务器、配网）
+    │       ├── storage_service.c/h  # 设置项 NV 存储（实际在 platform/）
     │       ├── ota_service.c/h      # OTA 接收端
+    │       ├── debug_log_service.c/h# UDP 虚拟串口日志
     │       └── udp_net_common.c/h   # 共享网络工具函数
     ├── test_l9110s/                 # 各驱动的独立测试应用
     ├── test_hcsr04/
@@ -120,6 +127,13 @@ application/samples/peripheral/smart_car/
     ├── test_bt_spp/
     └── sle_test/
 ```
+
+### 分层调用规约（重要）
+
+- **channels/ 只做翻译不做决策**：收包/收请求 → 调 `car_ctrl_manual_drive()` / `mode_mgr_post()` / `car_ctrl_handle_packet()`，**禁止 include `bsp_motor.h`**。
+- **`bsp_motor_push_cmd()` 只允许 core/ 调用**（mode_trace / mode_obstacle / car_ctrl 网关）。
+- 所有遥控方式（UDP/SLE/HTTP/语音/按键）的放行/拦截决策只在 `car_ctrl.c` 一处，排查遥控类 bug 先看这里的日志。
+- WiFi 状态变化一律通过 `wifi_mgr_subscribe()` 订阅广播（追加式，禁止覆盖式单指针）；`g_wifi_status` 仅作一次性查询，**禁止在任务循环里轮询它**。
 
 ### 构建集成模式
 
@@ -138,13 +152,13 @@ application/samples/peripheral/smart_car/
 - `CAR_OBSTACLE_AVOIDANCE_STATUS`（2）— 避障模式，通过 HC-SR04 自动避障
 - `CAR_WIFI_CONTROL_STATUS`（3）— WiFi/SLE 遥控模式
 
-`car_mgr.c` 负责模式切换：对旧模式调用 `exit()`，对新模式调用 `enter()`，并在每 20ms 的主循环中调用 `tick()`。
+`core/mode_mgr.c` 负责模式切换：各来源通过 `mode_mgr_post()` 投递切换意图（消息队列），状态机任务对旧模式调用 `exit()`、对新模式调用 `enter()`，纯事件驱动，无消息时阻塞休眠。
 
 ### 通信协议
 
 - **WiFi 控制**：UDP 服务器，端口 8888。接收 5 字节数据包：`[type, cmd, motor1, motor2, ir_data]`。
 - **SLE 控制**：星闪低功耗协议。自定义类 GATT 服务用于遥控指令。
-- **UART/语音**：串口命令接口，由 `voice_service` 解析。
+- **UART/语音**：串口命令接口，由 `channels/voice_channel` 翻译后投递控制中枢。
 - **OTA**：TCP 二进制传输，端口 8890，由 UDP 数据包 type=0x05 触发。
 
 ## 添加新的外设模块
@@ -197,7 +211,7 @@ ELF 文件路径：`output/ws63/acore/ws63-liteos-app/ws63-liteos-app.elf`。
 - SDK 使用 **Huawei LiteOS**，并提供 OSAL 抽象层（`soc_osal.h`）。任务创建使用 `osal_kthread_create` / `osal_kthread_set_priority`，外层需包裹 `osal_kthread_lock/unlock`。
 - 任务创建后**不要**立即释放任务句柄（LiteOS 中的常见错误模式）。
 - `drivers/` 的 CMake 使用 `file(GLOB_RECURSE ...)`；在驱动目录中新增 `.c` 文件会自动被收录，无需修改 CMake。
-- `car_common.h` 定义了跨 core 和 services 共享的结构体（`CarState`、`CarStatus`、`WifiConnectStatus`）。
+- `car_common.h` 只定义跨 core / channels / services 共享的类型与协议（`CarState`、`CarStatus`、`CarPktType`、`car_packet_t`），控制逻辑在 `core/car_ctrl.c`、状态在 `core/car_state.c`、模式调度在 `core/mode_mgr.c`。
 
 
 所有代码先想一下能不能用RTOS的方式来实现，而不是用裸机的方式实现

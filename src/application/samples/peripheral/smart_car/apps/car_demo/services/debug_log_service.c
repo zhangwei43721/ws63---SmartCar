@@ -3,7 +3,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include "soc_osal.h"
-#include "udp_service.h"
+#include "../channels/udp_channel.h"
 #include "securec.h"
 
 static osal_mutex s_log_mutex;
@@ -43,7 +43,7 @@ void car_log(const char *fmt, ...)
         size_t cpy_len = ((size_t)len < sizeof(buf)) ? (size_t)len : (sizeof(buf) - 1);
         (void)memcpy_s(&packet[1], sizeof(packet) - 1, buf, cpy_len);
 
-        udp_service_send_data(packet, cpy_len + 1);
+        udp_channel_send_data(packet, cpy_len + 1);
 
         (void)osal_mutex_unlock(&s_log_mutex);
     }

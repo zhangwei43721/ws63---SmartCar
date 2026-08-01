@@ -1,6 +1,9 @@
 #ifndef CAR_COMMON_H
 #define CAR_COMMON_H
 
+// 本文件只存放跨 core / channels / services 共享的【类型与协议定义】。
+// 控制逻辑见 core/car_ctrl.h，状态仓库见 core/car_state.h，模式状态机见 core/mode_mgr.h。
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -45,7 +48,7 @@ typedef enum {
     CAR_WIFI_CONTROL_STATUS,       // 遥控模式：通过各种方式接收控制命令
 } CarStatus;
 
-// 模式切换命令（投递到 mode_q，由 car_main_task 消费）
+// 模式切换命令（投递到 mode_q，由 mode_mgr 状态机任务消费）
 typedef struct {
     CarStatus status;
     uint32_t source;
@@ -61,7 +64,7 @@ typedef struct {
     unsigned int ir_left;   // 左红外状态 (0:黑线, 1:白色)
     unsigned int ir_middle; // 中红外状态 (0:黑线, 1:白色)
     unsigned int ir_right;  // 右红外状态 (0:黑线, 1:白色)
-    
+
     // 循迹探头原始电压与阈值（用于上位机网页校准）
     uint32_t adc_left;
     uint32_t adc_middle;
@@ -120,28 +123,5 @@ typedef struct {
     int8_t ir_data; // 红外数据 / 保留
 } car_packet_t;
 #pragma pack()
-
-/**
- * @brief 统一协议处理入口，消费 CONTROL / MODE / HEARTBEAT / PID / OTA / TRACE_CALIB / TRACE_SUBMODE 等
- * @return true  包已被消费
- * @return false 包未处理，调用方需自行处理
- */
-bool car_proto_handle_packet(const uint8_t *data, uint16_t len, uint32_t mode_source);
-
-// 手动驾驶安全网关接口
-void car_mgr_manual_drive(int8_t left, int8_t right, uint32_t source);
-bool car_mgr_is_manual_allowed(void);
-
-// ---------- 主状态机接口 ----------
-bool car_mgr_post_mode(CarStatus status, uint32_t source); // 投递模式切换命令到状态机消息队列
-void car_mgr_get_state_copy(CarState *out);                // 线程安全地获取 CarState 快照
-void car_mgr_update_distance(float distance);              // 更新超声波距离值（避障模式写入）
-void car_mgr_update_ir_status(unsigned int left, unsigned int middle,
-                              unsigned int right); // 更新三路红外传感器状态
-void car_mgr_update_adc_values(uint32_t left, uint32_t middle, uint32_t right); // 更新原始采样 ADC
-void car_mgr_update_thresholds(uint16_t left, uint16_t middle, uint16_t right); // 更新当前活跃阈值
-
-// ---------- 模式名字符串 ----------
-const char *car_mode_name(CarStatus status); // 将模式枚举转为可读字符串
 
 #endif

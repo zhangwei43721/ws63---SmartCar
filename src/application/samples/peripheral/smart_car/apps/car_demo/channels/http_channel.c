@@ -1,20 +1,23 @@
 /**
- * @file        captive_portal_control.c
- * @brief       AP 模式下的小车 HTTP 控制接口实现
- * @details     内嵌控制页面 + /api/status /api/mode /api/move REST 接口
+ * @file        http_channel.c
+ * @brief       AP 模式下的小车 HTTP 控制通道实现
+ * @details     内嵌控制页面 + /api/status /api/mode /api/move REST 接口；
+ *              本通道只做 REST → 统一控制意图的翻译，决策交 core/car_ctrl
  */
 
-#include "captive_portal_control.h"
+#include "http_channel.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../../drivers/motor_control/bsp_motor.h"
 #include "../car_common.h"
+#include "../core/car_ctrl.h"
+#include "../core/car_state.h"
+#include "../core/mode_mgr.h"
 #include "lwip/sockets.h"
-#include "udp_net_common.h"
-#include "portal_html.h"
+#include "../services/udp_net_common.h"
+#include "../services/portal_html.h"
 
 // ---------- 工具函数 ----------
 
@@ -61,7 +64,7 @@ static int query_get_int(const char *query, const char *key)
 static void handle_api_status(int client_fd)
 {
     CarState st; // 模式状态
-    car_mgr_get_state_copy(&st);
+    car_state_get_copy(&st);
 
     char json[256];
     int json_len =
@@ -85,7 +88,7 @@ static void handle_api_mode(int client_fd, const char *query)
 {
     int mode = query_get_int(query, "m");
     if (mode >= 0 && mode <= 3) {
-        car_mgr_post_mode((CarStatus)mode, MODE_SRC_HTTP);
+        mode_mgr_post((CarStatus)mode, MODE_SRC_HTTP);
         printf("[Portal] HTTP 设置模式: %d\r\n", mode);
     }
 
@@ -109,7 +112,7 @@ static void handle_api_move(int client_fd, const char *query)
     int right = query_get_int(query, "r");
 
     // 安全遥控网关控制
-    car_mgr_manual_drive((int8_t)left, (int8_t)right, MODE_SRC_HTTP);
+    car_ctrl_manual_drive((int8_t)left, (int8_t)right, MODE_SRC_HTTP);
 
     char json[128];
     (void)snprintf(json, sizeof(json),
@@ -139,7 +142,7 @@ static void handle_api_reset(int client_fd)
 // ---------- 公共接口 ----------
 
 // 处理控制页面及 REST API 请求，匹配路径则处理并返回 true
-bool captive_portal_control_handle(int client_fd, bool is_get, const char *path, const char *query)
+bool http_channel_handle(int client_fd, bool is_get, const char *path, const char *query)
 {
     if (is_get && strcmp(path, "/control") == 0) {
         http_send_html_response(client_fd, s_html_control);

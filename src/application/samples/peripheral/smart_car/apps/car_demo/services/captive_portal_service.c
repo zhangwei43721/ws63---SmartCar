@@ -15,7 +15,7 @@
 #include "securec.h"
 #include "soc_osal.h"
 #include "../../../platform/storage_service.h"
-#include "captive_portal_control.h"
+#include "../channels/http_channel.h"
 #include "udp_net_common.h"
 
 #define PORTAL_STATIC_IP "192.168.1.1" // AP 模式固定 IP 地址
@@ -323,7 +323,7 @@ static void handle_http_client(int client_fd)
         return;
     }
 
-    if (captive_portal_control_handle(client_fd, is_get, path, query))
+    if (http_channel_handle(client_fd, is_get, path, query))
         return;
     if (is_get && strcmp(path, "/status") == 0) {
         handle_status_request(client_fd);
@@ -405,7 +405,7 @@ static void handle_http_client(int client_fd)
             portal_unlock();
 
             portal_set_status(PORTAL_STATUS_SWITCHING, "切换STA");
-            bsp_wifi_connect_ap_from_portal(g_switch_ssid, g_switch_password);
+            wifi_mgr_connect_ap_from_portal(g_switch_ssid, g_switch_password);
             http_send_html_response(client_fd, s_html_submitted);
             return;
         } else {
@@ -613,6 +613,25 @@ static int captive_portal_task(void *arg)
     return 0;
 }
 
+// WiFi 事件订阅回调（运行在 wifi_mgr 任务上下文）：只转发给本模块的事件/状态接口
+static void portal_wifi_event_cb(bsp_wifi_event_t event, const char *ip)
+{
+    (void)ip;
+    switch (event) {
+        case BSP_WIFI_EVENT_AP_READY:
+            captive_portal_service_notify_ap_ready();
+            break;
+        case BSP_WIFI_EVENT_AP_STOPPED:
+            captive_portal_service_notify_ap_stopped();
+            break;
+        case BSP_WIFI_EVENT_STA_FAIL:
+            captive_portal_service_notify_sta_fail();
+            break;
+        default:
+            break;
+    }
+}
+
 // 初始化 Portal 服务：创建互斥锁、事件和主任务
 void captive_portal_service_init(void)
 {
@@ -626,6 +645,8 @@ void captive_portal_service_init(void)
         if (osal_event_init(&g_portal_event) == OSAL_SUCCESS)
             g_portal_event_inited = true;
     }
+
+    (void)wifi_mgr_subscribe(portal_wifi_event_cb);
 
     g_task_should_exit = false;
     g_portal_task = car_task_create_locked("portal_task", (osal_kthread_handler)captive_portal_task, NULL, 8192, 23);

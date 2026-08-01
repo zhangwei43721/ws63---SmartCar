@@ -49,21 +49,21 @@ embed_html_file("portal_control.html" "s_html_control")
 
 file(APPEND "${PORTAL_HTML_H}" "\n#endif // PORTAL_HTML_H\n")
 
-# 1. 扫描当前目录下(即扁平化后的目录)的所有 .c 文件
+# 1. 扫描当前目录及 core/channels/services 下的所有 .c 文件
 file(GLOB_RECURSE APP_SRCS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/core/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/channels/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/services/*.c"
 )
 
 # Exclude legacy + deleted/relocated files
 list(REMOVE_ITEM APP_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/bsp_car_control.c")
-list(REMOVE_ITEM APP_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/services/storage_service.c")
-list(REMOVE_ITEM APP_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/services/car_proto.c")
 
 # 2. 添加头文件路径 (对于 car_demo 这种有本地 .h 的情况很重要)
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")                          # car_common.h
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/core")                     # mode_*.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/core")                     # car_ctrl/car_state/mode_mgr/mode_*.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/channels")                 # *_channel.h
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/services")                 # *_service.h
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../../platform")           # storage_service.h
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../../drivers/motor_control") # bsp_motor.h

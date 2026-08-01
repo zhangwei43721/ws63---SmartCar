@@ -164,7 +164,7 @@ static int ui_task_entry(void *arg)
                         const char *ap_ip = captive_portal_service_get_ap_ip();
                         (void)snprintf(ip_line, sizeof(ip_line), "IP:%s", ap_ip ? ap_ip : "...");
                     } else {
-                        const char *ip = bsp_wifi_mgr_get_ip();
+                        const char *ip = wifi_mgr_get_ip();
                         (void)snprintf(ip_line, sizeof(ip_line), "IP:%s", ip ? ip : "Pending");
                     }
                     ui_render_standby_impl(wifi_status, ip_line);
@@ -183,6 +183,16 @@ static int ui_task_entry(void *arg)
 
 // ---------- 初始化 ----------
 
+// WiFi 事件订阅回调（运行在 wifi_mgr 任务上下文）：
+// 网络就绪后刷新一次待机页（显示最新 IP），保持旧版由 wifi_mgr 直接调用的行为
+static void ui_wifi_event_cb(bsp_wifi_event_t event, const char *ip)
+{
+    (void)ip;
+    if (event == BSP_WIFI_EVENT_STA_GOT_IP || event == BSP_WIFI_EVENT_AP_READY) {
+        ui_show_mode_page(CAR_STOP_STATUS);
+    }
+}
+
 // 初始化OLED显示屏、消息队列和UI任务
 void ui_service_init(void)
 {
@@ -191,6 +201,8 @@ void ui_service_init(void)
     if (init_attempted)
         return;
     init_attempted = true;
+
+    (void)wifi_mgr_subscribe(ui_wifi_event_cb);
 
     uapi_pin_set_mode(CAR_I2C_SCL_PIN, CAR_I2C_PIN_MODE);
     uapi_pin_set_mode(CAR_I2C_SDA_PIN, CAR_I2C_PIN_MODE);

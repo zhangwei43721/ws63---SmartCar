@@ -1,21 +1,22 @@
 /**
- * @file voice_service.c
- * @brief 语音模块命令服务实现 - 消息队列驱动 + 看门狗任务
+ * @file voice_channel.c
+ * @brief 语音（UART）控制通道实现 - 消息队列驱动 + 超时停车
  *
  * 设计：
  *  - UART 回调（运行在 BSP UART 上下文）只做一件事：把字节投到消息队列；
- *    业务逻辑（电机控制 / 模式切换）一律不在回调里跑
- *  - voice_task：阻塞读消息队列；收到字节后 process_command；
- *    同时承担命令超时看门狗（用 read_copy 的 timeout 实现"剩余时间等待"）
+ *    业务逻辑一律不在回调里跑
+ *  - voice_task：阻塞读消息队列；收到字节后 process_command
+ *  - 运动/停车意图一律经 car_ctrl 安全网关裁决，本通道不直触电机驱动
  */
 
-#include "voice_service.h"
+#include "voice_channel.h"
 
 #include <stdio.h>
 
 #include "../../../drivers/uart/bsp_uart.h"
-#include "../../../drivers/motor_control/bsp_motor.h"
 #include "../car_common.h"
+#include "../core/car_ctrl.h"
+#include "../core/mode_mgr.h"
 #include "soc_osal.h"
 
 #define VOICE_CMD_TIMEOUT_MS 1000 // 语音命令超时时间(ms)
@@ -35,18 +36,18 @@ static osal_timer g_voice_stop_timer;
 static bool g_voice_stop_timer_inited = false;   // 停车定时器是否已初始化
 static volatile bool g_voice_cmd_active = false; // 单写者(voice_task)，定时器回调清除
 
-// 语音命令超时回调，自动停车
+// 语音命令超时回调，经安全网关请求停车（仅遥控模式下生效）
 static void voice_stop_timer_cb(unsigned long arg)
 {
     (void)arg;
     g_voice_cmd_active = false;
-    bsp_motor_push_cmd(0, 0);
+    car_ctrl_manual_drive(0, 0, MODE_SRC_VOICE);
 }
 
 // 设置电机运动并启动/重置超时定时器
 static void voice_set_motion(int8_t l, int8_t r, uint32_t ms)
 {
-    car_mgr_manual_drive(l, r, MODE_SRC_VOICE);
+    car_ctrl_manual_drive(l, r, MODE_SRC_VOICE);
     if (g_voice_stop_timer_inited) {
         osal_timer_stop(&g_voice_stop_timer);
     }
@@ -92,7 +93,7 @@ static void process_command(uint8_t cmd)
         unsigned idx = cmd - VOICE_MODE_CMD_BASE;
         if (idx < VOICE_MODE_CMD_COUNT) {
             voice_set_motion(0, 0, 0);
-            car_mgr_post_mode(g_mode_table[idx], MODE_SRC_VOICE);
+            mode_mgr_post(g_mode_table[idx], MODE_SRC_VOICE);
         }
         return;
     }
@@ -132,8 +133,8 @@ static int voice_main_task(void *arg)
     return 0;
 }
 
-// 初始化语音服务：创建定时器、消息队列、UART和语音任务
-void voice_service_init(void)
+// 初始化语音通道：创建定时器、消息队列、UART和语音任务
+void voice_channel_init(void)
 {
     g_voice_cmd_active = false;
 
@@ -165,5 +166,5 @@ void voice_service_init(void)
     g_voice_task = car_task_create_locked("voice_task", (osal_kthread_handler)voice_main_task, NULL,
                                             2048, 29);
 
-    printf("[语音] 服务已启动\r\n");
+    printf("[语音] 通道已启动\r\n");
 }
