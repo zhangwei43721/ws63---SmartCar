@@ -27,13 +27,17 @@ osal_task *car_task_create_locked(const char *name,
     return handle;
 }
 
-// 消息队列覆写助手（队满时自动读并丢弃最旧数据，再写入最新数据）
+// 消息队列覆写助手（队满时自动读并丢弃最旧数据，再写入最新数据）。
+// 三步（查数量 → 丢弃最旧 → 写入）用关中断包成原子段，保证在 ISR 上下文也安全。
 int osal_msgq_overwrite(unsigned long qid, unsigned int depth, const void *msg, unsigned int size)
 {
+    uint32_t irq_sts = osal_irq_lock();
     if (osal_msg_queue_get_msg_num(qid) >= depth) {
         unsigned char drop[64];
         unsigned int dsz = size;
         (void)osal_msg_queue_read_copy(qid, drop, &dsz, OSAL_MSGQ_NO_WAIT);
     }
-    return osal_msg_queue_write_copy(qid, (void *)msg, size, OSAL_MSGQ_NO_WAIT);
+    int ret = osal_msg_queue_write_copy(qid, (void *)msg, size, OSAL_MSGQ_NO_WAIT);
+    osal_irq_restore(irq_sts);
+    return ret;
 }

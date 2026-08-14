@@ -13,7 +13,7 @@
 #include "../services/ui_service.h"
 #include "soc_osal.h"
 
-static CarStatus g_status = CAR_STOP_STATUS; // 当前小车运行模式
+static volatile CarStatus g_status = CAR_STOP_STATUS; // 当前小车运行模式（按键 ISR 读 vs 状态机任务写）
 
 #define MODE_CMD_QUEUE_DEPTH 4           // 模式切换消息队列深度
 static unsigned long g_mode_queue = 0;   // 模式切换命令队列ID
@@ -54,10 +54,8 @@ bool mode_mgr_post(CarStatus status, uint32_t source)
 
     ModeCmdMsg msg = {.status = status, .source = source};
 
-    uint32_t irq_sts = osal_irq_lock();
+    // osal_msgq_overwrite 内部已关中断保护，此处无需再包一层
     int ret = osal_msgq_overwrite(g_mode_queue, MODE_CMD_QUEUE_DEPTH, &msg, sizeof(msg));
-    osal_irq_restore(irq_sts);
-
     return (ret == OSAL_SUCCESS);
 }
 
@@ -110,20 +108,31 @@ void mode_mgr_run(void)
         if (!mode_mgr_apply(msg.status))
             continue;
 
-        // 执行状态转移
+        // 执行状态转移。exit 返回 false 表示旧任务未及时退出（句柄已保留防重复创建），
+        // 此时放弃 enter 并保持安全，避免旧任务仍跑时再叠一个新任务抢电机。
         switch (g_status) {
             case CAR_TRACE_STATUS:
-                mode_obstacle_exit();
-                mode_trace_enter();
+                if (mode_obstacle_exit()) {
+                    mode_trace_enter();
+                } else {
+                    printf("[ModeMgr] 避障退出失败，放弃进入循迹\r\n");
+                }
                 break;
             case CAR_OBSTACLE_AVOIDANCE_STATUS:
-                mode_trace_exit();
-                mode_obstacle_enter();
+                if (mode_trace_exit()) {
+                    mode_obstacle_enter();
+                } else {
+                    printf("[ModeMgr] 循迹退出失败，放弃进入避障\r\n");
+                }
                 break;
-            default:
-                mode_trace_exit();
-                mode_obstacle_exit();
+            default: {
+                bool t = mode_trace_exit();
+                bool o = mode_obstacle_exit();
+                if (!t || !o) {
+                    printf("[ModeMgr] 模式退出异常 (trace=%d, obstacle=%d)\r\n", (int)t, (int)o);
+                }
                 break;
+            }
         }
     }
 }

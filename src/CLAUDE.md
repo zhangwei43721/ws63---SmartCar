@@ -83,28 +83,33 @@ python tools/ota_sender.py output/ws63/upgrade/update.fwpkg 192.168.43.1
 
 ```
 application/samples/peripheral/smart_car/
-├── Kconfig                          # 模块级 Kconfig：选择驱动/应用模式
-├── CMakeLists.txt                   # 顶层 CMake：分发到 drivers + apps
+├── Kconfig                          # 模块级 Kconfig：运行模式 choice + 底盘类型 choice + 驱动开关
+├── CMakeLists.txt                   # 顶层 CMake：编译 platform + 分发 drivers + apps
+├── board_config.h                   # 板级引脚/硬件配置（被 car_common.h 包含）
+├── platform/                        # 平台层（跨应用共享基础设施）
+│   └── storage_service.c/h          # 设置项 NV 存储（PID 参数 / 循迹阈值 / WiFi 配置）
 ├── drivers/
 │   ├── CMakeLists.txt               # 根据 Kconfig 标志 GLOB 驱动源码
-│   ├── l9110s/                      # L9110S 电机驱动（GPIO/PWM）
+│   ├── l9110s/                      # L9110S 双电机驱动（GPIO/PWM）
+│   ├── motor_control/               # 电机抽象层 bsp_motor（任务 + 消息队列 + 400ms 看门狗）
+│   ├── chassis_uart/                # 串口舵机底盘驱动（UART1 GPIO15/16，2400 波特率，4 字节 HEX 协议）
 │   ├── hcsr04/                      # HC-SR04 超声波传感器
 │   ├── tcrt5000/                    # TCRT5000 循迹红外传感器
 │   ├── ssd1306/                     # SSD1306 OLED 显示屏（128x64）
-│   ├── wifi_client/                 # WiFi STA 连接助手
+│   ├── wifi_client/                 # WiFi 驱动（bsp_wifi_sta STA 模式 + bsp_wifi_ap AP 模式）
 │   ├── bt_spp_server/               # 蓝牙 SPP 服务器
 │   ├── sle/                         # 星闪（SLE）设备驱动
 │   └── uart/                        # UART 命令接口
 └── apps/
     ├── car_demo/                  # 主集成应用（循迹/避障/遥控）
     │   ├── car_main.c             # 入口：初始化编排 + 模式切换按键中断
-    │   ├── car_common.h           # 共享类型与协议定义（CarStatus/CarState/包格式），不含逻辑
+    │   ├── car_common.h           # 共享类型与协议定义（CarStatus/CarState/CarPktType/包格式），不含逻辑
     │   ├── car_utils.c            # OS 任务/队列辅助函数
     │   ├── core/                  # 控制核心（全车唯一决策层）
-    │   │   ├── car_ctrl.c/h         # 控制中枢：安全驾驶网关 + 统一协议包分发
+    │   │   ├── car_ctrl.c/h         # 控制中枢：安全驾驶网关 + 统一命令总线
     │   │   ├── car_state.c/h        # 状态仓库：CarState 互斥保护读写
     │   │   ├── mode_mgr.c/h         # 模式状态机：切换命令队列 + enter/exit 调度
-    │   │   ├── mode_trace.c/h       # 循迹模式
+    │   │   ├── mode_trace.c/h       # 循迹模式（PID/硬编码/校准子模式）
     │   │   └── mode_obstacle.c/h    # 避障模式
     │   ├── channels/              # 通道适配层（只翻译，不决策）
     │   │   ├── udp_channel.c/h      # WiFi UDP 控制通道（广播发现+心跳）
@@ -115,34 +120,46 @@ application/samples/peripheral/smart_car/
     │       ├── ui_service.c/h       # OLED UI 渲染
     │       ├── wifi_mgr_service.c/h # WiFi 管理器（STA/AP 生命周期，接口前缀 wifi_mgr_）
     │       ├── captive_portal_service.c/h # 强制门户（HTTP/DNS 服务器、配网）
-    │       ├── storage_service.c/h  # 设置项 NV 存储（实际在 platform/）
     │       ├── ota_service.c/h      # OTA 接收端
     │       ├── debug_log_service.c/h# UDP 虚拟串口日志
-    │       └── udp_net_common.c/h   # 共享网络工具函数
-    ├── test_l9110s/                 # 各驱动的独立测试应用
-    ├── test_hcsr04/
-    ├── test_tcrt5000/
-    ├── test_ssd1306/
-    ├── test_wifi/
-    ├── test_bt_spp/
-    └── sle_test/
+    │       ├── udp_net_common.c/h   # 共享网络工具函数
+    │       ├── portal_html.c/h      # CMake 自动生成的网页资源（勿手改）
+    │       └── html/                # 门户网页源文件（编译时由 CMake 嵌入固件）
+    └── test/                      # 各驱动的独立测试应用
+        ├── test_l9110s/
+        ├── test_hcsr04/
+        ├── test_tcrt5000/
+        ├── test_ssd1306/
+        ├── test_wifi/
+        ├── test_bt_spp/
+        ├── test_chassis_uart/      # 串口舵机底盘驱动测试
+        └── sle_test/
 ```
 
 ### 分层调用规约（重要）
 
-- **channels/ 只做翻译不做决策**：收包/收请求 → 调 `car_ctrl_manual_drive()` / `mode_mgr_post()` / `car_ctrl_handle_packet()`，**禁止 include `bsp_motor.h`**。
-- **`bsp_motor_push_cmd()` 只允许 core/ 调用**（mode_trace / mode_obstacle / car_ctrl 网关）。
+- **channels/ 只做翻译不做决策**：收包/收请求 → 调 `car_ctrl_manual_drive()` / `mode_mgr_post()` / `car_ctrl_post_cmd()`，**禁止 include `bsp_motor.h`**。
+- **统一命令总线**：二进制协议通道（UDP/SLE/语音）不直接调处理函数，而是把原始包 `car_cmd_t` 经 `car_ctrl_post_cmd()` 投递到总线，由 `car_ctrl` 任务串行消费，实现单点仲裁、单点日志、单点应答路由。带应答能力的包可携带 `reply` 回调（"从哪来回哪去"）。
+- **`bsp_motor_push_cmd()` 只允许 core/ 调用**（mode_trace / mode_obstacle / car_ctrl 网关），电机抽象层见下"底盘抽象层"。
 - 所有遥控方式（UDP/SLE/HTTP/语音/按键）的放行/拦截决策只在 `car_ctrl.c` 一处，排查遥控类 bug 先看这里的日志。
 - WiFi 状态变化一律通过 `wifi_mgr_subscribe()` 订阅广播（追加式，禁止覆盖式单指针）；`g_wifi_status` 仅作一次性查询，**禁止在任务循环里轮询它**。
+
+### 底盘抽象层
+
+`core/` 不直接操作具体电机硬件，而是依赖 `drivers/motor_control/bsp_motor.h` 抽象：
+
+- 由 `SMART_CAR_CHASSIS_TYPE` Kconfig `choice` 选择物理底盘：`L9110S`（双电机差速）或 `UART_SERVO`（串口舵机转向，默认）。
+- `bsp_motor_init()` 内部创建 `motor_exec` 任务（优先级 10），通过消息队列消费 `int8_t[2]`（left, right）速度指令，并带 400ms 看门狗自动停车（防止遥控指令丢失后小车失控）。
+- 串口舵机底盘的实际收发封装在 `drivers/chassis_uart/bsp_chassis_uart.h`（5 字节帧：`AA [motor] [servo1] [servo2] BB`）。
 
 ### 构建集成模式
 
 智能小车遵循 SDK 的 Kconfig + CMake 约定：
 
-1. **Kconfig**（`smart_car/Kconfig`）定义运行模式的 `choice` 和各驱动的 `config` 开关。`car_demo` 选项通过 `select` 自动启用所需驱动。
-2. **顶层 CMake**（`smart_car/CMakeLists.txt`）使用 `add_subdirectory(drivers)`，然后通过 `if(CONFIG_SMART_CAR_RUN_*)` 分发到选中的应用。
-3. **驱动 CMake**（`drivers/CMakeLists.txt`）对每个启用的 `CONFIG_SMART_CAR_DRIVER_*` 标志使用 `file(GLOB_RECURSE ...)` 和 `include_directories()`。
-4. **应用 CMake**（`apps/car_demo/CMakeLists.txt`）从 `core/` 和 `services/` GLOB 所有 `.c` 文件，添加本地 include 路径，并通过 `PARENT_SCOPE` 追加到全局 `SOURCES` 变量。
+1. **Kconfig**（`smart_car/Kconfig`）定义两个 `choice`：运行模式（`SMART_CAR_RUN_*`）和底盘类型（`SMART_CAR_CHASSIS_TYPE`，L9110S / UART_SERVO），外加各驱动的 `config` 开关。`car_demo` 选项通过 `select` 自动启用所需驱动。
+2. **顶层 CMake**（`smart_car/CMakeLists.txt`）先 `add_subdirectory(platform)` 编译平台层，再 `add_subdirectory(drivers)`，然后通过 `if(CONFIG_SMART_CAR_RUN_*)` 分发到选中的应用（`apps/car_demo` 或 `apps/test/*`）。
+3. **驱动 CMake**（`drivers/CMakeLists.txt`）对每个启用的 `CONFIG_SMART_CAR_DRIVER_*` 标志使用 `file(GLOB_RECURSE ...)` 和 `include_directories()`。`motor_control/` 无条件编译（底盘抽象层常驻）。
+4. **应用 CMake**（`apps/car_demo/CMakeLists.txt`）从根目录 + `core/` + `channels/` + `services/` GLOB 所有 `.c` 文件，并用纯 CMake 的 `embed_html_file()` 把 `services/html/*.html` 打包进 `portal_html.c/h`（无需外部脚本），最后通过 `PARENT_SCOPE` 追加到全局 `SOURCES` 变量。
 
 ### 状态机
 
@@ -154,12 +171,20 @@ application/samples/peripheral/smart_car/
 
 `core/mode_mgr.c` 负责模式切换：各来源通过 `mode_mgr_post()` 投递切换意图（消息队列），状态机任务对旧模式调用 `exit()`、对新模式调用 `enter()`，纯事件驱动，无消息时阻塞休眠。
 
+**循迹子模式**（`mode_trace_set_submode`）：`0` PID 巡线 / `1` 硬编码巡线 / `2` 传感器校准。PID 参数（Kp/Ki/Kd/BaseSpeed）和循迹阈值可在线设置并经 `storage_service` 持久化到 NV；阈值校准与原始 ADC 值通过 `TRACE_INFO`/`TRACE_CALIB` 包回传上位机网页。
+
 ### 通信协议
 
-- **WiFi 控制**：UDP 服务器，端口 8888。接收 5 字节数据包：`[type, cmd, motor1, motor2, ir_data]`。
-- **SLE 控制**：星闪低功耗协议。自定义类 GATT 服务用于遥控指令。
-- **UART/语音**：串口命令接口，由 `channels/voice_channel` 翻译后投递控制中枢。
-- **OTA**：TCP 二进制传输，端口 8890，由 UDP 数据包 type=0x05 触发。
+所有二进制通道（UDP/SLE/语音）共用 `car_common.h` 里的统一包格式 `car_packet_t`（5 字节）与 `CarPktType` 类型码，收包后统一走 `car_ctrl_post_cmd()` 总线：
+
+- **基础包**：`[type, cmd, motor1, motor2, ir_data]`（1 字节 type + 4 字节 payload；变长包最大 16 字节，见 `CAR_CMD_MAX_PAYLOAD`）。
+- **`CarPktType` 类型码**：`0x01` 控制、`0x03` 模式切换、`0x04` PID 设参、`0x05` OTA 触发、`0x0A` 循迹遥测、`0x0B` 虚拟串口日志、`0x0C` 循迹校准、`0x0D` 循迹子模式、`0xE0/0xE1` WiFi 配置（变长）、`0xFE` 心跳、`0xFF` 设备发现。
+- **WiFi 控制**：UDP 服务器，端口 8888；广播发现/心跳走端口 8889。
+- **SLE 控制**：星闪低功耗协议，复用统一 5 字节遥控协议。
+- **UART/语音**：单字节命令（`0x00-0x0F` 运动 / `0x10-0x1F` 模式），由 `channels/voice_channel` 翻译成 `car_packet_t` 后投递总线。
+- **OTA**：TCP 二进制传输，端口 8890，由 type=0x05 触发。
+
+详细协议见 `docs/UDP 通信协议文档.md` 与 `docs/tasks-and-state-machines.md`（勿与本节重复维护）。
 
 ## 添加新的外设模块
 

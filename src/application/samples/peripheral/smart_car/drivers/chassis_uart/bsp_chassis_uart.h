@@ -43,6 +43,16 @@ int bsp_chassis_uart_send(int8_t motor_speed, int8_t servo1_angle, int8_t servo2
 int bsp_chassis_uart_send_pkt(const chassis_packet_t *pkt);
 
 //
+// @brief 差速意图 → 舵机转向底盘指令（本底盘的阿克曼转向运动学）
+// @param left  左轮速度 -100~100
+// @param right 右轮速度 -100~100
+// @note 前后电机速度 = (left+right)/2；转向舵机摆幅 = (right-left)*3（放大增益，±100 限幅）
+//       本驱动内部由 TX 任务按 25ms 周期刷新帧：运动帧持续重发保持动作，
+//       停车帧额外补发多次（串口单向无 ACK）确保停下，新命令可打断停车补发。
+//
+void bsp_chassis_uart_set_differential(int8_t left, int8_t right);
+
+//
 // @brief 从接收队列获取一帧数据 (支持 RTOS 阻塞/非阻塞)
 // @param pkt 输出数据包
 // @param timeout_ms 超时毫秒数 (0 为非阻塞)

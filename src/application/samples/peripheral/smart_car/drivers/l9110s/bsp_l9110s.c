@@ -45,6 +45,12 @@ void l9110s_init(void)
 // 辅助内联：处理单边电机逻辑
 static inline void set_side(uint8_t idx_a, uint8_t idx_b, int8_t speed)
 {
+    // 死区补偿：L9110S 电机低速无法克服静摩擦转动，将非零的 [1,100]
+    // 线性映射到实际可驱动的最小 [50,100]（负向同理）。此物理特性只归本驱动所有。
+    if (speed > 0)
+        speed = (int8_t)(50 + (speed * 50) / 100);
+    else if (speed < 0)
+        speed = (int8_t)(-50 + (speed * 50) / 100);
 
     // 设置占空比
     uint32_t duty = (PWM_PERIOD * (speed < 0 ? -speed : speed)) / 100;

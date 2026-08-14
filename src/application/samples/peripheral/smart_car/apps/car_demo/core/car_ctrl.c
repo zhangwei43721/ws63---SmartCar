@@ -53,7 +53,7 @@ bool car_ctrl_is_manual_allowed(void)
 void car_ctrl_manual_drive(int8_t left, int8_t right, uint32_t source)
 {
     if (car_ctrl_is_manual_allowed()) {
-        bsp_motor_push_cmd(left, right);
+        bsp_motor_push_cmd(left, right, MOTOR_SRC_MANUAL);
     } else {
         printf("[Safety] Intercepted manual drive command from source %u (%d, %d)\r\n", source, left, right);
     }

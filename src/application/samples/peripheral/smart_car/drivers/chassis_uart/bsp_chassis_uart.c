@@ -20,12 +20,31 @@
 #define RX_QUEUE_MAX_PKTS       16
 #define RX_BUFFER_SIZE          64
 
+#define TX_REFRESH_PERIOD_MS    25   // 串口帧持续刷新周期（舵机需周期信号保持动作）
+#define TX_STOP_RESEND_COUNT    4    // 停车帧补发次数（串口单向无 ACK，多发几次确保停下）
+
 static uint8_t g_uart_rx_raw_buf[RX_BUFFER_SIZE] = {0};
 static chassis_uart_rx_callback_t g_rx_callback = NULL;
 static unsigned long g_rx_queue = 0;
 
 static uint8_t g_parse_buf[5] = {0};
 static uint8_t g_parse_idx = 0;
+
+// ==================== TX 周期刷新状态 ====================
+// 串口舵机底盘与 L9110S 的 PWM 持续输出不同，需要周期收到信号才保持动作，
+// 且串口单向无 ACK，单发一帧可能丢失。故由 TX 任务按 25ms 周期刷新：
+//   运动帧：每 25ms 重发一次保持动作；停车帧：额外补发多次确保可靠停下；
+//   新命令到达立即唤醒发送，可打断进行中的停车补发。
+static chassis_packet_t g_tx_target = {0, 0, 0}; // 目标帧（set_differential 更新）
+static uint8_t g_stop_resend_remain = 0;         // 停车帧剩余补发次数
+static osal_task *g_tx_task = NULL;              // TX 刷新任务句柄
+static osal_event g_tx_event;                    // 0x01：新命令到达，唤醒 TX 任务
+static osal_mutex g_tx_lock;                     // 保护 g_tx_target / g_stop_resend_remain
+static bool g_tx_lock_inited = false;
+static bool g_tx_inited = false;
+
+// 前置声明：bsp_chassis_uart_init 在文件前部调用，实现在文件后部
+static void chassis_tx_task_start(void);
 
 //
 // 串口中断接收处理（滑动窗口解析 5 字节数据帧: AA [motor] [servo1] [servo2] BB）
@@ -108,6 +127,8 @@ int bsp_chassis_uart_init(chassis_uart_rx_callback_t rx_cb)
 
     uapi_uart_register_rx_callback(CHASSIS_UART_BUS_ID, UART_RX_CONDITION_FULL_OR_SUFFICIENT_DATA_OR_IDLE, 1, chassis_uart_rx_isr);
     printf("Chassis UART1 initialized (GPIO15/16, 2400 Baud)\r\n");
+
+    chassis_tx_task_start(); // 启动串口帧周期刷新任务（运动 25ms 刷新 / 停车补发）
     return 0;
 }
 
@@ -124,6 +145,119 @@ int bsp_chassis_uart_send_pkt(const chassis_packet_t *pkt)
         return -1;
     }
     return bsp_chassis_uart_send(pkt->motor_speed, pkt->servo1_angle, pkt->servo2_angle);
+}
+
+// 判断帧是否含非零通道（运动帧）
+static bool chassis_frame_moving(const chassis_packet_t *pkt)
+{
+    return pkt->motor_speed != 0 || pkt->servo1_angle != 0 || pkt->servo2_angle != 0;
+}
+
+// TX 周期刷新任务：以 osal_event_read 的 25ms 超时作为周期 tick（事件+定时，非忙等）。
+// 发送条件：新命令立即发 / 运动帧持续刷新 / 停车补发未完成。
+static int chassis_tx_task_entry(void *arg)
+{
+    (void)arg;
+    printf("[Chassis] TX 刷新任务启动 (25ms 周期)\r\n");
+
+    while (1) {
+        int ret = osal_event_read(&g_tx_event, 0x01, TX_REFRESH_PERIOD_MS,
+                                  OSAL_WAITMODE_OR | OSAL_WAITMODE_CLR);
+        bool new_cmd = (ret > 0 && ((unsigned int)ret & 0x01));
+
+        chassis_packet_t frame;
+        bool do_send;
+        osal_mutex_lock(&g_tx_lock);
+        frame = g_tx_target;
+        bool moving = chassis_frame_moving(&frame);
+        do_send = new_cmd || moving || g_stop_resend_remain > 0;
+        if (!moving && g_stop_resend_remain > 0) {
+            g_stop_resend_remain--;
+        }
+        osal_mutex_unlock(&g_tx_lock);
+
+        if (do_send) {
+            (void)bsp_chassis_uart_send(frame.motor_speed, frame.servo1_angle, frame.servo2_angle);
+        }
+    }
+    return 0;
+}
+
+// 启动 TX 周期刷新任务（仅一次）
+static void chassis_tx_task_start(void)
+{
+    if (g_tx_inited) {
+        return;
+    }
+
+    if (!g_tx_lock_inited) {
+        if (osal_mutex_init(&g_tx_lock) != OSAL_SUCCESS) {
+            printf("[Chassis] TX 锁初始化失败\r\n");
+            return;
+        }
+        g_tx_lock_inited = true;
+    }
+
+    if (osal_event_init(&g_tx_event) != OSAL_SUCCESS) {
+        printf("[Chassis] TX 事件初始化失败\r\n");
+        return;
+    }
+
+    osal_kthread_lock();
+    g_tx_task = osal_kthread_create((osal_kthread_handler)chassis_tx_task_entry, NULL, "chassis_tx", 2048);
+    if (g_tx_task != NULL) {
+        osal_kthread_set_priority(g_tx_task, 10);
+    }
+    osal_kthread_unlock();
+
+    if (g_tx_task == NULL) {
+        printf("[Chassis] TX 任务创建失败\r\n");
+        return;
+    }
+
+    g_tx_inited = true;
+    printf("[Chassis] TX 周期刷新就绪\r\n");
+}
+
+// 差速意图 → 舵机转向底盘指令。阿克曼转向运动学只归本底盘驱动所有。
+// 不直接发帧，而是更新目标帧并唤醒 TX 任务：由 TX 任务按 25ms 周期刷新、
+// 停车帧补发多次（串口无 ACK 需冗余），新命令可打断进行中的停车补发。
+void bsp_chassis_uart_set_differential(int8_t left, int8_t right)
+{
+    // 前后电机速度 = 左右轮平均；用 int16 中间量避免 int8 溢出
+    int16_t motor = ((int16_t)left + right) / 2;
+    // 转向舵机摆幅 = 左右轮差 * 放大增益（左右转时打满舵）
+    int16_t steering = ((int16_t)right - left) * 3;
+
+    if (motor > 100)
+        motor = 100;
+    else if (motor < -100)
+        motor = -100;
+
+    if (steering > 100)
+        steering = 100;
+    else if (steering < -100)
+        steering = -100;
+
+    // TX 任务未就绪（初始化失败）时的退化路径：直接同步发送一帧
+    if (!g_tx_inited) {
+        (void)bsp_chassis_uart_send((int8_t)motor, (int8_t)steering, (int8_t)(-steering));
+        return;
+    }
+
+    osal_mutex_lock(&g_tx_lock);
+    g_tx_target.motor_speed = (int8_t)motor;
+    g_tx_target.servo1_angle = (int8_t)steering;
+    g_tx_target.servo2_angle = (int8_t)(-steering);
+    if (motor == 0 && steering == 0) {
+        g_stop_resend_remain = TX_STOP_RESEND_COUNT; // 停车：补发多次确保停下
+    } else {
+        g_stop_resend_remain = 0; // 运动：打断进行中的停车补发
+    }
+    osal_mutex_unlock(&g_tx_lock);
+
+    // 唤醒 TX 任务立即发送新帧
+    (void)osal_event_write(&g_tx_event, 0x01);
 }
 
 bool bsp_chassis_uart_recv(chassis_packet_t *pkt, uint32_t timeout_ms)

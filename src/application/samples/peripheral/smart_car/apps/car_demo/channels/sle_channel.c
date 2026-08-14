@@ -73,13 +73,20 @@ static void sle_connect_callback(uint16_t conn_id)
     printf("[SLE_SRV] 设备已连接\r\n");
 }
 
-// SLE设备断开回调，清除连接状态并请求停车（是否放行由中枢安全网关裁决）
+// SLE设备断开回调，清除连接状态并请求停车（走统一命令总线，由中枢安全网关裁决）
 static void sle_disconnect_callback(uint16_t conn_id)
 {
     unused(conn_id);
     g_connected = false;
     // 断开时请求停车：仅遥控模式下生效，自动模式（循迹/避障）的电机归模式自己管
-    car_ctrl_manual_drive(0, 0, MODE_SRC_SLE);
+    car_cmd_t cmd = {
+        .source = MODE_SRC_SLE,
+        .reply = NULL,
+        .reply_ctx = NULL,
+        .len = sizeof(car_packet_t),
+        .data = {CAR_PKT_CONTROL, 0, 0, 0, 0},
+    };
+    (void)car_ctrl_post_cmd(&cmd);
     printf("[SLE_SRV] 设备已断开\r\n");
 }
 

@@ -61,6 +61,7 @@ static struct {
     int base_speed;
     float last_error, integral, last_valid_error;
     unsigned long long last_seen_tick;
+    unsigned long long last_tick; // 上次 PID 计算时间戳（微分项 dt 归一化用）
 } g_pid = {.kp = 16.0f, .base_speed = 40};
 
 // 统一管理 OS 资源
@@ -71,8 +72,14 @@ static struct {
     bool inited;
 } g_os = {0};
 
-// 根据偏差计算 PID 输出
-static float calculate_pid(float error)
+// 循迹运行状态互斥锁：保护 g_pid / g_trace_submode / g_trace_*_threshold。
+// trace_task 与 car_ctrl 总线任务会并发读写（set_pid/set_submode/update_thresholds）。
+static osal_mutex g_trace_mutex;
+static bool g_trace_mutex_inited = false;
+
+// 根据偏差计算 PID 输出（调用者需持 g_trace_mutex）。
+// 微分项按真实采样周期 dt 归一化，避免事件超时导致的周期抖动放大微分噪声。
+static float calculate_pid(float error, unsigned long long now)
 {
     g_pid.integral += error;
 
@@ -86,10 +93,18 @@ static float calculate_pid(float error)
     if (fabs(error) > 1.0f)
         g_pid.integral = 0.0f;
 
+    // dt 归一化（秒）：clamp 到 [5ms, 50ms] 防 jiffies 量化噪声与异常放大
+    float dt = (float)(now - g_pid.last_tick) / (float)osal_msecs_to_jiffies(1000);
+    if (dt < 0.005f)
+        dt = 0.005f;
+    if (dt > 0.05f)
+        dt = 0.05f;
+
     float p = g_pid.kp * error;
     float i = g_pid.ki * g_pid.integral;
-    float d = g_pid.kd * (error - g_pid.last_error);
+    float d = g_pid.kd * (error - g_pid.last_error) / dt;
     g_pid.last_error = error;
+    g_pid.last_tick = now;
 
     return p + i + d;
 }
@@ -148,7 +163,13 @@ static void trace_tick_once(void)
     trace_state_t state;
     trace_read_sensors(&l, &m, &r, &state);
 
-    switch (g_trace_submode) {
+    // 先加锁读取子模式（g_trace_submode 由 car_ctrl 总线任务并发写）
+    trace_submode_t submode;
+    MUTEX_LOCK(g_trace_mutex, g_trace_mutex_inited);
+    submode = g_trace_submode;
+    MUTEX_UNLOCK(g_trace_mutex, g_trace_mutex_inited);
+
+    switch (submode) {
         case TRACE_SUBMODE_CALIBRATION: {
             static int send_cnt = 0;
             if (++send_cnt >= 5) { // 100ms 周期
@@ -159,13 +180,15 @@ static void trace_tick_once(void)
         }
 
         case TRACE_SUBMODE_PID: {
+            int8_t cmd_l = 0, cmd_r = 0;
+
+            // 锁内只做纯 PID 计算（访问 g_pid），不碰电机/日志/网络
+            MUTEX_LOCK(g_trace_mutex, g_trace_mutex_inited);
             float error_to_use = 0.0f;
             unsigned long long now = osal_get_jiffies();
             bool should_run = trace_check_lost(state, now, &error_to_use);
-            int8_t cmd_l = 0, cmd_r = 0;
-            
             if (should_run) {
-                float pid_out = calculate_pid(error_to_use);
+                float pid_out = calculate_pid(error_to_use, now);
                 int base = (state != STATE_000) ? (int)(g_pid.base_speed * g_action_map[state].speed_ratio) : g_pid.base_speed;
                 int pid_int = (int)roundf(pid_out);
                 int left_target  = base + pid_int;
@@ -179,20 +202,23 @@ static void trace_tick_once(void)
                 cmd_l = (int8_t)left_target;
                 cmd_r = (int8_t)right_target;
             }
-            bsp_motor_push_cmd(cmd_l, cmd_r);
+            MUTEX_UNLOCK(g_trace_mutex, g_trace_mutex_inited);
+
+            bsp_motor_push_cmd(cmd_l, cmd_r, MOTOR_SRC_AUTONOMOUS);
             trace_debug_log("PID", l, m, r, cmd_l, cmd_r);
             break;
         }
 
         case TRACE_SUBMODE_HARDCODED: {
+            int8_t cmd_l = 0, cmd_r = 0;
+
+            MUTEX_LOCK(g_trace_mutex, g_trace_mutex_inited);
             float error_to_use = 0.0f;
             unsigned long long now = osal_get_jiffies();
             bool should_run = trace_check_lost(state, now, &error_to_use);
-            int8_t cmd_l = 0, cmd_r = 0;
-
             if (should_run) {
                 if (state != STATE_000) {
-                    (void)calculate_pid(error_to_use); // 虽然计算但不应用纠偏
+                    (void)calculate_pid(error_to_use, now); // 虽然计算但不应用纠偏
                     int base = (int)(g_pid.base_speed * g_action_map[state].speed_ratio);
                     cmd_l = (int8_t)base;
                     cmd_r = (int8_t)base;
@@ -208,14 +234,16 @@ static void trace_tick_once(void)
                         cmd_l = (int8_t)speed;
                         cmd_r = (int8_t)(-speed / 2);
                     }
-                    else { 
+                    else {
                          // 居中丢线，笔直前搜
                         cmd_l = (int8_t)speed;
                         cmd_r = (int8_t)speed;
                     }
                 }
             }
-            bsp_motor_push_cmd(cmd_l, cmd_r);
+            MUTEX_UNLOCK(g_trace_mutex, g_trace_mutex_inited);
+
+            bsp_motor_push_cmd(cmd_l, cmd_r, MOTOR_SRC_AUTONOMOUS);
             trace_debug_log("硬编码", l, m, r, cmd_l, cmd_r);
             break;
         }
@@ -239,7 +267,7 @@ static int trace_task_entry(void *arg)
         trace_tick_once();
     }
 
-    bsp_motor_push_cmd(0, 0);
+    bsp_motor_push_cmd(0, 0, MOTOR_SRC_AUTONOMOUS);
     printf("[循迹] 循迹任务退出\r\n");
     osal_sem_up(&g_os.exit_sem);
     return 0;
@@ -248,6 +276,7 @@ static int trace_task_entry(void *arg)
 // 外部接口：设置 PID 参数
 void mode_trace_set_pid(int type, int value)
 {
+    MUTEX_LOCK(g_trace_mutex, g_trace_mutex_inited);
     switch (type) {
         case 1:
             g_pid.kp = value / 100.0f;
@@ -265,8 +294,11 @@ void mode_trace_set_pid(int type, int value)
     // 设参后直接清空运行态
     g_pid.integral = 0.0f;
     g_pid.last_error = 0.0f;
-    car_log("[循迹] 临时参数加载: Kp=%.3f, Ki=%.4f, Kd=%.3f, 速度=%d\r\n", g_pid.kp, g_pid.ki, g_pid.kd,
-           g_pid.base_speed);
+    float kp = g_pid.kp, ki = g_pid.ki, kd = g_pid.kd;
+    int base = g_pid.base_speed;
+    MUTEX_UNLOCK(g_trace_mutex, g_trace_mutex_inited);
+
+    car_log("[循迹] 临时参数加载: Kp=%.3f, Ki=%.4f, Kd=%.3f, 速度=%d\r\n", kp, ki, kd, base);
 }
 
 // 外部接口：进入循迹模式
@@ -276,73 +308,103 @@ void mode_trace_enter(void)
         return; // 已经在跑了
 
     car_log("进入循迹模式...\r\n");
-    g_trace_submode = TRACE_SUBMODE_CALIBRATION; // 默认是传感器校准模式
 
-    // 重置状态
-    g_pid.last_seen_tick = osal_get_jiffies();
-    g_pid.last_error = 0.0f;
-    g_pid.integral = 0.0f;
-    g_pid.last_valid_error = 0.0f;
-
-    // 懒加载 OS 资源（仅初始化一次）
+    // 懒加载互斥锁与 OS 资源（仅初始化一次）
+    if (!g_trace_mutex_inited) {
+        osal_mutex_init(&g_trace_mutex);
+        g_trace_mutex_inited = true;
+    }
     if (!g_os.inited) {
         osal_event_init(&g_os.event);
         osal_sem_binary_sem_init(&g_os.exit_sem, 0);
         g_os.inited = true;
     }
 
-    // 读Flash参数并强转设入
+    // 锁外读 NV（可能涉及 flash，避免持锁阻塞）
+    float kp, ki, kd;
     int16_t speed;
-    storage_service_get_pid_params(&g_pid.kp, &g_pid.ki, &g_pid.kd, &speed);
-    g_pid.base_speed = speed;
+    storage_service_get_pid_params(&kp, &ki, &kd, &speed);
+    uint16_t th_l, th_m, th_r;
+    storage_service_get_trace_thresholds(&th_l, &th_m, &th_r);
 
-    // 读取循迹传感器校准阈值并同步至 CarState 与本地变量
-    storage_service_get_trace_thresholds(&g_trace_l_threshold, &g_trace_m_threshold, &g_trace_r_threshold);
-    car_state_update_thresholds(g_trace_l_threshold, g_trace_m_threshold, g_trace_r_threshold);
+    // 加锁写运行态（防 car_ctrl 总线任务并发 set_pid/set_submode）
+    MUTEX_LOCK(g_trace_mutex, g_trace_mutex_inited);
+    g_trace_submode = TRACE_SUBMODE_CALIBRATION; // 默认是传感器校准模式
+    g_pid.kp = kp;
+    g_pid.ki = ki;
+    g_pid.kd = kd;
+    g_pid.base_speed = speed;
+    g_pid.last_seen_tick = osal_get_jiffies();
+    g_pid.last_tick = g_pid.last_seen_tick;
+    g_pid.last_error = 0.0f;
+    g_pid.integral = 0.0f;
+    g_pid.last_valid_error = 0.0f;
+    g_trace_l_threshold = th_l;
+    g_trace_m_threshold = th_m;
+    g_trace_r_threshold = th_r;
+    MUTEX_UNLOCK(g_trace_mutex, g_trace_mutex_inited);
+
+    car_state_update_thresholds(th_l, th_m, th_r);
 
     (void)osal_sem_trydown(&g_os.exit_sem); // 抽空旧信号
     g_os.task = car_task_create_locked("trace_task", (osal_kthread_handler)trace_task_entry, NULL, 4096, 22);
 }
 
-// 外部接口：退出循迹模式
-void mode_trace_exit(void)
+// 外部接口：退出循迹模式。
+// 返回 false 表示任务 500ms 内未退出（异常），句柄已保留，避免下次 enter 重复创建。
+bool mode_trace_exit(void)
 {
     if (g_os.task != NULL) {
-        osal_event_write(&g_os.event, 0x01);              // 发送退出事件
-        (void)osal_sem_down_timeout(&g_os.exit_sem, 500); // 等待任务死透
+        osal_event_write(&g_os.event, 0x01); // 发送退出事件
+        if (osal_sem_down_timeout(&g_os.exit_sem, 500) != OSAL_SUCCESS) {
+            printf("[BUG] Trace 任务退出超时，保留句柄\r\n");
+            bsp_motor_push_cmd(0, 0, MOTOR_SRC_AUTONOMOUS);
+            return false;
+        }
         g_os.task = NULL;
     }
 
-    // 参数比对固化逻辑
+    // 锁外读 NV（可能涉及 flash，避免持锁阻塞）
     float s_kp, s_ki, s_kd;
     int16_t s_speed;
     storage_service_get_pid_params(&s_kp, &s_ki, &s_kd, &s_speed);
 
-    if (g_pid.kp != s_kp || g_pid.ki != s_ki || g_pid.kd != s_kd || g_pid.base_speed != s_speed) {
-        errcode_t ret = storage_service_save_pid_params(g_pid.kp, g_pid.ki, g_pid.kd, (int16_t)g_pid.base_speed);
-        car_log("[循迹] 保存配置到NV: Kp=%.3f Ki=%.4f Kd=%.3f SPD=%d (Ret=%d)\r\n", g_pid.kp, g_pid.ki, g_pid.kd,
-               g_pid.base_speed, ret);
+    // 加锁读 g_pid 比对是否需要固化
+    MUTEX_LOCK(g_trace_mutex, g_trace_mutex_inited);
+    bool changed = (g_pid.kp != s_kp || g_pid.ki != s_ki || g_pid.kd != s_kd || g_pid.base_speed != s_speed);
+    float kp = g_pid.kp, ki = g_pid.ki, kd = g_pid.kd;
+    int base = g_pid.base_speed;
+    MUTEX_UNLOCK(g_trace_mutex, g_trace_mutex_inited);
+
+    if (changed) {
+        errcode_t ret = storage_service_save_pid_params(kp, ki, kd, (int16_t)base);
+        car_log("[循迹] 保存配置到NV: Kp=%.3f Ki=%.4f Kd=%.3f SPD=%d (Ret=%d)\r\n", kp, ki, kd, base, ret);
     }
 
-    bsp_motor_push_cmd(0, 0);
+    bsp_motor_push_cmd(0, 0, MOTOR_SRC_AUTONOMOUS);
+    return true;
 }
 
 // 获取当前活跃的校准阈值
 void mode_trace_get_thresholds(uint16_t *l, uint16_t *m, uint16_t *r)
 {
+    MUTEX_LOCK(g_trace_mutex, g_trace_mutex_inited);
     if (l) *l = g_trace_l_threshold;
     if (m) *m = g_trace_m_threshold;
     if (r) *r = g_trace_r_threshold;
+    MUTEX_UNLOCK(g_trace_mutex, g_trace_mutex_inited);
 }
 
 // 更新循迹阈值，并保存到 NV
 void mode_trace_update_thresholds(uint16_t l, uint16_t m, uint16_t r)
 {
+    MUTEX_LOCK(g_trace_mutex, g_trace_mutex_inited);
     g_trace_l_threshold = l;
     g_trace_m_threshold = m;
     g_trace_r_threshold = r;
+    MUTEX_UNLOCK(g_trace_mutex, g_trace_mutex_inited);
 
-    // 同步到存储服务
+    // 同步到存储服务（锁外，可能涉及 flash）
     (void)storage_service_save_trace_thresholds(l, m, r);
     // 同步更新全局 CarState
     car_state_update_thresholds(l, m, r);
@@ -352,9 +414,12 @@ void mode_trace_update_thresholds(uint16_t l, uint16_t m, uint16_t r)
 void mode_trace_set_submode(uint8_t submode)
 {
     if (submode <= TRACE_SUBMODE_CALIBRATION) {
+        MUTEX_LOCK(g_trace_mutex, g_trace_mutex_inited);
         g_trace_submode = (trace_submode_t)submode;
-        car_log("[循迹] 切换子模式: %s\r\n", 
-                submode == TRACE_SUBMODE_PID ? "PID巡线" : 
+        MUTEX_UNLOCK(g_trace_mutex, g_trace_mutex_inited);
+
+        car_log("[循迹] 切换子模式: %s\r\n",
+                submode == TRACE_SUBMODE_PID ? "PID巡线" :
                 (submode == TRACE_SUBMODE_HARDCODED ? "硬编码巡线" : "传感器校准"));
     }
 }
@@ -362,5 +427,8 @@ void mode_trace_set_submode(uint8_t submode)
 // 检查是否处于传感器校准状态
 bool mode_trace_is_calibrating(void)
 {
-    return (g_trace_submode == TRACE_SUBMODE_CALIBRATION);
+    MUTEX_LOCK(g_trace_mutex, g_trace_mutex_inited);
+    bool calib = (g_trace_submode == TRACE_SUBMODE_CALIBRATION);
+    MUTEX_UNLOCK(g_trace_mutex, g_trace_mutex_inited);
+    return calib;
 }

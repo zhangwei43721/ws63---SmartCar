@@ -36,11 +36,6 @@ typedef enum {
 
 static obstacle_state_t g_obst_state = OBST_FORWARD;
 
-// 当前目标电机值，每个 tick 复推一次喂 motor_executor 400ms 看门狗
-// （避障 TURNING/BACKING 等长时段 > 400ms，不喂狗电机会被中途强制停）
-static int8_t g_cur_l = 0;
-static int8_t g_cur_r = 0;
-
 // 统一的 OS 资源生命周期管理器。将散落的 osal_task、osal_event、osal_timer
 // 句柄以及各自的状态标志（inited）进行强内聚结构体化包装，方便统一初始化与销毁，消除野句柄风险。
 static struct {
@@ -51,12 +46,10 @@ static struct {
     bool inited;
 } g_os = {0};
 
-// 设置并推送电机速度命令，同时缓存当前值用于看门狗喂狗
+// 设置并推送电机速度命令（内部自主，无需看门狗喂狗，由模式 exit 显式停车）
 static void obst_push(int8_t l, int8_t r)
 {
-    g_cur_l = l;
-    g_cur_r = r;
-    bsp_motor_push_cmd(l, r);
+    bsp_motor_push_cmd(l, r, MOTOR_SRC_AUTONOMOUS);
 }
 
 // 避障定时器回调：触发TIMER事件推进状态机
@@ -160,16 +153,12 @@ static int obstacle_task_entry(void *arg)
 
         bool timer_fired = (ret > 0 && ((unsigned int)ret & 0x02));
         obstacle_step(timer_fired);
-
-        // 复推当前目标速度，喂 motor_executor 看门狗
-        if (g_cur_l != 0 || g_cur_r != 0)
-            bsp_motor_push_cmd(g_cur_l, g_cur_r);
     }
 
     if (g_os.inited)
         osal_timer_stop(&g_os.timer);
 
-    bsp_motor_push_cmd(0, 0);
+    bsp_motor_push_cmd(0, 0, MOTOR_SRC_AUTONOMOUS);
     printf("[Obstacle] 避障任务退出\r\n");
     if (g_os.inited)
         osal_sem_up(&g_os.exit_sem);
@@ -182,9 +171,7 @@ void mode_obstacle_enter(void)
 {
     printf("进入智能避障模式\r\n");
     g_obst_state = OBST_FORWARD;
-    g_cur_l = 0;
-    g_cur_r = 0;
-    bsp_motor_push_cmd(0, 0);
+    bsp_motor_push_cmd(0, 0, MOTOR_SRC_AUTONOMOUS);
 
     if (!g_os.inited) {
         if (osal_event_init(&g_os.event) == OSAL_SUCCESS) {
@@ -211,21 +198,29 @@ void mode_obstacle_enter(void)
     g_os.task = car_task_create_locked("obst_task", (osal_kthread_handler)obstacle_task_entry, NULL, 2048, 22);
 }
 
-// 退出避障模式：停止定时器、发送停止事件并等待任务退出
-void mode_obstacle_exit(void)
+// 退出避障模式：停止定时器、发送停止事件并等待任务退出。
+// 返回 false 表示任务 500ms 内未退出（异常），句柄已保留，避免下次 enter 重复创建。
+bool mode_obstacle_exit(void)
 {
     if (g_os.task != NULL) {
         if (g_os.inited)
             osal_event_write(&g_os.event, 0x01);
 
-        if (g_os.inited)
-            (void)osal_sem_down_timeout(&g_os.exit_sem, 500);
+        if (g_os.inited) {
+            if (osal_sem_down_timeout(&g_os.exit_sem, 500) != OSAL_SUCCESS) {
+                printf("[BUG] Obstacle 任务退出超时，保留句柄\r\n");
+                bsp_motor_push_cmd(0, 0, MOTOR_SRC_AUTONOMOUS);
+                g_obst_state = OBST_FORWARD;
+                return false;
+            }
+        }
 
         g_os.task = NULL;
     }
     if (g_os.inited)
         osal_timer_stop(&g_os.timer);
 
-    bsp_motor_push_cmd(0, 0);
+    bsp_motor_push_cmd(0, 0, MOTOR_SRC_AUTONOMOUS);
     g_obst_state = OBST_FORWARD;
+    return true;
 }

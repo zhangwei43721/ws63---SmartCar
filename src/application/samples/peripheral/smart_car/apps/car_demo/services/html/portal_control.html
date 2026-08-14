@@ -3,9 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SmartCar 控制台</title>
+    <title>红岩军卡控制台</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-user-drag: none; -webkit-tap-highlight-color: transparent; }
         body { font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, sans-serif; background: #f0f4f9; color: #1f1f1f; min-height: 100vh; padding: 16px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
         .card { background: #ffffff; border-radius: 28px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); padding: 24px; width: 100%; max-width: 360px; border: 1px solid #e1e3e1; }
         .header-title { font-size: 22px; font-weight: 500; color: #1f1f1f; text-align: center; margin-bottom: 2px; }
@@ -26,7 +26,7 @@
         .avoid-bar { width: 100%; height: 6px; background: #e1e3e1; border-radius: 3px; margin-top: 8px; overflow: hidden; }
         .avoid-bar-in { height: 100%; background: #188038; width: 0%; border-radius: 3px; transition: width 0.3s; }
         .dpad { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 12px; width: 260px; height: 260px; margin: 0 auto 16px auto; }
-        .dpad-btn { border: none; border-radius: 20px; background: #f0f4f9; color: #041e49; font-size: 20px; font-weight: 500; cursor: pointer; touch-action: none; transition: all 0.15s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+        .dpad-btn { border: none; border-radius: 20px; background: #f0f4f9; color: #041e49; font-size: 20px; font-weight: 500; cursor: pointer; touch-action: none; user-select: none !important; -webkit-user-select: none !important; -webkit-touch-callout: none !important; transition: all 0.15s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
         .dpad-btn span { font-size: 11px; color: #444746; font-weight: 500; }
         .dpad-btn.active { background: #c2e7ff; color: #001d35; transform: scale(0.95); }
         .dpad-btn.stop { background: #ffdad6; color: #410002; }
@@ -37,7 +37,7 @@
 </head>
 <body>
     <div class="card">
-        <h1 class="header-title">SmartCar 控制台</h1>
+        <h1 class="header-title">红岩军卡控制台</h1>
         <div class="sub-nav"><a href="#" onclick="resetMode();return false;">← 返回配网</a></div>
         <div class="mode-box">
             <button class="mode-btn" id="m0" onclick="setMode(0)">停止</button>
@@ -69,6 +69,21 @@
     </div>
     <script>
         var pendingMove = null;
+
+        // 阻止长按弹出文本选择/上下文菜单：按住方向键时若被浏览器手势接管，
+        // 会打断 pointerdown → pointerup 事件流，导致"松开不停车"。这里从源头禁掉。
+        document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+        document.addEventListener('selectstart', function (e) { e.preventDefault(); });
+        // 移动端长按手势（文本选择/长按菜单）在 touch 层面识别，往往不派发
+        // selectstart/contextmenu，只有 touchstart 的 preventDefault 才能从源头拦下。
+        // 必须显式 { passive: false }：现代浏览器默认 touch 事件是 passive 的，会忽略 preventDefault。
+        document.addEventListener('touchstart', function (e) {
+            // 只拦方向盘的 .dpad-btn（它用 pointer 事件控制，不依赖 click），
+            // 避免误伤模式按钮的 onclick 合成。
+            if (e.target && e.target.closest && e.target.closest('.dpad-btn')) {
+                e.preventDefault();
+            }
+        }, { passive: false, capture: true });
         function setMode(m) { fetch('/api/mode?m=' + m).then(function () { poll(); }); }
         function resetMode() { fetch('/api/reset').then(function () { location.href = '/'; }); }
         function move(l, r, text) {
@@ -87,15 +102,23 @@
         function bindBtn(id, l, r, text) {
             var btn = document.getElementById(id);
             if (!btn) return;
+            var active = false;
             var start = function (e) {
                 e.preventDefault();
+                // 独占指针：按住后手指/鼠标移出按钮也不会触发 pointerleave，
+                // 杜绝"手指微动/拖动"被误判为松手而提前停车
+                if (btn.setPointerCapture) {
+                    try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+                }
+                active = true;
                 btn.classList.add('active');
                 if (navigator.vibrate) navigator.vibrate(15);
                 move(l, r, text);
             };
             var end = function (e) {
                 e.preventDefault();
-                if (btn.classList.contains('active')) {
+                if (active) {
+                    active = false;
                     btn.classList.remove('active');
                     move(0, 0, "已停止");
                 }
@@ -103,7 +126,7 @@
             btn.addEventListener('pointerdown', start);
             btn.addEventListener('pointerup', end);
             btn.addEventListener('pointercancel', end);
-            btn.addEventListener('pointerleave', end);
+            // 不再绑定 pointerleave：setPointerCapture 已保证按住期间事件只发给本按钮
         }
         bindBtn('btnUp', 80, 80, "前进中");
         bindBtn('btnLeft', 20, 80, "左转中");

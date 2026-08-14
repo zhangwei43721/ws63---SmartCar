@@ -14,7 +14,6 @@
 #include "../car_common.h"
 #include "../core/car_ctrl.h"
 #include "../core/car_state.h"
-#include "../core/mode_mgr.h"
 #include "lwip/sockets.h"
 #include "../services/udp_net_common.h"
 #include "../services/portal_html.h"
@@ -88,7 +87,15 @@ static void handle_api_mode(int client_fd, const char *query)
 {
     int mode = query_get_int(query, "m");
     if (mode >= 0 && mode <= 3) {
-        mode_mgr_post((CarStatus)mode, MODE_SRC_HTTP);
+        // 与 UDP/SLE/语音一致：投统一命令总线，由 car_ctrl 任务串行仲裁
+        car_cmd_t cmd = {
+            .source = MODE_SRC_HTTP,
+            .reply = NULL,
+            .reply_ctx = NULL,
+            .len = sizeof(car_packet_t),
+            .data = {CAR_PKT_MODE, (uint8_t)mode, 0, 0, 0},
+        };
+        (void)car_ctrl_post_cmd(&cmd);
         printf("[Portal] HTTP 设置模式: %d\r\n", mode);
     }
 
@@ -111,8 +118,15 @@ static void handle_api_move(int client_fd, const char *query)
     int left = query_get_int(query, "l");
     int right = query_get_int(query, "r");
 
-    // 安全遥控网关控制
-    car_ctrl_manual_drive((int8_t)left, (int8_t)right, MODE_SRC_HTTP);
+    // 与 UDP/SLE/语音一致：投统一命令总线，由 car_ctrl 任务串行仲裁
+    car_cmd_t cmd = {
+        .source = MODE_SRC_HTTP,
+        .reply = NULL,
+        .reply_ctx = NULL,
+        .len = sizeof(car_packet_t),
+        .data = {CAR_PKT_CONTROL, 0, (uint8_t)(int8_t)left, (uint8_t)(int8_t)right, 0},
+    };
+    (void)car_ctrl_post_cmd(&cmd);
 
     char json[128];
     (void)snprintf(json, sizeof(json),
