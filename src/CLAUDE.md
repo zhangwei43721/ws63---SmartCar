@@ -27,7 +27,7 @@ python .\OTA_Workflow.py
 
 ```powershell
 # 完整构建（默认目标：ws63-liteos-app）
-python build.py -j 16 ws63-liteos-app
+python build.py -j16 ws63-liteos-app
 
 # 清理后构建
 python build.py -c ws63-liteos-app

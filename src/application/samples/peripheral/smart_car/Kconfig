@@ -11,7 +11,6 @@ choice SMART_CAR_RUN_MODE
 
     config SMART_CAR_RUN_CAR_DEMO
         bool "Car Demo (Tracking & Obstacle Avoidance)"
-        select SMART_CAR_DRIVER_L9110S
         select SMART_CAR_DRIVER_HCSR04
         select SMART_CAR_DRIVER_TCRT5000
         select SMART_CAR_DRIVER_SSD1306
@@ -51,9 +50,36 @@ choice SMART_CAR_RUN_MODE
         help
             SLE 星闪遥控测试应用
 
+    config SMART_CAR_RUN_CHASSIS_UART_TEST
+        bool "Test: Chassis UART (2400 Baud, GPIO15/16)"
+        select SMART_CAR_DRIVER_CHASSIS_UART
+        help
+            新小车底盘串口驱动测试程序 (UART1, GPIO_15/16, 2400波特率, 25ms帧周期)
+
 endchoice
 
-# --- 2. 驱动开关定义 (被上面自动选中) ---
+# --- 2. 底盘类型选择 ---
+choice SMART_CAR_CHASSIS_TYPE
+    prompt "Select Chassis Type"
+    default SMART_CAR_CHASSIS_TYPE_UART_SERVO
+    help
+        选择小车使用的物理底盘类型与硬件驱动
+
+    config SMART_CAR_CHASSIS_TYPE_L9110S
+        bool "L9110S Differential Dual Motor Chassis"
+        select SMART_CAR_DRIVER_L9110S
+        help
+            传统 L9110S 双电机差速小车底盘
+
+    config SMART_CAR_CHASSIS_TYPE_UART_SERVO
+        bool "Serial UART Servo Steering Chassis (GPIO15/16, 2400 Baud)"
+        select SMART_CAR_DRIVER_CHASSIS_UART
+        help
+            新版串口 UART 舵机转向小车底盘 (GPIO_15/16, 2400波特率, 4字节HEX协议)
+
+endchoice
+
+# --- 3. 驱动开关定义 (被上面自动选中) ---
 menu "Drivers Status"
     config SMART_CAR_DRIVER_L9110S
         bool "L9110S Driver"
@@ -78,4 +104,8 @@ menu "Drivers Status"
 
     config SMART_CAR_DRIVER_SLE
         bool "SLE (Star Flash) Driver"
+
+    config SMART_CAR_DRIVER_CHASSIS_UART
+        bool "Chassis UART Driver"
 endmenu
+

@@ -22,12 +22,13 @@
  * 0x10-0x1F: 模式切换
  */
 typedef enum {
-    // 运动控制 (0x00-0x0F)
+    // 运动控制 (0x00-0x0F)：均为脉冲语义，持续时长由 bsp_motor 400ms 看门狗统一兜底，
+    // 持续运动需由语音模块重复发令刷新（与 UDP/SLE 遥控一致）
     VOICE_CMD_STOP = 0x00,     // 停止
-    VOICE_CMD_FORWARD = 0x01,  // 前进 (持续1000ms)
-    VOICE_CMD_BACKWARD = 0x02, // 后退 (持续1000ms)
-    VOICE_CMD_LEFT = 0x03,     // 左转 (持续400ms后自动停止)
-    VOICE_CMD_RIGHT = 0x04,    // 右转 (持续400ms后自动停止)
+    VOICE_CMD_FORWARD = 0x01,  // 前进
+    VOICE_CMD_BACKWARD = 0x02, // 后退
+    VOICE_CMD_LEFT = 0x03,     // 左转
+    VOICE_CMD_RIGHT = 0x04,    // 右转
 
     // 模式切换 (0x10-0x1F)
     VOICE_CMD_STANDBY = 0x10,  // 待机模式

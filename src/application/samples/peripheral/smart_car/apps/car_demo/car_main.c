@@ -87,11 +87,9 @@ static void car_system_init(void)
     car_state_update_thresholds(th_l, th_m, th_r);
 
     // 驱动初始化（先于一切任务创建）
-    l9110s_init();
     hcsr04_init();
     tcrt5000_adc_init();
-
-    // 关键控制任务先创建，确保任务池不会因后续网络服务耗尽而抢占
+    
     bsp_motor_init();
 
     // WiFi 管理任务

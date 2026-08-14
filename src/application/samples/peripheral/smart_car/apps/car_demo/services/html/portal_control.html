@@ -1,94 +1,123 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>小车控制</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SmartCar 控制台</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Caro, sans-serif; background: #f2f3f5; min-height: 100vh; padding: 16px; }
-        .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,.08); padding: 20px; max-width: 360px; margin: 0 auto; }
-        h1 { font-size: 20px; color: #1a1a1a; margin-bottom: 16px; text-align: center; }
-        .mode-box { display: flex; gap: 8px; margin-bottom: 16px; }
-        .mode-btn { flex: 1; padding: 10px 4px; border: none; border-radius: 8px; background: #e5e5ea; color: #333; font-size: 13px; cursor: pointer; }
-        .mode-btn.on { background: #007aff; color: #fff; }
-        .sensor-box { background: #f8f8f8; border-radius: 12px; padding: 16px; margin-bottom: 16px; min-height: 80px; text-align: center; }
-        .sensor-box h3 { font-size: 14px; color: #666; margin-bottom: 10px; }
-        .trace-leds { display: flex; justify-content: center; gap: 24px; }
-        .trace-led { width: 36px; height: 36px; border-radius: 50%; background: #ddd; border: 3px solid #ccc; }
-        .trace-led.on { background: #111; border-color: #34c759; box-shadow: 0 0 8px #34c759; }
-        .avoid-num { font-size: 36px; font-weight: bold; color: #007aff; }
-        .avoid-bar { width: 100%; height: 8px; background: #ddd; border-radius: 4px; margin-top: 8px; overflow: hidden; }
-        .avoid-bar-in { height: 100%; background: #34c759; width: 0%; border-radius: 4px; transition: width .3s; }
-        .dpad { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; max-width: 280px; margin: 0 auto; }
-        .dpad-btn { height: 64px; border: none; border-radius: 12px; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,.1); font-size: 22px; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
-        .dpad-btn:active { background: #007aff; color: #fff; }
-        .dpad-btn.stop { background: #ff3b30; color: #fff; }
-        .tip { margin-top: 12px; font-size: 12px; color: #999; text-align: center; }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+        body { font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, sans-serif; background: #f0f4f9; color: #1f1f1f; min-height: 100vh; padding: 16px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+        .card { background: #ffffff; border-radius: 28px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); padding: 24px; width: 100%; max-width: 360px; border: 1px solid #e1e3e1; }
+        .header-title { font-size: 22px; font-weight: 500; color: #1f1f1f; text-align: center; margin-bottom: 2px; }
+        .sub-nav { text-align: center; margin-bottom: 16px; }
+        .sub-nav a { font-size: 13px; color: #0b57d0; text-decoration: none; font-weight: 500; }
+        .mode-box { display: flex; gap: 6px; margin-bottom: 20px; background: #f0f4f9; padding: 4px; border-radius: 16px; }
+        .mode-btn { flex: 1; padding: 10px 0; border: none; border-radius: 12px; background: transparent; color: #444746; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; }
+        .mode-btn.on { background: #c2e7ff; color: #001d35; font-weight: 600; }
+        .status-card { background: #f8f9fa; border-radius: 16px; padding: 12px; margin-bottom: 20px; text-align: center; border: 1px solid #e1e3e1; }
+        .status-text { font-size: 14px; font-weight: 500; color: #444746; }
+        .status-text.active { color: #0b57d0; font-weight: 600; }
+        .sensor-box { background: #f8f9fa; border-radius: 16px; padding: 12px; margin-bottom: 20px; text-align: center; border: 1px solid #e1e3e1; }
+        .sensor-box h3 { font-size: 12px; color: #747775; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .trace-leds { display: flex; justify-content: center; gap: 20px; }
+        .trace-led { width: 28px; height: 28px; border-radius: 50%; background: #e1e3e1; transition: all 0.2s; }
+        .trace-led.on { background: #188038; box-shadow: 0 0 8px rgba(24, 128, 56, 0.4); }
+        .avoid-num { font-size: 28px; font-weight: 700; color: #0b57d0; }
+        .avoid-bar { width: 100%; height: 6px; background: #e1e3e1; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+        .avoid-bar-in { height: 100%; background: #188038; width: 0%; border-radius: 3px; transition: width 0.3s; }
+        .dpad { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 12px; width: 260px; height: 260px; margin: 0 auto 16px auto; }
+        .dpad-btn { border: none; border-radius: 20px; background: #f0f4f9; color: #041e49; font-size: 20px; font-weight: 500; cursor: pointer; touch-action: none; transition: all 0.15s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+        .dpad-btn span { font-size: 11px; color: #444746; font-weight: 500; }
+        .dpad-btn.active { background: #c2e7ff; color: #001d35; transform: scale(0.95); }
+        .dpad-btn.stop { background: #ffdad6; color: #410002; }
+        .dpad-btn.stop span { color: #93000a; }
+        .dpad-btn.stop.active { background: #ffb4ab; transform: scale(0.95); }
+        .tip { font-size: 12px; color: #747775; text-align: center; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>小车控制</h1>
-        <div style="text-align: center; margin-bottom: 12px; ">
-            <a href="#" onclick="resetMode();return false;" style="font-size: 13px; color: #007aff; text-decoration: none; ">返回配网</a>
-        </div>
+        <h1 class="header-title">SmartCar 控制台</h1>
+        <div class="sub-nav"><a href="#" onclick="resetMode();return false;">← 返回配网</a></div>
         <div class="mode-box">
             <button class="mode-btn" id="m0" onclick="setMode(0)">停止</button>
             <button class="mode-btn" id="m3" onclick="setMode(3)">遥控</button>
             <button class="mode-btn" id="m1" onclick="setMode(1)">循迹</button>
             <button class="mode-btn" id="m2" onclick="setMode(2)">避障</button>
         </div>
+        <div class="status-card"><div class="status-text" id="statusText">状态：准备就绪</div></div>
         <div class="sensor-box" id="sensorBox">
-            <div id="sDefault" style="display: none; ">
-                <h3>当前模式</h3>
-                <p style="color: #999; font-size: 14px; " id="modeText">待机</p>
-            </div>
-            <div id="sTrace" style="display: none; ">
+            <div id="sDefault"><h3>运行模式</h3><p style="color:#444746;font-size:14px;" id="modeText">待机</p></div>
+            <div id="sTrace" style="display:none;">
                 <h3>循迹传感器</h3>
-                <div class="trace-leds">
-                    <div class="trace-led" id="tL"></div>
-                    <div class="trace-led" id="tM"></div>
-                    <div class="trace-led" id="tR"></div>
-                </div>
-                <p style="color: #999; font-size: 11px; margin-top: 8px; ">黑色 = 检测到线</p>
+                <div class="trace-leds"><div class="trace-led" id="tL"></div><div class="trace-led" id="tM"></div><div class="trace-led" id="tR"></div></div>
             </div>
-            <div id="sAvoid" style="display: none; ">
-                <h3>前方障碍物</h3>
-                <div class="avoid-num"><span id="aDist">--</span><span style="font-size: 16px; color: #999; "> cm</span></div>
+            <div id="sAvoid" style="display:none;">
+                <h3>超声波测距</h3>
+                <div class="avoid-num"><span id="aDist">--</span><span style="font-size:14px;color:#747775;"> cm</span></div>
                 <div class="avoid-bar"><div class="avoid-bar-in" id="aBar"></div></div>
             </div>
         </div>
-        <div class="dpad" id="dpad">
-            <button class="dpad-btn" style="grid-column: 2; " onpointerdown="move(100,100)" onpointerup="move(0,0)">上</button>
-            <button class="dpad-btn" style="grid-column: 1; grid-row: 2; " onpointerdown="move(0,100)" onpointerup="move(0,0)">左</button>
-            <button class="dpad-btn stop" style="grid-column: 2; grid-row: 2; " onclick="move(0,0)">停</button>
-            <button class="dpad-btn" style="grid-column: 3; grid-row: 2; " onpointerdown="move(100,0)" onpointerup="move(0,0)">右</button>
-            <button class="dpad-btn" style="grid-column: 2; grid-row: 3; " onpointerdown="move(-100,-100)" onpointerup="move(0,0)">下</button>
+        <div class="dpad">
+            <button class="dpad-btn" style="grid-column:2; grid-row:1;" id="btnUp">▲<span>前进</span></button>
+            <button class="dpad-btn" style="grid-column:1; grid-row:2;" id="btnLeft">◄<span>左转</span></button>
+            <button class="dpad-btn stop" style="grid-column:2; grid-row:2;" id="btnStop">■<span>刹车</span></button>
+            <button class="dpad-btn" style="grid-column:3; grid-row:2;" id="btnRight">►<span>右转</span></button>
+            <button class="dpad-btn" style="grid-column:2; grid-row:3;" id="btnDown">▼<span>后退</span></button>
         </div>
-        <p class="tip">按住方向键控制，松开自动停止</p>
+        <p class="tip">按住按键控制方向，松开自动刹车</p>
     </div>
     <script>
-        var curMode = -1;
         var pendingMove = null;
-        function setMode(m) {
-            fetch('/api/mode?m=' + m).then(function () { poll(); });
-        }
-        function resetMode() {
-            fetch('/api/reset').then(function () { location.href = '/'; });
-        }
-        function move(l, r) {
-            if (pendingMove) { pendingMove.abort(); }
+        function setMode(m) { fetch('/api/mode?m=' + m).then(function () { poll(); }); }
+        function resetMode() { fetch('/api/reset').then(function () { location.href = '/'; }); }
+        function move(l, r, text) {
+            if (pendingMove) pendingMove.abort();
             pendingMove = new AbortController();
             fetch('/api/move?l=' + l + '&r=' + r, { signal: pendingMove.signal }).catch(function () {});
+            var st = document.getElementById('statusText');
+            if (l === 0 && r === 0) {
+                st.textContent = "状态：已停止";
+                st.className = "status-text";
+            } else {
+                st.textContent = "状态：" + (text || "行驶中");
+                st.className = "status-text active";
+            }
         }
+        function bindBtn(id, l, r, text) {
+            var btn = document.getElementById(id);
+            if (!btn) return;
+            var start = function (e) {
+                e.preventDefault();
+                btn.classList.add('active');
+                if (navigator.vibrate) navigator.vibrate(15);
+                move(l, r, text);
+            };
+            var end = function (e) {
+                e.preventDefault();
+                if (btn.classList.contains('active')) {
+                    btn.classList.remove('active');
+                    move(0, 0, "已停止");
+                }
+            };
+            btn.addEventListener('pointerdown', start);
+            btn.addEventListener('pointerup', end);
+            btn.addEventListener('pointercancel', end);
+            btn.addEventListener('pointerleave', end);
+        }
+        bindBtn('btnUp', 80, 80, "前进中");
+        bindBtn('btnLeft', 20, 80, "左转中");
+        bindBtn('btnRight', 80, 20, "右转中");
+        bindBtn('btnDown', -80, -80, "后退中");
+        bindBtn('btnStop', 0, 0, "已停止");
+
         function poll() {
             fetch('/api/status').then(function (r) { return r.json(); }).then(function (d) {
-                curMode = d.mode;
                 var names = ['停止', '循迹', '避障', '遥控'];
                 document.getElementById('modeText').textContent = names[d.mode] || '未知';
                 ['m0', 'm1', 'm2', 'm3'].forEach(function (id, i) {
-                    document.getElementById(id).className = 'mode-btn' + (i == d.mode ? ' on' : '');
+                    var el = document.getElementById(id);
+                    if (el) el.className = 'mode-btn' + (i == d.mode ? ' on' : '');
                 });
                 document.getElementById('sDefault').style.display = (d.mode == 0 || d.mode == 3) ? 'block' : 'none';
                 document.getElementById('sTrace').style.display = d.mode == 1 ? 'block' : 'none';
@@ -102,7 +131,7 @@
                     document.getElementById('aDist').textContent = d.dist.toFixed(1);
                     var pct = Math.min(d.dist / 50 * 100, 100);
                     document.getElementById('aBar').style.width = pct + '%';
-                    document.getElementById('aBar').style.background = d.dist < 20 ? '#ff3b30' : (d.dist < 40 ? '#ff9500' : '#34c759');
+                    document.getElementById('aBar').style.background = d.dist < 20 ? '#ba1a1a' : (d.dist < 40 ? '#e65100' : '#188038');
                 }
             }).catch(function () {});
         }

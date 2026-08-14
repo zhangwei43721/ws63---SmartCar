@@ -7,6 +7,7 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/car_demo")           # car
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/car_demo/core")      # mode_*.h
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/apps/car_demo/services")  # *_service.h
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/drivers/motor_control")     # bsp_motor.h
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/drivers/chassis_uart")      # bsp_chassis_uart.h
 
 # 1. 编译平台层（NV 存储等共享基础设施）
 add_subdirectory(platform)
@@ -31,7 +32,10 @@ elseif(CONFIG_SMART_CAR_RUN_BT_SPP_TEST)
     add_subdirectory(apps/test/test_bt_spp)
 elseif(CONFIG_SMART_CAR_RUN_SLE_TEST)
     add_subdirectory(apps/test/sle_test)
+elseif(CONFIG_SMART_CAR_RUN_CHASSIS_UART_TEST)
+    add_subdirectory(apps/test/test_chassis_uart)
 endif()
+
 
 # 3. 关键步骤：将下层收集上来的变量暴露给 SDK 顶层
 # 注意：WS63 SDK 通常通过 SOURCES 变量收集源文件

@@ -204,6 +204,11 @@ void ui_service_init(void)
 
     (void)wifi_mgr_subscribe(ui_wifi_event_cb);
 
+#if defined(CONFIG_SMART_CAR_CHASSIS_TYPE_UART_SERVO) || defined(CONFIG_SMART_CAR_DRIVER_CHASSIS_UART)
+    printf("[OLED] 提示：串口舵机底盘已占用 GPIO15/16 (UART1)，跳过 OLED 显示屏初始化\r\n");
+    return;
+#endif
+
     uapi_pin_set_mode(CAR_I2C_SCL_PIN, CAR_I2C_PIN_MODE);
     uapi_pin_set_mode(CAR_I2C_SDA_PIN, CAR_I2C_PIN_MODE);
 

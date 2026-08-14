@@ -66,11 +66,18 @@ if(CONFIG_SMART_CAR_DRIVER_SLE)
     include_directories("${CMAKE_CURRENT_SOURCE_DIR}/sle")
 endif()
 
+# --- Chassis UART ---
+if(CONFIG_SMART_CAR_DRIVER_CHASSIS_UART)
+    file(GLOB_RECURSE CURRENT_DRIVER_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/chassis_uart/*.c")
+    list(APPEND DRIVER_SRCS ${CURRENT_DRIVER_SRCS})
+    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/chassis_uart")
+endif()
+
+
 # --- 汇总导出 ---
 # 将收集到的所有驱动源文件加入全局构建列表
 list(APPEND SOURCES ${DRIVER_SRCS})
 set(SOURCES ${SOURCES} PARENT_SCOPE)
 
-# 对于 include_directories，CMake 会自动处理作用域，
-# 但为了保险起见，某些 SDK 需要显式导出，如果编译找不到头文件，可以取消下一行的注释
-# set(INCLUDE_DIRECTORIES ${INCLUDE_DIRECTORIES} PARENT_SCOPE)
+get_property(INC_DIRS DIRECTORY PROPERTY INCLUDE_DIRECTORIES)
+set(INCLUDE_DIRECTORIES ${INC_DIRS} PARENT_SCOPE)
