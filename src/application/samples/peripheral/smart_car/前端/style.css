@@ -1,17 +1,17 @@
 :root {
-  --primary: #4f46e5;
-  /* 科技蓝紫 */
-  --primary-light: #e0e7ff;
-  --bg-color: #f3f4f6;
-  /* 浅灰背景 */
+  --primary: #0b57d0;
+  /* Material 3 主蓝 */
+  --primary-light: #c2e7ff;
+  --bg-color: #f0f4f9;
+  /* Material 3 背景 */
   --card-bg: #ffffff;
-  --text-main: #1f2937;
-  --text-sub: #6b7280;
-  --accent-danger: #ef4444;
-  --accent-success: #10b981;
+  --text-main: #1f1f1f;
+  --text-sub: #444746;
+  --accent-danger: #ba1a1a;
+  --accent-success: #188038;
   --accent-warn: #f59e0b;
-  --border-radius: 16px;
-  --shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.1);
+  --border-radius: 20px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -22,7 +22,7 @@
 body {
   margin: 0;
   height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Caro, sans-serif;
+  font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-color);
   color: var(--text-main);
   display: flex;
@@ -116,8 +116,8 @@ header {
   flex: 1;
   position: relative;
   background-image:
-    linear-gradient(#e5e7eb 1px, transparent 1px),
-    linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
+    linear-gradient(#e1e3e1 1px, transparent 1px),
+    linear-gradient(90deg, #e1e3e1 1px, transparent 1px);
   background-size: 20px 20px;
   background-position: center;
   display: flex;
@@ -153,7 +153,7 @@ header {
   width: 100%;
   height: 100%;
   background: #fff;
-  border: 2px solid #d1d5db;
+  border: 2px solid #e1e3e1;
   border-radius: 20px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   z-index: 2;
@@ -166,9 +166,9 @@ header {
 .mcu-deco {
   margin-top: 60px;
   font-size: 10px;
-  color: #9ca3af;
+  color: #747775;
   font-weight: bold;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e1e3e1;
   padding: 2px 4px;
   border-radius: 4px;
 }
@@ -231,9 +231,9 @@ header {
   bottom: 15px;
   width: 16px;
   height: 16px;
-  background: #9ca3af;
+  background: #747775;
   border-radius: 50%;
-  border: 2px solid #6b7280;
+  border: 2px solid #444746;
 }
 
 /* 4. 传感器模块 (循迹) */
@@ -249,8 +249,8 @@ header {
 .ir-led {
   width: 8px;
   height: 8px;
-  background: #e5e7eb;
-  border: 1px solid #9ca3af;
+  background: #e1e3e1;
+  border: 1px solid #747775;
   border-radius: 50%;
   transition: all 0.2s;
 }
@@ -398,8 +398,8 @@ header {
   gap: 10px;
   align-items: center;
   justify-items: center;
-  background: radial-gradient(circle at center, #f9fafb 0%, #fff 70%);
-  border: 2px solid #e5e7eb;
+  background: radial-gradient(circle at center, #f8f9fa 0%, #fff 70%);
+  border: 2px solid #e1e3e1;
   border-radius: 16px;
   padding: 14px;
   transition: opacity 0.3s;
@@ -462,8 +462,8 @@ header {
 }
 
 .ota-panel {
-  background: linear-gradient(135deg, #fafbfc 0%, #f3f4f6 100%);
-  border: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #fafbfc 0%, #f0f4f9 100%);
+  border: 1px solid #e1e3e1;
   border-radius: 14px;
   padding: 14px 16px;
   display: flex;
@@ -510,7 +510,7 @@ header {
   gap: 5px;
   padding: 8px 14px;
   background: #fff;
-  border: 1.5px solid #d1d5db;
+  border: 1.5px solid #e1e3e1;
   border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
@@ -524,7 +524,7 @@ header {
 .ota-file-btn:hover {
   border-color: var(--primary);
   color: var(--primary);
-  background: #f8f7ff;
+  background: #eef4ff;
 }
 
 .ota-file-btn.has-file {
@@ -562,7 +562,7 @@ header {
 }
 
 .ota-btn:hover {
-  background: #4338ca;
+  background: #0842a0;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
 }
@@ -580,7 +580,7 @@ header {
 
 .ota-progress {
   height: 10px;
-  background: #e5e7eb;
+  background: #e1e3e1;
   border-radius: 999px;
   overflow: hidden;
 }
@@ -607,8 +607,8 @@ header {
 /* --- 标签页 --- */
 .tabs {
   display: flex;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f9fafb;
+  border-bottom: 1px solid #e1e3e1;
+  background: #f8f9fa;
 }
 
 .tab-btn {
@@ -626,7 +626,7 @@ header {
 
 .tab-btn:hover {
   color: var(--text-main);
-  background: #f3f4f6;
+  background: #f0f4f9;
 }
 
 .tab-btn.active {
@@ -668,7 +668,7 @@ header {
 
 .status-box {
   padding: 8px 12px;
-  background: #f3f4f6;
+  background: #f0f4f9;
   border-radius: 6px;
   font-size: 13px;
   color: var(--text-sub);
@@ -777,7 +777,7 @@ header {
 .form-group input {
   width: 100%;
   padding: 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e1e3e1;
   border-radius: 8px;
   font-size: 16px;
   transition: border 0.2s;
@@ -825,7 +825,7 @@ header {
     width: 80px;
     height: 100vh;
     padding: 20px 0;
-    border-right: 1px solid #e5e7eb;
+    border-right: 1px solid #e1e3e1;
     box-shadow: none;
   }
 
@@ -860,7 +860,7 @@ header {
     width: 350px;
     height: 100vh;
     border-radius: 0;
-    border-left: 1px solid #e5e7eb;
+    border-left: 1px solid #e1e3e1;
     order: 2;
     /* 放在右侧 */
   }
@@ -892,9 +892,9 @@ header {
   align-items: center;
   gap: 10px;
   padding: 12px;
-  background: #f9fafb;
+  background: #f8f9fa;
   border-radius: 8px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid #e1e3e1;
   transition: all 0.3s;
 }
 
@@ -933,7 +933,7 @@ header {
 }
 
 .btn-select:hover {
-  background: #4338ca;
+  background: #0842a0;
 }
 
 .device-item.selected .btn-select {
@@ -978,7 +978,7 @@ header {
 .btn-secondary {
   flex: 1;
   padding: 10px;
-  background: #e5e7eb;
+  background: #e1e3e1;
   color: var(--text-main);
   border: none;
   border-radius: 8px;
@@ -1078,12 +1078,12 @@ header {
 
 .status-badge.black-line {
   background: #1f2937;
-  color: #10b981;
+  color: #188038;
 }
 
 .status-badge.white-bg {
-  background: #e5e7eb;
-  color: #6b7280;
+  background: #e1e3e1;
+  color: #444746;
 }
 
 .console-box {
@@ -1145,9 +1145,9 @@ header {
 }
 
 .submode-btn.active {
-  background: #0066cc;
+  background: #0b57d0;
   color: #fff;
   font-weight: 600;
-  border-color: #0066cc;
+  border-color: #0b57d0;
   box-shadow: 0 2px 6px rgba(0, 102, 204, 0.25);
 }

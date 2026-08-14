@@ -1,22 +1,28 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>小车WiFi配网</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Caro, Helvetica, Arial, sans-serif; background: #f2f3f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
-        .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,.08); padding: 28px; width: 100%; max-width: 360px; }
-        h1 { font-size: 20px; color: #1a1a1a; margin-bottom: 4px; text-align: center; }
-        .sub { color: #888; font-size: 13px; text-align: center; margin-bottom: 20px; }
-        .field { margin-bottom: 14px; }
-        label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; font-weight: 500; }
-        input { width: 100%; padding: 12px 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 15px; outline: 0; transition: border .2s; }
-        input:focus { border-color: #007aff; }
-        button { width: 100%; padding: 13px; border: 0; border-radius: 10px; background: #007aff; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 4px; }
-        button:active { opacity: .9; }
-        .tip { margin-top: 14px; font-size: 12px; color: #999; text-align: center; line-height: 1.5; }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, sans-serif; background: #f0f4f9; color: #1f1f1f; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
+        .card { background: #ffffff; border-radius: 28px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); padding: 24px; width: 100%; max-width: 360px; border: 1px solid #e1e3e1; }
+        h1 { font-size: 22px; color: #1f1f1f; margin-bottom: 4px; text-align: center; font-weight: 500; }
+        .sub { color: #747775; font-size: 13px; text-align: center; margin-bottom: 20px; }
+        .field { margin-bottom: 16px; }
+        label { display: block; font-size: 13px; color: #444746; margin-bottom: 6px; font-weight: 500; }
+        input, select { width: 100%; padding: 12px 14px; border: 1px solid #e1e3e1; border-radius: 12px; font-size: 15px; outline: 0; background: #ffffff; color: #1f1f1f; transition: border .2s; }
+        input:focus, select:focus { border-color: #0b57d0; }
+        select { margin-top: 8px; }
+        .btn-primary { width: 100%; padding: 13px; border: 0; border-radius: 12px; background: #0b57d0; color: #ffffff; font-size: 16px; font-weight: 500; cursor: pointer; margin-top: 4px; }
+        .btn-primary:active { opacity: .9; }
+        .btn-secondary { margin-top: 8px; background: #f0f4f9; color: #444746; font-size: 13px; padding: 8px 14px; border: 0; border-radius: 12px; cursor: pointer; }
+        .scan-tip { font-size: 12px; color: #747775; margin-top: 6px; }
+        .ctrl-box { margin-top: 18px; text-align: center; }
+        .ctrl-link { display: inline-block; padding: 10px 20px; background: #c2e7ff; color: #001d35; text-decoration: none; border-radius: 12px; font-size: 15px; font-weight: 500; }
+        .ctrl-sub { margin-top: 8px; font-size: 12px; color: #747775; }
+        .tip { margin-top: 14px; font-size: 12px; color: #747775; text-align: center; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -27,21 +33,21 @@
             <div class="field">
                 <label>WiFi 名称 (SSID)</label>
                 <input type="text" id="ssid" name="ssid" placeholder="请输入WiFi名称" required maxlength="31">
-                <select id="ssid_sel" onchange="pickSsid()" style="width: 100%; margin-top: 8px; padding: 10px; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; background: #fafafa; ">
+                <select id="ssid_sel" onchange="pickSsid()">
                     <option value="">-- 附近 WiFi --</option>
                 </select>
-                <button type="button" onclick="scanWifi(true)" style="margin-top: 8px; background: #e5e5ea; color: #333; font-size: 13px; padding: 8px; ">刷新 WiFi 列表</button>
-                <p id="scan_tip" style="font-size: 12px; color: #999; margin-top: 4px; ">正在加载附近 WiFi...</p>
+                <button type="button" class="btn-secondary" onclick="scanWifi(true)">刷新 WiFi 列表</button>
+                <p id="scan_tip" class="scan-tip">正在加载附近 WiFi...</p>
             </div>
             <div class="field">
                 <label>WiFi 密码</label>
                 <input type="password" name="password" placeholder="请输入WiFi密码" maxlength="63">
             </div>
-            <button type="submit">保存并连接</button>
+            <button type="submit" class="btn-primary">保存并连接</button>
         </form>
-        <div style="margin-top: 18px; text-align: center; ">
-            <a href="/control" style="display: inline-block; padding: 10px 20px; background: #34c759; color: #fff; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; ">点击控制小车</a>
-            <p style="margin-top: 8px; font-size: 12px; color: #999; ">无需配网也可直接遥控</p>
+        <div class="ctrl-box">
+            <a href="/control" class="ctrl-link">点击控制小车</a>
+            <p class="ctrl-sub">无需配网也可直接遥控</p>
         </div>
         <p class="tip">提示：密码为空表示连接开放网络<br>配网成功后页面将自动跳转</p>
     </div>
@@ -80,7 +86,7 @@
         window.onload = function () {
             scanWifi(false);
             if (location.search.includes('fail')) {
-                document.body.insertAdjacentHTML('afterbegin', '<div style="background:#ff3b30;color:#fff;padding:12px 16px;border-radius:10px;font-size:14px;text-align:center;margin-bottom:16px">连接失败，请检查密码后重新配网</div>');
+                document.body.insertAdjacentHTML('afterbegin', '<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#ffdad6;color:#ba1a1a;padding:12px 16px;border-radius:12px;font-size:14px;text-align:center;width:calc(100% - 32px);max-width:360px;z-index:10">连接失败，请检查密码后重新配网</div>');
             }
         };
     </script>

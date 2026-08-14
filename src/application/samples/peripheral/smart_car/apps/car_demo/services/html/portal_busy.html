@@ -1,18 +1,23 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="refresh" content="3;url=/">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>处理中</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Caro, Helvetica, Arial, sans-serif; background: #f2f3f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,.08); padding: 32px; width: 100%; max-width: 320px; text-align: center; }
-        h1 { font-size: 20px; color: #ff9500; margin-bottom: 8px; }
-        p { color: #555; font-size: 15px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, sans-serif; background: #f0f4f9; color: #1f1f1f; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
+        .card { background: #ffffff; border-radius: 28px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); padding: 32px; width: 100%; max-width: 320px; text-align: center; border: 1px solid #e1e3e1; }
+        .spinner { width: 40px; height: 40px; margin: 0 auto 16px; border-radius: 50%; border: 4px solid #c2e7ff; border-top-color: #0b57d0; animation: spin 0.9s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        h1 { font-size: 20px; color: #1f1f1f; margin-bottom: 8px; font-weight: 500; }
+        p { color: #444746; font-size: 15px; }
     </style>
 </head>
 <body>
     <div class="card">
+        <div class="spinner"></div>
         <h1>正在处理...</h1>
         <p>上一条配网请求正在执行中<br>请稍候</p>
     </div>

@@ -18,7 +18,7 @@ html_content = html_content.replace('<link rel="stylesheet" href="./style.css" /
                                      f'<style>{css_content}</style>')
 
 # 替换 script 标签为内联 script
-html_content = html_content.replace('<script src="./app.js"></script>',
+html_content = html_content.replace('<script src="./app.js?v=2"></script>',
                                      f'<script>{js_content}</script>')
 
 # 写入新的 index.html

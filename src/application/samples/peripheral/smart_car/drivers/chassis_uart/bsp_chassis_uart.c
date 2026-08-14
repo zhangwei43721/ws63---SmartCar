@@ -226,6 +226,8 @@ void bsp_chassis_uart_set_differential(int8_t left, int8_t right)
 {
     // 前后电机速度 = 左右轮平均；用 int16 中间量避免 int8 溢出
     int16_t motor = ((int16_t)left + right) / 2;
+    // 底盘电机接线方向与协议定义相反（协议正值=前进、实际后退），取反修正前进/后退
+    motor = -motor;
     // 转向舵机摆幅 = 左右轮差 * 放大增益（左右转时打满舵）
     int16_t steering = ((int16_t)right - left) * 3;
 
@@ -241,14 +243,14 @@ void bsp_chassis_uart_set_differential(int8_t left, int8_t right)
 
     // TX 任务未就绪（初始化失败）时的退化路径：直接同步发送一帧
     if (!g_tx_inited) {
-        (void)bsp_chassis_uart_send((int8_t)motor, (int8_t)steering, (int8_t)(-steering));
+        (void)bsp_chassis_uart_send((int8_t)motor, (int8_t)steering, (int8_t)steering);
         return;
     }
 
     osal_mutex_lock(&g_tx_lock);
     g_tx_target.motor_speed = (int8_t)motor;
     g_tx_target.servo1_angle = (int8_t)steering;
-    g_tx_target.servo2_angle = (int8_t)(-steering);
+    g_tx_target.servo2_angle = (int8_t)steering; // 两舵机同向转向（都左摆或都右摆）
     if (motor == 0 && steering == 0) {
         g_stop_resend_remain = TX_STOP_RESEND_COUNT; // 停车：补发多次确保停下
     } else {
