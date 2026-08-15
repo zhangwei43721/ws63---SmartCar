@@ -10,6 +10,7 @@
 #include "uart.h"
 #include "soc_osal.h"
 #include "common_def.h"
+#include "../../apps/car_demo/car_common.h" // CarDriveCmd 方向枚举
 
 #define CHASSIS_UART_BUS_ID     1 // UART1 总线
 #define CHASSIS_UART_BAUDRATE   2400 // 2400 波特率
@@ -219,17 +220,15 @@ static void chassis_tx_task_start(void)
     printf("[Chassis] TX 周期刷新就绪\r\n");
 }
 
-// 差速意图 → 舵机转向底盘指令。阿克曼转向运动学只归本底盘驱动所有。
-// 不直接发帧，而是更新目标帧并唤醒 TX 任务：由 TX 任务按 25ms 周期刷新、
-// 停车帧补发多次（串口无 ACK 需冗余），新命令可打断进行中的停车补发。
-void bsp_chassis_uart_set_differential(int8_t left, int8_t right)
+// 内部统一出口：把"电机速度（正=前进）+ 舵机摆幅"写为目标帧并唤醒 TX 任务。
+// 参数用 int16 承接（差速转向舵机摆幅放大后可达 ±600），clamp 后再转 int8 下发。
+static void chassis_apply_target(int16_t motor, int16_t servo)
 {
-    // 前后电机速度 = 左右轮平均；用 int16 中间量避免 int8 溢出
-    int16_t motor = ((int16_t)left + right) / 2;
-    // 底盘电机接线方向与协议定义相反（协议正值=前进、实际后退），取反修正前进/后退
+    int16_t steering = servo;
+
+    // 接线方向修正：底盘电机接线与协议定义相反（协议正值=前进、实际后退），
+    // 前进/后退统一在此取反，set_differential 与 drive 两个入口都天然正确。
     motor = -motor;
-    // 转向舵机摆幅 = 左右轮差 * 放大增益（左右转时打满舵）
-    int16_t steering = ((int16_t)right - left) * 3;
 
     if (motor > 100)
         motor = 100;
@@ -260,6 +259,63 @@ void bsp_chassis_uart_set_differential(int8_t left, int8_t right)
 
     // 唤醒 TX 任务立即发送新帧
     (void)osal_event_write(&g_tx_event, 0x01);
+}
+
+// 差速意图 → 舵机转向底盘指令。阿克曼转向运动学只归本底盘驱动所有。
+// 不直接发帧，而是更新目标帧并唤醒 TX 任务：由 TX 任务按 25ms 周期刷新、
+// 停车帧补发多次（串口无 ACK 需冗余），新命令可打断进行中的停车补发。
+void bsp_chassis_uart_set_differential(int8_t left, int8_t right)
+{
+    // 前进电机速度 = 左右轮平均；用 int16 中间量避免 int8 溢出
+    int16_t motor = ((int16_t)left + right) / 2;
+    // 转向舵机摆幅 = 左右轮差 * 放大增益（左右转时打满舵）
+    int16_t steering = ((int16_t)right - left) * 3;
+
+    // 舵机底盘无差速，无法原地转：差速"原地转"（前进分量 0、转向非 0）会把
+    // 电机速度算成 0，导致只有舵机打方向、驱动轮不转。此时改用两侧速度幅值的
+    // 平均作为前进速度，让车"边前进边转"（最小半径转弯），保证驱动轮始终转动。
+    if (motor == 0 && steering != 0) {
+        motor = 40; // 原地转在舵机底盘只能"低速前进+满舵"绕小圈，避免电机停或绕大圈
+    }
+
+    chassis_apply_target(motor, steering);
+}
+
+// 方向命令 → 舵机转向底盘动作（边前进边转的阿克曼转向）。
+// 舵机底盘无差速电机，左/右转只能"前进电机保持前进 + 舵机打满方向"。
+void bsp_chassis_uart_drive(uint8_t dir, int8_t speed)
+{
+    int8_t motor = 0;
+    int8_t servo = 0;
+
+    switch (dir) {
+        case CAR_DRIVE_STOP:
+            motor = 0;
+            servo = 0;
+            break;
+        case CAR_DRIVE_FORWARD:
+            motor = speed;
+            servo = 0;
+            break;
+        case CAR_DRIVE_BACKWARD:
+            motor = -speed;
+            servo = 0;
+            break;
+        case CAR_DRIVE_LEFT:
+            motor = speed;
+            servo = 100; // 左满舵
+            break;
+        case CAR_DRIVE_RIGHT:
+            motor = speed;
+            servo = -100; // 右满舵
+            break;
+        default:
+            motor = 0;
+            servo = 0;
+            break;
+    }
+
+    chassis_apply_target(motor, servo);
 }
 
 bool bsp_chassis_uart_recv(chassis_packet_t *pkt, uint32_t timeout_ms)

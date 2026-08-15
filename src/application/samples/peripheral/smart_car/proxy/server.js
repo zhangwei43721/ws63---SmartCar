@@ -325,7 +325,7 @@ udpSocket.on("message", (msg, rinfo) => {
       const irRaw = msg[4];
       const status = {
         mode: msg[1],
-        distance: msg[2] / 10,
+        distance: msg[2] * 2,
         ir: [irRaw & 1, (irRaw >> 1) & 1, (irRaw >> 2) & 1],
       };
       dev.status = status;
@@ -390,8 +390,8 @@ wss.on("connection", (ws) => {
       if (!ip || !devices.has(ip)) return;
 
       switch (data.type) {
-        case "control": // 摇杆控制
-          sendToCar(buildPacket(0x01, 0, data.motor1, data.motor2), ip);
+        case "control": // 方向控制（dir=CarDriveCmd，速度由固件固定，前端只上报方向）
+          sendToCar(buildPacket(0x01, data.dir, data.speed || 0, 0), ip);
           break;
         case "modeChange": // 模式切换
           const modeMap = { standby: 0, tracking: 1, avoid: 2, remote: 3 };

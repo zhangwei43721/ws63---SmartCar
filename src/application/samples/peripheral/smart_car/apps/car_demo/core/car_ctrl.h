@@ -7,7 +7,7 @@
 // 控制中枢：全车唯一的"决策点"。
 // 所有外部通道（UDP / SLE / HTTP / 语音）的控制意图都必须经过这里仲裁，
 // channels/ 下的代码只允许调用本头文件与 mode_mgr.h，禁止直触电机驱动。
-void car_ctrl_manual_drive(int8_t left, int8_t right, uint32_t source); // 手动驾驶安全网关
+void car_ctrl_manual_drive(uint8_t dir, int8_t speed, uint32_t source); // 手动驾驶安全网关（方向语义）
 bool car_ctrl_is_manual_allowed(void);                                  // 当前是否允许手动驾驶
 
 // ---------- 统一命令总线 ----------

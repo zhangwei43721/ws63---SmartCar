@@ -23,6 +23,7 @@
 
 // ---------- 命令总线内部状态 ----------
 #define CAR_CTRL_QUEUE_DEPTH 8 // 命令总线队列深度
+#define MANUAL_DRIVE_SPEED 100 // 遥控手动驾驶固定速度幅值（满速；前进/后退/转向共用）
 
 static unsigned long g_ctrl_queue = 0;   // 命令总线队列 ID
 static bool g_ctrl_queue_inited = false; // 命令队列是否已初始化
@@ -48,14 +49,15 @@ bool car_ctrl_is_manual_allowed(void)
 
 // 安全驾驶网关入口。所有外部控制命令（如 HTTP、语音串口、WiFi
 // UDP、星闪）必须经此入口审核放行后，方可输出给底层的电机驱动。
-// 注意：停车 (0,0) 同样遵守该规则——自动模式拥有自己的电机，外部通道无权干预；
+// 注意：停车（dir=STOP）同样遵守该规则——自动模式拥有自己的电机，外部通道无权干预；
 // 遥控模式下链路中断的自动停车由 bsp_motor 的 400ms 看门狗兜底。
-void car_ctrl_manual_drive(int8_t left, int8_t right, uint32_t source)
+void car_ctrl_manual_drive(uint8_t dir, int8_t speed, uint32_t source)
 {
     if (car_ctrl_is_manual_allowed()) {
-        bsp_motor_push_cmd(left, right, MOTOR_SRC_MANUAL);
+        bsp_motor_drive(dir, speed);
     } else {
-        printf("[Safety] Intercepted manual drive command from source %u (%d, %d)\r\n", source, left, right);
+        printf("【安全】截获了来自源头的手动驾驶指令 %u (dir=%u, speed=%d)\r\n", source, (unsigned)dir,
+               speed);
     }
 }
 
@@ -74,7 +76,7 @@ static void car_ctrl_handle_packet(const uint8_t *data, uint16_t len, uint32_t s
         case CAR_PKT_CONTROL: {
             if (len == sizeof(car_packet_t)) {
                 const car_packet_t *pkt = (const car_packet_t *)data;
-                car_ctrl_manual_drive(pkt->motor1, pkt->motor2, source);
+                car_ctrl_manual_drive(pkt->cmd, MANUAL_DRIVE_SPEED, source);
             }
             break;
         }

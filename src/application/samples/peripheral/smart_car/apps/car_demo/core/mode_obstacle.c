@@ -9,6 +9,7 @@
 #include "../../../drivers/motor_control/bsp_motor.h"
 #include "../car_common.h"
 #include "car_state.h"
+#include "../services/debug_log_service.h"
 #include "soc_osal.h"
 
 // ================= 参数配置 =================
@@ -18,9 +19,9 @@
 #define TIME_WAIT_STABLE 300 // 每次转完停顿检测的时间
 #define TIME_BRAKE_MS 100    // 状态切换之间的刹车停顿
 
-#define OBST_FWD_SPEED 60  // 前进电机速度 (-100~100)
-#define OBST_BACK_SPEED 60 // 后退电机速度
-#define OBST_TURN_SPEED 60 // 原地转弯速度
+#define OBST_FWD_SPEED 80  // 前进电机速度 (-100~100)
+#define OBST_BACK_SPEED 80 // 后退电机速度
+#define OBST_TURN_SPEED 80 // 原地转弯速度
 
 // 避障状态机：obstacle_step() 每 20ms 被调用，
 // 定时阶段由 osal_timer 单次触发 0x02 推进
@@ -78,7 +79,7 @@ static void obstacle_step(bool timer_fired)
             if (d > OBSTACLE_LIMIT)
                 obst_push(OBST_FWD_SPEED, OBST_FWD_SPEED);
             else {
-                printf("前方受阻(%dcm)，开始尝试寻找出口...\r\n", (int)d);
+                car_log("前方受阻(%dcm)，开始尝试寻找出口...\r\n", (int)d);
                 obst_push(0, 0);
                 g_obst_state = OBST_STOP_BEFORE_BACK;
                 obst_arm_timer(TIME_BRAKE_MS);
@@ -101,7 +102,7 @@ static void obstacle_step(bool timer_fired)
             break;
         case OBST_STOP_BEFORE_TURN: // 刹车停稳 → 准备转弯
             if (timer_fired) {
-                obst_push(-OBST_TURN_SPEED, OBST_TURN_SPEED);
+                obst_push(-OBST_TURN_SPEED, -OBST_TURN_SPEED / 2); // 后退+左满舵：右轮也给后退分量，后退速度更快、转的角更大
                 g_obst_state = OBST_TURNING;
                 obst_arm_timer(TIME_TURN_90_MS);
             }
@@ -122,14 +123,14 @@ static void obstacle_step(bool timer_fired)
         case OBST_CHECKING: { // 测距判断：通畅→前进，受阻→继续转
             float d = hcsr04_get_distance();
             car_state_update_distance(d);
-            printf("转向后距离: %dcm\r\n", (int)d);
+            car_log("转向后距离: %dcm\r\n", (int)d);
             if (d > OBSTACLE_LIMIT) {
-                printf("找到出口！继续前进。\r\n");
+                car_log("找到出口！继续前进。\r\n");
                 obst_push(OBST_FWD_SPEED, OBST_FWD_SPEED);
                 g_obst_state = OBST_FORWARD;
             } else {
-                printf("仍受阻，继续转向...\r\n");
-                obst_push(-OBST_TURN_SPEED, OBST_TURN_SPEED);
+                car_log("仍受阻，继续转向...\r\n");
+                obst_push(-OBST_TURN_SPEED, -OBST_TURN_SPEED / 2); // 后退+左满舵：右轮也给后退分量，后退速度更快、转的角更大
                 g_obst_state = OBST_TURNING;
                 obst_arm_timer(TIME_TURN_90_MS);
             }

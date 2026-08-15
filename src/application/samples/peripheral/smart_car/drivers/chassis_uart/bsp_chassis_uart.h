@@ -53,6 +53,14 @@ int bsp_chassis_uart_send_pkt(const chassis_packet_t *pkt);
 void bsp_chassis_uart_set_differential(int8_t left, int8_t right);
 
 //
+// @brief 方向命令 → 舵机转向底盘动作（边前进边转的阿克曼转向）
+// @param dir   CarDriveCmd 方向（0停 1前进 2后退 3左转 4右转，见 car_common.h）
+// @param speed 速度幅值 1~100（左/右转时作为前进速度）
+// @note  舵机底盘无差速电机：左转=前进+左满舵，右转=前进+右满舵。
+//
+void bsp_chassis_uart_drive(uint8_t dir, int8_t speed);
+
+//
 // @brief 从接收队列获取一帧数据 (支持 RTOS 阻塞/非阻塞)
 // @param pkt 输出数据包
 // @param timeout_ms 超时毫秒数 (0 为非阻塞)

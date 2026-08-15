@@ -89,7 +89,7 @@ typedef enum {
  *        type 字段统一定义在此，禁止散落到各 .c 里魔数化。
  */
 typedef enum {
-    CAR_PKT_CONTROL = 0x01,       // 控制：[type, l_speed, r_speed, 0, 0]
+    CAR_PKT_CONTROL = 0x01,       // 控制：[type, dir, speed, 0, 0]（dir=CarDriveCmd 方向，speed=速度幅值）
     CAR_PKT_MODE = 0x03,          // 模式切换：[type, mode, 0, 0, 0]
     CAR_PKT_PID = 0x04,           // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
     CAR_PKT_OTA = 0x05,           // OTA 触发：[type, sub_cmd, ...]
@@ -113,13 +113,27 @@ typedef enum {
     PID_PARAM_BASE_SPEED = 4,
 } CarPidParam;
 
+/**
+ * @brief 遥控驾驶方向命令（手动驾驶的语义层）
+ *        前端/语音只上报"按下哪个按钮"，具体转向动作（差速 or 舵机）
+ *        由嵌入式按底盘类型翻译，速度幅值也由嵌入式固定。
+ * @note  枚举值刻意与 voice_channel.h 的 VoiceCommand 对齐，便于直通翻译。
+ */
+typedef enum {
+    CAR_DRIVE_STOP = 0,     // 停车
+    CAR_DRIVE_FORWARD = 1,  // 前进
+    CAR_DRIVE_BACKWARD = 2, // 后退
+    CAR_DRIVE_LEFT = 3,     // 左转（舵机底盘=前进+左满舵；差速底盘=原地左转）
+    CAR_DRIVE_RIGHT = 4,    // 右转（舵机底盘=前进+右满舵；差速底盘=原地右转）
+} CarDriveCmd;
+
 // ---------- 统一协议包体（UDP / SLE / 强制门户共用 5 字节格式）----------
 #pragma pack(1)
 typedef struct {
     uint8_t type;   // CarPktType 枚举值
     uint8_t cmd;    // 子命令 / 模式号 / PID 参数索引
-    int8_t motor1;  // 左电机速度 (-100~100) / PID value_hi
-    int8_t motor2;  // 右电机速度 (-100~100) / PID value_lo
+    int8_t motor1;  // 方向命令时为 speed / PID value_hi / 心跳 distance
+    int8_t motor2;  // PID value_lo（方向命令时保留为 0）
     int8_t ir_data; // 红外数据 / 保留
 } car_packet_t;
 #pragma pack()

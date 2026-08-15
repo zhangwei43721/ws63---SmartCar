@@ -36,4 +36,12 @@ void l9110s_init(void);
  */
 void l9110s_set_differential(int8_t left_speed, int8_t right_speed);
 
+/**
+ * @brief 方向命令 → 差速底盘动作（差速底盘可原地转向）
+ * @param dir   CarDriveCmd 方向（0停 1前进 2后退 3左转 4右转，见 car_common.h）
+ * @param speed 速度幅值 1~100
+ * @return 无
+ */
+void l9110s_drive(uint8_t dir, int8_t speed);
+
 #endif // __BSP_L9110S_H__

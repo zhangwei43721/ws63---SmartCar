@@ -86,12 +86,14 @@
         }, { passive: false, capture: true });
         function setMode(m) { fetch('/api/mode?m=' + m).then(function () { poll(); }); }
         function resetMode() { fetch('/api/reset').then(function () { location.href = '/'; }); }
-        function move(l, r, text) {
+        // 方向命令：前端只上报"按下哪个按钮"，转向/速度逻辑由嵌入式按底盘类型决定。
+        // dir 与固件 CarDriveCmd 对齐：0=停 1=前进 2=后退 3=左转 4=右转
+        function drive(dir, text) {
             if (pendingMove) pendingMove.abort();
             pendingMove = new AbortController();
-            fetch('/api/move?l=' + l + '&r=' + r, { signal: pendingMove.signal }).catch(function () {});
+            fetch('/api/drive?dir=' + dir + '&speed=0', { signal: pendingMove.signal }).catch(function () {});
             var st = document.getElementById('statusText');
-            if (l === 0 && r === 0) {
+            if (dir === 0) {
                 st.textContent = "状态：已停止";
                 st.className = "status-text";
             } else {
@@ -99,7 +101,7 @@
                 st.className = "status-text active";
             }
         }
-        function bindBtn(id, l, r, text) {
+        function bindBtn(id, dir, text) {
             var btn = document.getElementById(id);
             if (!btn) return;
             var active = false;
@@ -113,14 +115,14 @@
                 active = true;
                 btn.classList.add('active');
                 if (navigator.vibrate) navigator.vibrate(15);
-                move(l, r, text);
+                drive(dir, text);
             };
             var end = function (e) {
                 e.preventDefault();
                 if (active) {
                     active = false;
                     btn.classList.remove('active');
-                    move(0, 0, "已停止");
+                    drive(0, "已停止");
                 }
             };
             btn.addEventListener('pointerdown', start);
@@ -128,11 +130,11 @@
             btn.addEventListener('pointercancel', end);
             // 不再绑定 pointerleave：setPointerCapture 已保证按住期间事件只发给本按钮
         }
-        bindBtn('btnUp', 80, 80, "前进中");
-        bindBtn('btnLeft', 20, 80, "左转中");
-        bindBtn('btnRight', 80, 20, "右转中");
-        bindBtn('btnDown', -80, -80, "后退中");
-        bindBtn('btnStop', 0, 0, "已停止");
+        bindBtn('btnUp', 1, "前进中");
+        bindBtn('btnLeft', 3, "左转中");
+        bindBtn('btnRight', 4, "右转中");
+        bindBtn('btnDown', 2, "后退中");
+        bindBtn('btnStop', 0, "已停止");
 
         function poll() {
             fetch('/api/status').then(function (r) { return r.json(); }).then(function (d) {

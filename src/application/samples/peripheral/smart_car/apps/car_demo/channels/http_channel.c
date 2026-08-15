@@ -1,7 +1,7 @@
 /**
  * @file        http_channel.c
  * @brief       AP 模式下的小车 HTTP 控制通道实现
- * @details     内嵌控制页面 + /api/status /api/mode /api/move REST 接口；
+ * @details     内嵌控制页面 + /api/status /api/mode /api/drive REST 接口；
  *              本通道只做 REST → 统一控制意图的翻译，决策交 core/car_ctrl
  */
 
@@ -111,12 +111,12 @@ static void handle_api_mode(int client_fd, const char *query)
 }
 
 /**
- * @brief GET /api/move?l=X&r=Y -> 控制电机
+ * @brief GET /api/drive?dir=X&speed=Y -> 方向控制（dir=CarDriveCmd，前端只上报按钮语义）
  */
-static void handle_api_move(int client_fd, const char *query)
+static void handle_api_drive(int client_fd, const char *query)
 {
-    int left = query_get_int(query, "l");
-    int right = query_get_int(query, "r");
+    int dir = query_get_int(query, "dir");
+    int speed = query_get_int(query, "speed");
 
     // 与 UDP/SLE/语音一致：投统一命令总线，由 car_ctrl 任务串行仲裁
     car_cmd_t cmd = {
@@ -124,7 +124,7 @@ static void handle_api_move(int client_fd, const char *query)
         .reply = NULL,
         .reply_ctx = NULL,
         .len = sizeof(car_packet_t),
-        .data = {CAR_PKT_CONTROL, 0, (uint8_t)(int8_t)left, (uint8_t)(int8_t)right, 0},
+        .data = {CAR_PKT_CONTROL, (uint8_t)dir, (uint8_t)(int8_t)speed, 0, 0},
     };
     (void)car_ctrl_post_cmd(&cmd);
 
@@ -173,8 +173,8 @@ bool http_channel_handle(int client_fd, bool is_get, const char *path, const cha
         return true;
     }
 
-    if (is_get && strcmp(path, "/api/move") == 0) {
-        handle_api_move(client_fd, query);
+    if (is_get && strcmp(path, "/api/drive") == 0) {
+        handle_api_drive(client_fd, query);
         return true;
     }
 

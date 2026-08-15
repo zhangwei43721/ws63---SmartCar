@@ -20,24 +20,6 @@
 #include "../car_common.h"
 #include "../core/car_ctrl.h"
 
-#define MOTOR_SPEED_HIGH 100 // 高速电机速度
-#define MOTOR_SPEED_TURN 50  // 转弯电机速度
-
-// 运动命令表：语音命令字 -> 标准 CONTROL 包左右轮速度
-typedef struct {
-    uint8_t code;
-    int8_t l;
-    int8_t r;
-} voice_motion_entry_t;
-
-static const voice_motion_entry_t g_motion_table[] = {
-    {VOICE_CMD_STOP, 0, 0},
-    {VOICE_CMD_FORWARD, MOTOR_SPEED_HIGH, MOTOR_SPEED_HIGH},
-    {VOICE_CMD_BACKWARD, -MOTOR_SPEED_HIGH, -MOTOR_SPEED_HIGH},
-    {VOICE_CMD_LEFT, -MOTOR_SPEED_TURN, MOTOR_SPEED_TURN},
-    {VOICE_CMD_RIGHT, MOTOR_SPEED_TURN, -MOTOR_SPEED_TURN},
-};
-
 // 模式切换表：cmd 0x10..0x13 对应索引
 static const CarStatus g_mode_table[] = {
     CAR_STOP_STATUS,
@@ -77,11 +59,9 @@ static void voice_rx_callback(const uint8_t *data, uint16_t length)
             continue;
         }
 
-        for (unsigned j = 0; j < sizeof(g_motion_table) / sizeof(g_motion_table[0]); j++) {
-            if (g_motion_table[j].code == cmd) {
-                voice_post_packet(CAR_PKT_CONTROL, 0, g_motion_table[j].l, g_motion_table[j].r);
-                break;
-            }
+        // 运动命令
+        if (cmd <= VOICE_CMD_RIGHT) {
+            voice_post_packet(CAR_PKT_CONTROL, cmd, 0, 0);
         }
     }
 }

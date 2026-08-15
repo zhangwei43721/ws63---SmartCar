@@ -13,8 +13,7 @@ const config = {
 // --- 全局状态 ---
 const appState = {
   mode: "standby", // 界面显示用的模式字符串
-  motor1: 0, // 左电机 -100~100
-  motor2: 0, // 右电机 -100~100
+  dir: 0, // 当前驾驶方向（CarDriveCmd：0停 1前进 2后退 3左转 4右转）
   // 传感器数据
   distance: 0,
   ir: [1, 1, 1], // 左中右红外
@@ -24,7 +23,7 @@ const appState = {
   selectedMAC: "",  // 当前选中的设备 MAC
   lastConnectedMAC: localStorage.getItem("lastConnectedMAC") || "", // 最后连接的设备
   // 上次发送的控制值（用于检测变化）
-  lastSent: { motor1: 0, motor2: 0 },
+  lastSent: { dir: 0 },
   lastControlSendAt: 0,
   // OTA 状态
   ota: {
@@ -64,11 +63,17 @@ let socket = null;
 let sendLoopTimer = null;
 let reconnectTimer = null;
 let isManualClose = false;
-const DPAD_SPEED = 100;
+// 驾驶方向（与固件 CarDriveCmd 对齐）：前端只上报"按下哪个按钮"，速度由固件固定
+const DRIVE = {
+  STOP: 0,
+  FORWARD: 1,
+  BACKWARD: 2,
+  LEFT: 3,
+  RIGHT: 4,
+};
 
-function setDrive(m1, m2) {
-  appState.motor1 = clamp(m1, -100, 100);
-  appState.motor2 = clamp(m2, -100, 100);
+function setDir(dir) {
+  appState.dir = dir;
   updateLocalAnimations();
 }
 
@@ -88,7 +93,7 @@ function bindHoldButton(el, onPress) {
   const release = (evt) => {
     evt.preventDefault();
     if (appState.mode !== "remote" && appState.mode !== "tracking") return;
-    setDrive(0, 0);
+    setDir(DRIVE.STOP);
   };
 
   el.addEventListener("pointerdown", press);
@@ -138,9 +143,7 @@ function sendUDPControl() {
   if (!deviceIP) return;
 
   // 检查控制值是否变化
-  const changed =
-    appState.motor1 !== appState.lastSent.motor1 ||
-    appState.motor2 !== appState.lastSent.motor2;
+  const changed = appState.dir !== appState.lastSent.dir;
 
   const now = Date.now();
   // 如果没有变化，但距离上次发送超过200ms，也发送一次（作为心跳/保活）
@@ -155,16 +158,15 @@ function sendUDPControl() {
     const controlMsg = {
       type: "control", // 对应 C 代码 UDP 包 type=0x01
       deviceIP: deviceIP,
-      motor1: parseInt(appState.motor1), // 确保是整数
-      motor2: parseInt(appState.motor2), // 确保是整数
+      dir: appState.dir,
+      speed: 0, // 速度由固件固定，前端只上报方向
     };
 
     socket.send(JSON.stringify(controlMsg));
 
     // 更新上次发送的值
     appState.lastSent = {
-      motor1: appState.motor1,
-      motor2: appState.motor2,
+      dir: appState.dir,
     };
     appState.lastControlSendAt = now;
   } catch (error) {
@@ -576,7 +578,7 @@ function updateModeButtons(mode) {
   } else {
     dpad?.classList.add("disabled");
     // 非遥控和循迹模式，停止发送电机指令
-    setDrive(0, 0);
+    setDir(DRIVE.STOP);
   }
 }
 
@@ -629,12 +631,15 @@ function updateLocalAnimations() {
 
   if (appState.mode !== "remote") return;
 
-  // 根据电机值设置动画
-  if (appState.motor1 > 5) wheelL.classList.add("spinning");
-  else if (appState.motor1 < -5) wheelL.classList.add("spinning-reverse");
-
-  if (appState.motor2 > 5) wheelR.classList.add("spinning");
-  else if (appState.motor2 < -5) wheelR.classList.add("spinning-reverse");
+  // 根据方向设置轮子动画（前进/转向=两轮前进转，后退=两轮反转，停止=无动画）
+  const dir = appState.dir;
+  if (dir === DRIVE.FORWARD || dir === DRIVE.LEFT || dir === DRIVE.RIGHT) {
+    wheelL.classList.add("spinning");
+    wheelR.classList.add("spinning");
+  } else if (dir === DRIVE.BACKWARD) {
+    wheelL.classList.add("spinning-reverse");
+    wheelR.classList.add("spinning-reverse");
+  }
 }
 
 // --- 工具函数 ---
@@ -651,10 +656,6 @@ function setConnectionStatus(isOnline) {
     dot.classList.add("disconnected");
     if (text) text.textContent = "离线";
   }
-}
-
-function clamp(v, min, max) {
-  return Math.min(Math.max(v, min), max);
 }
 
 // --- WiFi配置函数 ---
@@ -908,18 +909,18 @@ window.onload = function () {
   // 默认UI状态
   updateModeButtons("standby");
   bindHoldButton(document.getElementById("btnForward"), () =>
-    setDrive(DPAD_SPEED, DPAD_SPEED),
+    setDir(DRIVE.FORWARD),
   );
   bindHoldButton(document.getElementById("btnBackward"), () =>
-    setDrive(-DPAD_SPEED, -DPAD_SPEED),
+    setDir(DRIVE.BACKWARD),
   );
   bindHoldButton(document.getElementById("btnLeft"), () =>
-    setDrive(0, DPAD_SPEED),
+    setDir(DRIVE.LEFT),
   );
   bindHoldButton(document.getElementById("btnRight"), () =>
-    setDrive(DPAD_SPEED, 0),
+    setDir(DRIVE.RIGHT),
   );
-  bindHoldButton(document.getElementById("btnStop"), () => setDrive(0, 0));
+  bindHoldButton(document.getElementById("btnStop"), () => setDir(DRIVE.STOP));
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;

@@ -22,4 +22,9 @@ void bsp_motor_init(void);
 // 推入电机命令。-100~100 正负值对应正反转/差速。
 bool bsp_motor_push_cmd(int8_t left, int8_t right, motor_src_t src);
 
+// 方向驾驶：把语义方向命令（CarDriveCmd 值，见 car_common.h）翻译成当前底盘的
+// 物理动作。走同一 motor 队列 + 400ms 看门狗（MOTOR_SRC_MANUAL 超时自动停车）。
+// dir 取值与 CarDriveCmd 对齐：0=停 1=前进 2=后退 3=左转 4=右转。
+void bsp_motor_drive(uint8_t dir, int8_t speed);
+
 #endif

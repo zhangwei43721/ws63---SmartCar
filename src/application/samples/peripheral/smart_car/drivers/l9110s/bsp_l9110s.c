@@ -13,6 +13,7 @@
 #include "gpio.h"
 #include "pinctrl.h"
 #include "pwm.h"
+#include "../../apps/car_demo/car_common.h" // CarDriveCmd 方向枚举
 
 #define PWM_PERIOD 500 // 20kHz (50us)
 
@@ -66,4 +67,29 @@ void l9110s_set_differential(int8_t left, int8_t right)
     set_side(0, 1, left);
     set_side(2, 3, right);
     uapi_pwm_start_group(0); // 重启 group
+}
+
+// 方向命令 → 差速底盘动作（差速底盘可原地转向）
+void l9110s_drive(uint8_t dir, int8_t speed)
+{
+    switch (dir) {
+        case CAR_DRIVE_STOP:
+            l9110s_set_differential(0, 0);
+            break;
+        case CAR_DRIVE_FORWARD:
+            l9110s_set_differential(speed, speed);
+            break;
+        case CAR_DRIVE_BACKWARD:
+            l9110s_set_differential(-speed, -speed);
+            break;
+        case CAR_DRIVE_LEFT:
+            l9110s_set_differential(-speed, speed); // 原地左转
+            break;
+        case CAR_DRIVE_RIGHT:
+            l9110s_set_differential(speed, -speed); // 原地右转
+            break;
+        default:
+            l9110s_set_differential(0, 0);
+            break;
+    }
 }
