@@ -561,7 +561,7 @@ function updateModeButtons(mode) {
       if (pidBtn) pidBtn.classList.remove("active");
       if (hardBtn) hardBtn.classList.remove("active");
       if (calibBtn) calibBtn.classList.add("active");
-      
+
       // 默认显示传感器校准面板 (2)
       updateTraceSubmodeUI(2);
     } else {
@@ -1000,7 +1000,7 @@ function autoCalibrateTrace(type) {
     document.getElementById("rangeL").value = thL;
     document.getElementById("rangeM").value = thM;
     document.getElementById("rangeR").value = thR;
-    
+
     document.getElementById("txtL").textContent = thL;
     document.getElementById("txtM").textContent = thM;
     document.getElementById("txtR").textContent = thR;
@@ -1046,7 +1046,7 @@ function changeTraceSubmode(submode) {
     1: document.getElementById("submodeHardedBtn"),
     2: document.getElementById("submodeCalibBtn")
   };
-  
+
   Object.keys(buttons).forEach(key => {
     const btn = buttons[key];
     if (btn) {

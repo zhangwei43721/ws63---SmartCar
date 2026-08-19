@@ -19,14 +19,14 @@ bool car_ctrl_is_manual_allowed(void);                                  // 当�
 typedef void (*car_reply_fn)(void *ctx, const uint8_t *data, uint16_t len);
 
 typedef struct {
-    uint32_t source;   // MODE_SRC_* 命令来源
-    car_reply_fn reply; // 应答回调（NULL 表示本包不需要应答能力）
-    void *reply_ctx;    // 通道私有上下文，原样回传给 reply
-    uint16_t len;       // data 有效长度
+    uint32_t source;                   // MODE_SRC_* 命令来源
+    car_reply_fn reply;                // 应答回调（NULL 表示本包不需要应答能力）
+    void *reply_ctx;                   // 通道私有上下文，原样回传给 reply
+    uint16_t len;                      // data 有效长度
     uint8_t data[CAR_CMD_MAX_PAYLOAD]; // 原始协议包（投递时拷贝，通道栈缓冲可立即复用）
 } car_cmd_t;
 
-void car_ctrl_init(void);                  // 创建命令队列与处理任务（通道注册前调用）
+void car_ctrl_init(void);                     // 创建命令队列与处理任务（通道注册前调用）
 bool car_ctrl_post_cmd(const car_cmd_t *cmd); // 投递命令到总线（拷贝，任务上下文调用）
 
 #endif

@@ -21,9 +21,9 @@
 
 // OTA 状态机：IDLE → WAITING(监听TCP) → RECEIVING → VERIFYING → UPGRADING(重启)
 // 任一阶段异常 → FAILED → 500ms 定时器自动回到 IDLE
-#define OTA_STATE_MAP(OP)                \
-    OP(OTA_STATE_IDLE, "等待中")           \
-    OP(OTA_STATE_WAITING, "等待连接")     \
+#define OTA_STATE_MAP(OP)             \
+    OP(OTA_STATE_IDLE, "等待中")      \
+    OP(OTA_STATE_WAITING, "等待连接") \
     OP(OTA_STATE_RECEIVING, "接收中") \
     OP(OTA_STATE_VERIFYING, "校验中") \
     OP(OTA_STATE_UPGRADING, "重启中") \

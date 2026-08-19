@@ -40,7 +40,7 @@ typedef void (*wifi_state_cb_t)(bsp_wifi_event_t event, const char *ip);
 // @return 0 成功；-1 订阅表已满（显式失败，杜绝旧版单指针的静默覆盖问题）
 int wifi_mgr_subscribe(wifi_state_cb_t cb);
 
-const char *wifi_mgr_get_ip(void);           // 获取当前 IP 地址字符串
+const char *wifi_mgr_get_ip(void); // 获取当前 IP 地址字符串
 
 // ========== 配网接口 ==========
 int wifi_mgr_connect_ap(const char *ssid, const char *password); // 请求连接到指定 AP（STA 模式）

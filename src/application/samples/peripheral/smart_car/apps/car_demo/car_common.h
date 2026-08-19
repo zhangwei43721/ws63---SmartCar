@@ -14,13 +14,13 @@
 // 通用互斥锁操作宏。调用前需确保 inited==true（init 失败应 panic）。
 // 旧版在 inited==false 时"静默放行"让临界区裸跑；当前版打印一次 BUG 警告
 // 便于定位漏 init 的 bug，但仍然不调用 osal_mutex_lock（传未初始化句柄可能 crash）。
-#define MUTEX_LOCK(mutex, inited)                                                       \
-    do {                                                                                \
-        if ((inited)) {                                                                 \
-            (void)osal_mutex_lock(&(mutex));                                            \
-        } else {                                                                        \
-            printf("[BUG] mutex used before init @ %s:%d\r\n", __FILE__, __LINE__);     \
-        }                                                                               \
+#define MUTEX_LOCK(mutex, inited)                                                   \
+    do {                                                                            \
+        if ((inited)) {                                                             \
+            (void)osal_mutex_lock(&(mutex));                                        \
+        } else {                                                                    \
+            printf("[BUG] 初始化之前使用了互斥锁 @ %s:%d\r\n", __FILE__, __LINE__); \
+        }                                                                           \
     } while (0)
 
 #define MUTEX_UNLOCK(mutex, inited)      \
@@ -89,12 +89,13 @@ typedef enum {
  *        type 字段统一定义在此，禁止散落到各 .c 里魔数化。
  */
 typedef enum {
-    CAR_PKT_CONTROL = 0x01,       // 控制：[type, dir, speed, 0, 0]（dir=CarDriveCmd 方向，speed=速度幅值）
-    CAR_PKT_MODE = 0x03,          // 模式切换：[type, mode, 0, 0, 0]
-    CAR_PKT_PID = 0x04,           // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
-    CAR_PKT_OTA = 0x05,           // OTA 触发：[type, sub_cmd, ...]
-    CAR_PKT_TRACE_INFO = 0x0A,    // 循迹 Raw/Th 遥测：[type, rawL_hi, rawL_lo, rawM_hi, rawM_lo, rawR_hi, rawR_lo, thL_hi, thL_lo, thM_hi, thM_lo, thR_hi, thR_lo]
-    CAR_PKT_LOG_DATA = 0x0B,      // 虚拟串口日志包：[type, text...]
+    CAR_PKT_CONTROL = 0x01,    // 控制：[type, dir, speed, 0, 0]（dir=CarDriveCmd 方向，speed=速度幅值）
+    CAR_PKT_MODE = 0x03,       // 模式切换：[type, mode, 0, 0, 0]
+    CAR_PKT_PID = 0x04,        // PID 设参：[type, k_type, val_hi, val_lo, save_flag]
+    CAR_PKT_OTA = 0x05,        // OTA 触发：[type, sub_cmd, ...]
+    CAR_PKT_TRACE_INFO = 0x0A, // 循迹 Raw/Th 遥测：[type, rawL_hi, rawL_lo, rawM_hi, rawM_lo, rawR_hi, rawR_lo, thL_hi,
+                               // thL_lo, thM_hi, thM_lo, thR_hi, thR_lo]
+    CAR_PKT_LOG_DATA = 0x0B,   // 虚拟串口日志包：[type, text...]
     CAR_PKT_TRACE_CALIB = 0x0C,   // 循迹探头校准包：[type, thL_hi, thL_lo, thM_hi, thM_lo, thR_hi, thR_lo]
     CAR_PKT_TRACE_SUBMODE = 0x0D, // 循迹子模式：[type, submode, 0, 0, 0]
     CAR_PKT_WIFI_SET = 0xE0,      // WiFi 配置保存（不立即连接）

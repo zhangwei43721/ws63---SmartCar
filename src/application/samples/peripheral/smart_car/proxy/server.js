@@ -293,7 +293,7 @@ udpSocket.on("message", (msg, rinfo) => {
     const th_l = msg.readUInt16BE(7);
     const th_m = msg.readUInt16BE(9);
     const th_r = msg.readUInt16BE(11);
-    
+
     broadcastToFrontend({
       type: "traceInfo",
       ip,

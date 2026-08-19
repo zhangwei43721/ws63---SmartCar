@@ -93,7 +93,8 @@
 
     <!-- 虚拟串口日志面板 -->
     <div class="floating-panel right-panel" id="logPanel">
-      <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <div class="panel-header"
+        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <h4 style="margin: 0;">虚拟串口日志</h4>
         <button class="btn-sm" style="padding: 2px 8px; font-size: 10px;" onclick="clearConsoleLog()">清空</button>
       </div>
@@ -123,13 +124,13 @@
         </div>
       </div>
       <div id="pidDebugSection">
-        <h4 style="margin: 15px 0 10px 0; color: #1f1f1f; border-top: 1px solid rgba(0,0,0,0.05); padding-top: 10px;">PID 参数调试</h4>
+        <h4 style="margin: 15px 0 10px 0; color: #1f1f1f; border-top: 1px solid rgba(0,0,0,0.05); padding-top: 10px;">
+          PID 参数调试</h4>
         <div class="form-group">
           <label style="color: #1f1f1f;">Kp</label>
           <div style="display: flex; gap: 10px; align-items: center;">
             <input type="range" id="pidKp" min="0" max="100" step="0.5" value="25"
-              oninput="updatePidVal('pidKpVal', this.value)"
-              onchange="sendPid(1)" style="flex: 1;">
+              oninput="updatePidVal('pidKpVal', this.value)" onchange="sendPid(1)" style="flex: 1;">
             <span id="pidKpVal" style="width: 30px; text-align: right; color: #1f1f1f;">25</span>
           </div>
         </div>
@@ -137,8 +138,7 @@
           <label style="color: #1f1f1f;">Ki</label>
           <div style="display: flex; gap: 10px; align-items: center;">
             <input type="range" id="pidKi" min="0" max="50" step="0.1" value="0"
-              oninput="updatePidVal('pidKiVal', this.value)"
-              onchange="sendPid(2)" style="flex: 1;">
+              oninput="updatePidVal('pidKiVal', this.value)" onchange="sendPid(2)" style="flex: 1;">
             <span id="pidKiVal" style="width: 30px; text-align: right; color: #1f1f1f;">0</span>
           </div>
         </div>
@@ -146,8 +146,7 @@
           <label style="color: #1f1f1f;">Kd</label>
           <div style="display: flex; gap: 10px; align-items: center;">
             <input type="range" id="pidKd" min="0" max="100" step="0.5" value="10"
-              oninput="updatePidVal('pidKdVal', this.value)"
-              onchange="sendPid(3)" style="flex: 1;">
+              oninput="updatePidVal('pidKdVal', this.value)" onchange="sendPid(3)" style="flex: 1;">
             <span id="pidKdVal" style="width: 30px; text-align: right; color: #1f1f1f;">10</span>
           </div>
         </div>
@@ -155,8 +154,7 @@
           <label style="color: #1f1f1f;">速度</label>
           <div style="display: flex; gap: 10px; align-items: center;">
             <input type="range" id="pidSpeed" min="10" max="80" step="5" value="40"
-              oninput="updatePidVal('pidSpeedVal', this.value)"
-              onchange="sendPid(4)" style="flex: 1;">
+              oninput="updatePidVal('pidSpeedVal', this.value)" onchange="sendPid(4)" style="flex: 1;">
             <span id="pidSpeedVal" style="width: 30px; text-align: right; color: #1f1f1f;">40</span>
           </div>
         </div>
@@ -170,43 +168,57 @@
       <h4 style="margin: 0 0 10px 0; color: #1f1f1f;">传感器在线校准 (mV)</h4>
       <div class="panel-body">
         <div class="calib-row" style="margin-bottom: 12px;">
-          <div class="calib-meta" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; color: #1f1f1f; font-size: 13px;">
+          <div class="calib-meta"
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; color: #1f1f1f; font-size: 13px;">
             <span>左探头 (Raw: <span id="valL">--</span>)</span>
-            <span class="status-badge white-bg" id="stL" style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #e0e0e0;">白</span>
+            <span class="status-badge white-bg" id="stL"
+              style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #e0e0e0;">白</span>
           </div>
           <div class="calib-slider-wrap" style="display: flex; gap: 10px; align-items: center;">
-            <input type="range" id="rangeL" min="0" max="4095" value="1750" onchange="sendTraceThresholds()" oninput="updateRangeText('txtL', this.value)" style="flex: 1;">
+            <input type="range" id="rangeL" min="0" max="4095" value="1750" onchange="sendTraceThresholds()"
+              oninput="updateRangeText('txtL', this.value)" style="flex: 1;">
             <span id="txtL" style="width: 35px; text-align: right; color: #1f1f1f; font-size: 13px;">1750</span>
           </div>
         </div>
 
         <div class="calib-row" style="margin-bottom: 12px;">
-          <div class="calib-meta" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; color: #1f1f1f; font-size: 13px;">
+          <div class="calib-meta"
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; color: #1f1f1f; font-size: 13px;">
             <span>中探头 (Raw: <span id="valM">--</span>)</span>
-            <span class="status-badge white-bg" id="stM" style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #e0e0e0;">白</span>
+            <span class="status-badge white-bg" id="stM"
+              style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #e0e0e0;">白</span>
           </div>
           <div class="calib-slider-wrap" style="display: flex; gap: 10px; align-items: center;">
-            <input type="range" id="rangeM" min="0" max="4095" value="1150" onchange="sendTraceThresholds()" oninput="updateRangeText('txtM', this.value)" style="flex: 1;">
+            <input type="range" id="rangeM" min="0" max="4095" value="1150" onchange="sendTraceThresholds()"
+              oninput="updateRangeText('txtM', this.value)" style="flex: 1;">
             <span id="txtM" style="width: 35px; text-align: right; color: #1f1f1f; font-size: 13px;">1150</span>
           </div>
         </div>
 
         <div class="calib-row" style="margin-bottom: 12px;">
-          <div class="calib-meta" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; color: #1f1f1f; font-size: 13px;">
+          <div class="calib-meta"
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; color: #1f1f1f; font-size: 13px;">
             <span>右探头 (Raw: <span id="valR">--</span>)</span>
-            <span class="status-badge white-bg" id="stR" style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #e0e0e0;">白</span>
+            <span class="status-badge white-bg" id="stR"
+              style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #e0e0e0;">白</span>
           </div>
           <div class="calib-slider-wrap" style="display: flex; gap: 10px; align-items: center;">
-            <input type="range" id="rangeR" min="0" max="4095" value="1600" onchange="sendTraceThresholds()" oninput="updateRangeText('txtR', this.value)" style="flex: 1;">
+            <input type="range" id="rangeR" min="0" max="4095" value="1600" onchange="sendTraceThresholds()"
+              oninput="updateRangeText('txtR', this.value)" style="flex: 1;">
             <span id="txtR" style="width: 35px; text-align: right; color: #1f1f1f; font-size: 13px;">1600</span>
           </div>
         </div>
 
         <div style="display: flex; gap: 8px; margin-top: 15px;">
-          <button class="btn-primary" style="font-size: 11px; padding: 6px 12px; border: none; border-radius: 4px; background: #0b57d0; color: #fff; cursor: pointer;" onclick="autoCalibrateTrace('black')">记录黑线</button>
-          <button class="btn-primary" style="font-size: 11px; padding: 6px 12px; border: none; border-radius: 4px; background: #0b57d0; color: #fff; cursor: pointer;" onclick="autoCalibrateTrace('white')">记录背景</button>
+          <button class="btn-primary"
+            style="font-size: 11px; padding: 6px 12px; border: none; border-radius: 4px; background: #0b57d0; color: #fff; cursor: pointer;"
+            onclick="autoCalibrateTrace('black')">记录黑线</button>
+          <button class="btn-primary"
+            style="font-size: 11px; padding: 6px 12px; border: none; border-radius: 4px; background: #0b57d0; color: #fff; cursor: pointer;"
+            onclick="autoCalibrateTrace('white')">记录背景</button>
         </div>
-        <p style="margin: 8px 0 0; font-size: 10px; color: #747775; line-height: 1.3;">校准方法：将探头放在黑线上点“记录黑线”，然后移到白色背景点“记录背景”，即可自动计算阈值。</p>
+        <p style="margin: 8px 0 0; font-size: 10px; color: #747775; line-height: 1.3;">
+          校准方法：将探头放在黑线上点“记录黑线”，然后移到白色背景点“记录背景”，即可自动计算阈值。</p>
       </div>
     </div>
 

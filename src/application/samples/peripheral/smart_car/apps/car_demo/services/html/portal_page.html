@@ -1,30 +1,154 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>小车WiFi配网</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-        body { font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, sans-serif; background: #f0f4f9; color: #1f1f1f; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
-        .card { background: #ffffff; border-radius: 28px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); padding: 24px; width: 100%; max-width: 360px; border: 1px solid #e1e3e1; }
-        h1 { font-size: 22px; color: #1f1f1f; margin-bottom: 4px; text-align: center; font-weight: 500; }
-        .sub { color: #747775; font-size: 13px; text-align: center; margin-bottom: 20px; }
-        .field { margin-bottom: 16px; }
-        label { display: block; font-size: 13px; color: #444746; margin-bottom: 6px; font-weight: 500; }
-        input, select { width: 100%; padding: 12px 14px; border: 1px solid #e1e3e1; border-radius: 12px; font-size: 15px; outline: 0; background: #ffffff; color: #1f1f1f; transition: border .2s; }
-        input:focus, select:focus { border-color: #0b57d0; }
-        select { margin-top: 8px; }
-        .btn-primary { width: 100%; padding: 13px; border: 0; border-radius: 12px; background: #0b57d0; color: #ffffff; font-size: 16px; font-weight: 500; cursor: pointer; margin-top: 4px; }
-        .btn-primary:active { opacity: .9; }
-        .btn-secondary { margin-top: 8px; background: #f0f4f9; color: #444746; font-size: 13px; padding: 8px 14px; border: 0; border-radius: 12px; cursor: pointer; }
-        .scan-tip { font-size: 12px; color: #747775; margin-top: 6px; }
-        .ctrl-box { margin-top: 18px; text-align: center; }
-        .ctrl-link { display: inline-block; padding: 10px 20px; background: #c2e7ff; color: #001d35; text-decoration: none; border-radius: 12px; font-size: 15px; font-weight: 500; }
-        .ctrl-sub { margin-top: 8px; font-size: 12px; color: #747775; }
-        .tip { margin-top: 14px; font-size: 12px; color: #747775; text-align: center; line-height: 1.5; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f0f4f9;
+            color: #1f1f1f;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 28px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+            padding: 24px;
+            width: 100%;
+            max-width: 360px;
+            border: 1px solid #e1e3e1;
+        }
+
+        h1 {
+            font-size: 22px;
+            color: #1f1f1f;
+            margin-bottom: 4px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .sub {
+            color: #747775;
+            font-size: 13px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .field {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            color: #444746;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid #e1e3e1;
+            border-radius: 12px;
+            font-size: 15px;
+            outline: 0;
+            background: #ffffff;
+            color: #1f1f1f;
+            transition: border .2s;
+        }
+
+        input:focus,
+        select:focus {
+            border-color: #0b57d0;
+        }
+
+        select {
+            margin-top: 8px;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 13px;
+            border: 0;
+            border-radius: 12px;
+            background: #0b57d0;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 4px;
+        }
+
+        .btn-primary:active {
+            opacity: .9;
+        }
+
+        .btn-secondary {
+            margin-top: 8px;
+            background: #f0f4f9;
+            color: #444746;
+            font-size: 13px;
+            padding: 8px 14px;
+            border: 0;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+
+        .scan-tip {
+            font-size: 12px;
+            color: #747775;
+            margin-top: 6px;
+        }
+
+        .ctrl-box {
+            margin-top: 18px;
+            text-align: center;
+        }
+
+        .ctrl-link {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #c2e7ff;
+            color: #001d35;
+            text-decoration: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        .ctrl-sub {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #747775;
+        }
+
+        .tip {
+            margin-top: 14px;
+            font-size: 12px;
+            color: #747775;
+            text-align: center;
+            line-height: 1.5;
+        }
     </style>
 </head>
+
 <body>
     <div class="card">
         <h1>智能小车配网</h1>
@@ -91,4 +215,5 @@
         };
     </script>
 </body>
+
 </html>
